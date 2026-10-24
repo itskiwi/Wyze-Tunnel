@@ -8,7 +8,8 @@ set -euo pipefail
 VM=wyze-tunnel
 REF=${WT_REF:-main}
 DIR="$HOME/Library/Application Support/Wyze Tunnel"
-LIMA_HOME="$DIR/vm"
+# Lima keeps sockets in here; macOS caps socket paths at 104 chars, so it must stay short.
+LIMA_HOME="$HOME/.wyze-tunnel"
 export LIMA_HOME
 PATH="$DIR/lima/bin:$PATH"
 
@@ -30,6 +31,12 @@ main() {
         mkdir -p "$DIR/lima"
         curl -fsSL "https://github.com/lima-vm/lima/releases/download/$TAG/lima-${TAG#v}-Darwin-$ARCH.tar.gz" \
             | tar xzf - -C "$DIR/lima"
+    fi
+
+    # shortcut: VMs from the first release lived in "$DIR/vm" and are recreated (sign in again); fine while installs are new.
+    if [ -d "$DIR/vm" ]; then
+        LIMA_HOME="$DIR/vm" limactl delete -f "$VM" </dev/null >/dev/null 2>&1 || true
+        rm -rf "$DIR/vm"
     fi
 
     if ! limactl list -q 2>/dev/null | grep -qx "$VM"; then
