@@ -18,6 +18,7 @@ from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
 from wyzebridge import config, web_ui
 from wyzebridge.auth import WbAuth
+from wyzebridge.diagnostics import build_report
 from wyzebridge.web_ui import url_for
 
 
@@ -256,6 +257,23 @@ def create_app():
         if photo := web_ui.boa_snapshot(cam):
             return send_from_directory(config.IMG_PATH, f"{uri}_{photo[0]}")
         return redirect(f"/img/{img_file}", code=307)
+
+    @app.route("/diagnostics")
+    @auth_required
+    def diagnostics():
+        """Download a redacted report to attach to bug reports."""
+        report = build_report(
+            config.VERSION,
+            config.BUILD_STR,
+            wb.streams.get_all_cam_info(),
+            (WbAuth.api, WbAuth._pass, wb.api.auth and wb.api.auth.access_token or ""),
+        )
+        resp = make_response(report)
+        resp.headers["Content-Type"] = "text/plain; charset=utf-8"
+        resp.headers["Content-Disposition"] = (
+            f"attachment; filename=wyze-tunnel-diagnostics-{time.strftime('%Y%m%d-%H%M%S')}.txt"
+        )
+        return resp
 
     @app.route("/restart/<string:restart_cmd>")
     @auth_required
