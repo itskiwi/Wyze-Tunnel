@@ -19,7 +19,7 @@ from wyzebridge.ffmpeg import get_ffmpeg_cmd
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import publish_discovery, publish_messages, update_mqtt_state
 from wyzebridge.webhooks import send_webhook
-from wyzebridge.wyze_api import WyzeApi
+from wyzebridge.wyze_api import WyzeApi, display_name
 from wyzebridge.wyze_commands import GET_CMDS, PARAMS, SET_CMDS
 from wyzebridge.wyze_control import camera_control
 from wyzecam import TutkError, WyzeAccount, WyzeCamera, WyzeIOTC, WyzeIOTCSession
@@ -307,7 +307,11 @@ class WyzeStream:
             self.update_cam_info()
         if self.camera.camera_info and "boa_info" in self.camera.camera_info:
             data["boa_url"] = f"http://{self.camera.ip}/cgi-bin/hello.cgi?name=/"
-        return data | self.camera.model_dump(exclude={"p2p_id", "enr", "parent_enr"})
+        return (
+            data
+            | self.camera.model_dump(exclude={"p2p_id", "enr", "parent_enr"})
+            | {"nickname": display_name(self.camera)}
+        )
 
     def update_cam_info(self) -> None:
         if not self.connected:

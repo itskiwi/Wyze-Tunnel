@@ -7,6 +7,7 @@ from wyzebridge.config import MOTION_INT, MOTION_START
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import update_preview
 from wyzebridge.webhooks import send_webhook
+from wyzebridge.wyze_api import display_name
 from wyzebridge.wyze_stream import WyzeStream
 
 
@@ -43,10 +44,11 @@ class WyzeEvents:
                     stream.camera.thumbnail = img
                 stream.motion = self.last_ts
                 event_time = datetime.fromtimestamp(self.last_ts)
-                msg = f"Motion detected on {stream.uri} at {event_time: %H:%M:%S}"
+                name = display_name(stream.camera)
+                msg = f"Motion detected on {name} at {event_time: %H:%M:%S}"
                 logger.info(f"[MOTION] {msg}")
                 EVENT_LOG.appendleft(
-                    {"uri": stream.uri, "name": stream.camera.nickname, "ts": self.last_ts, "img": img}
+                    {"uri": stream.uri, "name": name, "ts": self.last_ts, "img": img}
                 )
                 send_webhook("motion", stream.uri, msg, img)
                 if MOTION_START:
