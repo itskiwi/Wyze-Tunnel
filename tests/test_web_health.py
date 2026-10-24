@@ -51,3 +51,10 @@ def test_live_view_survives_partial_camera_info(client):
     assert "Weak" in page  # camera_info without channelResquestResult used to crash the page
     assert "Camera offline" in page  # instead of a spinner that never ends
     assert "cdnjs" not in page and "jsdelivr" not in page  # icons and video work without internet
+
+
+def test_pages_use_plain_words(client):
+    live = client.get("/live").get_data(as_text=True)
+    assert "<title>Live · Wyze Tunnel</title>" in live
+    assert ">idle<" in live and "stopped" not in live
+    assert "Account and sharing" in live and "Wyze login" not in live

@@ -12,6 +12,8 @@
             const get = () => { try { return localStorage.getItem("theme") || ""; } catch { return ""; } };
             const apply = (t) => {
                 t ? document.documentElement.dataset.theme = t : delete document.documentElement.dataset.theme;
+                const light = t ? t === "light" : matchMedia("(prefers-color-scheme: light)").matches;
+                document.querySelectorAll("meta[name=theme-color]").forEach((m) => m.content = light ? "#f4f3ef" : "#0e100e");
                 document.querySelectorAll(".theme-toggle").forEach((b) => {
                     b.querySelector("i").className = "fas " + (icons[t] || "fa-circle-half-stroke");
                     b.title = "Theme: " + (t || "system");
@@ -27,7 +29,7 @@
             });
         })();
     </script>
-    <title>Wyze Tunnel</title>
+    <title>{% block title %}{% endblock %}Wyze Tunnel</title>
     <link rel="manifest" href="static/manifest.webmanifest" />
     <link rel="icon" href="static/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="static/icon-192.png" />
@@ -64,7 +66,7 @@
                 <div class="menu right-0 w-64">
                     {% block settings_menu %}{% endblock %}
                     <a href="cameras" class="menu-item"><i class="fas fa-eye w-4"></i>Choose cameras</a>
-                    <a href="account" class="menu-item"><i class="fas fa-key w-4"></i>Wyze login</a>
+                    <a href="account" class="menu-item"><i class="fas fa-user w-4"></i>Account and sharing</a>
                     {% if not current_guest() %}<a href="account#phone" class="menu-item"><i class="fas fa-mobile-screen w-4"></i>Pair a phone</a>{% endif %}
                     {% if not current_guest() %}<a href="street-watch" class="menu-item"><i class="fas fa-house-flag w-4"></i>Street Watch</a>
                     <a href="search#setup" class="menu-item"><i class="fas fa-magnifying-glass w-4"></i>Footage search</a>

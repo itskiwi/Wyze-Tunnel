@@ -330,8 +330,8 @@ document.addEventListener("DOMContentLoaded", () => {
       a.classList.add("has-text-danger");
       fetch("restart/" + a.dataset.restart)
         .then((resp) => resp.json())
-        .then((data) => { sendNotification(`Restart ${a.dataset.restart}`, data.result, "warning"); })
-        .catch((error) => { sendNotification(`Restart ${a.dataset.restart}`, error.message, "danger"); });
+        .then((data) => { sendNotification(a.textContent.trim(), data.result === "ok" ? "Restarting. Cameras come back in a few seconds." : "Didn't work.", data.result === "ok" ? "warning" : "danger"); })
+        .catch((error) => { sendNotification(a.textContent.trim(), `Didn't work. ${error.message}`, "danger"); });
       setTimeout(() => {
         a.style = null;
         a.classList.remove("has-text-danger");
@@ -340,6 +340,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Update status icon based on connection status
+  const STATUS_WORDS = { stopped: "idle", disabled: "off" };  // a waiting on-demand camera isn't broken
   const sse = new EventSource("api/sse_status");
   sse.addEventListener("open", () => {
     document.getElementById("connection-lost").style.display = "none";
@@ -396,7 +397,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const motionIcon = card.querySelector(".icon.motion");
       const statusLabel = card.querySelector(".status-label");
       if (statusLabel) {
-        statusLabel.textContent = messageData.status;
+        statusLabel.textContent = STATUS_WORDS[messageData.status] || messageData.status;
         statusLabel.dataset.status = messageData.status;
       }
       const netMode = card.querySelector(".net-mode");
@@ -758,6 +759,14 @@ document.addEventListener("DOMContentLoaded", () => {
     })
   })
 
+  // "night_vision" + "auto" reads as "Night vision auto" in the toast; a few commands need their own words.
+  const COMMAND_WORDS = { rotary_degree: "Moved", reset_rotation: "Back to center", cruise_point: "Went to position", alarm: "Siren",
+    state: "Stream", net_mode: "Connection", quick_response: "Played reply", power: "Power" };
+  const PAYLOAD_WORDS = { hd: "HD", sd: "SD", no_relay: "no relay", enable: "on", disable: "off", 3: "" };
+  function commandText(cmd, payload = "") {
+    const label = COMMAND_WORDS[cmd] || cmd[0].toUpperCase() + cmd.slice(1).replaceAll("_", " ");
+    return `${label} ${PAYLOAD_WORDS[payload] ?? payload}`.trim();
+  }
   // cam control
   document.querySelectorAll(".cam-control").forEach((e) => {
     let { cam } = e.dataset;
@@ -765,10 +774,12 @@ document.addEventListener("DOMContentLoaded", () => {
       button.addEventListener("click", () => {
         button.classList.add("is-loading");
         const { payload } = button.dataset
+        const name = cam === "all" ? "All cameras" : document.querySelector(`#${CSS.escape(cam)} .card-header-title .truncate`)?.textContent || cam;
+        const what = commandText(button.dataset.cmd, payload);
         fetch(`api/${cam}/${button.dataset.cmd}${payload ? `/${payload}` : ''}`)
           .then((resp) => resp.json())
-          .then((data) => { sendNotification(cam, `${button.dataset.cmd}: ${data.status}`, ["error", false].includes(data.status) ? "danger" : "primary") })
-          .catch((error) => { sendNotification(cam, `${button.dataset.cmd}: ${error.message}`, "danger") })
+          .then((data) => { ["error", false].includes(data.status) ? sendNotification(name, `${what} didn't work. ${data.response || ""}`.trim(), "danger") : sendNotification(name, what, "primary") })
+          .catch((error) => { sendNotification(name, `${what} didn't work. ${error.message}`, "danger") })
           .finally(() => { button.classList.remove("is-loading"); });
       })
     })

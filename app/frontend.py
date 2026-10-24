@@ -512,6 +512,7 @@ def create_app():
             "account.html",
             guests=guests.list_guests(),
             auto_folder=backup.load_auto().get("folder", ""),
+            folder_example=r"D:\Wyze Tunnel backups" if os.name == "nt" else "/media/backups",
             member=web_ui.current_guest(),
             guest_hours=guests.GUEST_HOURS,
             username=WbAuth.username,
