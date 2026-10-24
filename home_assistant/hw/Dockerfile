@@ -1,1 +1,1 @@
-FROM mrlt8/wyze-bridge:latest-hw
+FROM ghcr.io/itskiwi/wyze-tunnel:latest-hw

@@ -1,7 +1,5 @@
-[![Docker](https://github.com/mrlt8/docker-wyze-bridge/actions/workflows/docker-image.yml/badge.svg)](https://github.com/mrlt8/docker-wyze-bridge/actions/workflows/docker-image.yml)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/mrlt8/docker-wyze-bridge?logo=github)](https://github.com/mrlt8/docker-wyze-bridge/releases/latest)
-[![Docker Image Size (latest semver)](https://img.shields.io/docker/image-size/mrlt8/wyze-bridge?sort=semver&logo=docker&logoColor=white)](https://hub.docker.com/r/mrlt8/wyze-bridge)
-[![Docker Pulls](https://img.shields.io/docker/pulls/mrlt8/wyze-bridge?logo=docker&logoColor=white)](https://hub.docker.com/r/mrlt8/wyze-bridge)
+[![Docker](https://github.com/itskiwi/Wyze-Tunnel/actions/workflows/docker-image.yml/badge.svg)](https://github.com/itskiwi/Wyze-Tunnel/actions/workflows/docker-image.yml)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/itskiwi/Wyze-Tunnel?logo=github)](https://github.com/itskiwi/Wyze-Tunnel/releases/latest)
 
 # WebRTC/RTSP/RTMP/HLS Bridge for Wyze Cam
 
@@ -50,7 +48,7 @@ See the [supported cameras](#supported-cameras) section for additional informati
 Install [docker](https://docs.docker.com/get-docker/) and run:
 
 ```bash
-docker run -p 8554:8554 -p 8888:8888 -p 5050:5000 -e WB_AUTH=false mrlt8/wyze-bridge
+docker run -p 8554:8554 -p 8888:8888 -p 5050:5000 -e WB_AUTH=false ghcr.io/itskiwi/wyze-tunnel
 ```
 
 You can then use the web interface at `http://localhost:5050` where `localhost` is the hostname or ip of the machine running the bridge.
@@ -161,7 +159,7 @@ The container can be run on its own, in [Portainer](https://github.com/mrlt8/doc
 ## Supported Cameras
 
 > [!IMPORTANT]
-> Some newer camera firmware versions may cause issues with remote access via P2P. Local "LAN" access seems unaffected at this time. A temporary solution is to use a VPN. See the [OpenVPN example](https://github.com/mrlt8/docker-wyze-bridge/blob/main/docker-compose.ovpn.yml).
+> Some newer camera firmware versions may cause issues with remote access via P2P. Local "LAN" access seems unaffected at this time. A temporary solution is to use a VPN. See the [OpenVPN example](https://github.com/itskiwi/Wyze-Tunnel/blob/main/docker-compose.ovpn.yml).
 
 | Camera                        | Model          | Tutk Support                                                 | Latest FW |
 | ----------------------------- | -------------- | ------------------------------------------------------------ | --------- |
@@ -194,7 +192,7 @@ The container can be run on its own, in [Portainer](https://github.com/mrlt8/doc
 This is similar to the docker run command, but will save all your options in a yaml file.
 
 1. Install [Docker Compose](https://docs.docker.com/compose/install/).
-2. Use the [sample](https://raw.githubusercontent.com/mrlt8/docker-wyze-bridge/main/docker-compose.sample.yml) as a guide to create a `docker-compose.yml` file with your wyze credentials.
+2. Use the [sample](https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/main/docker-compose.sample.yml) as a guide to create a `docker-compose.yml` file with your wyze credentials.
 3. Run `docker-compose up`.
 
 Once you're happy with your config you can use `docker-compose up -d` to run it in detached mode.
@@ -220,7 +218,7 @@ docker image prune # Remove old images
 
 Visit the [wiki page](https://github.com/mrlt8/docker-wyze-bridge/wiki/Home-Assistant) for additional information on Home Assistant.
 
-[![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fmrlt8%2Fdocker-wyze-bridge)
+[![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fitskiwi%2FWyze-Tunnel)
 
 
 ## Additional Info

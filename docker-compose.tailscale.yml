@@ -19,7 +19,7 @@ services:
   wyze-bridge:
     container_name: wyze-bridge
     restart: unless-stopped
-    image: mrlt8/wyze-bridge:latest
+    image: ghcr.io/itskiwi/wyze-tunnel:latest
     depends_on: [tailscale]
     network_mode: service:tailscale
     environment:
