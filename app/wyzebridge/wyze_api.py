@@ -291,7 +291,7 @@ class WyzeApi:
             return {"result": "cam not found", "cam": cam_name}
         try:
             logger.info("☁️ Fetching signaling data from the Wyze API...")
-            wss = wyzecam.api.get_cam_webrtc(self.auth, cam.mac)
+            wss = wyzecam.api.get_cam_webrtc(self.auth, cam.mac, cam.product_model)
             return wss | {"result": "ok", "cam": cam_name}
         except (HTTPError, WyzeAPIError) as ex:
             if isinstance(ex, HTTPError) and ex.response.status_code == 404:

@@ -25,7 +25,9 @@ def test_auto_chain(both, monkeypatch):
     assert go2rtc.source_chain(cam(model="GW_GC1")) == ["webrtc"]  # Gwell (OG): cloud WebRTC only
     assert go2rtc.source_chain(cam(model="GW_BE1")) == []  # Doorbell Pro: no WebRTC
     monkeypatch.setattr(go2rtc, "tutk_available", lambda: False)
+    monkeypatch.setattr(go2rtc, "local_ipv4s", lambda: {"192.168.1.5"})
     assert go2rtc.source_chain(cam()) == ["lan", "webrtc"]
+    assert go2rtc.source_chain(cam(ip="192.168.86.21")) == ["webrtc"]  # another site: LAN discovery can't reach it
     monkeypatch.setattr(go2rtc, "go2rtc_available", lambda: False)
     assert go2rtc.source_chain(cam()) == []
 
@@ -61,3 +63,23 @@ def test_fallback_moves_to_next_source_after_5_failures():
             stream._failed()
             seen.append(stream.source)
     assert seen[:4] == ["tutk"] * 4 and seen[4] == "lan" and seen[9] == "webrtc" and seen[14] == "tutk"
+
+
+def test_cam_og_uses_get_streams(monkeypatch):
+    from unittest import mock
+
+    from wyzecam import api
+    from wyzecam.api_models import WyzeCredential
+
+    body = {"code": "1", "data": [{"params": {
+        "signaling_url": "wss://wyze-mars-webcsrv.wyzecam.com/x?X-Amz-Credential=a%252Fb",
+        "ice_servers": [{"url": "turn:t", "username": "u", "credential": "c"}],
+    }}]}
+    monkeypatch.setattr(api, "API_STATS", api.Counter())
+    resp = mock.Mock(headers={}, json=lambda: body)
+    with mock.patch.object(api, "post", return_value=resp) as post:
+        out = api.get_cam_webrtc(WyzeCredential(access_token="tok", phone_id="p"), "MAC", "GW_GC1")
+    assert post.call_args.args[0].endswith("/v4/camera/get_streams")
+    assert '"device_model":"GW_GC1"' in post.call_args.kwargs["data"].replace(" ", "")
+    assert out == {"ClientId": "p", "signalingUrl": "wss://wyze-mars-webcsrv.wyzecam.com/x?X-Amz-Credential=a%2Fb",
+                   "servers": [{"urls": "turn:t", "username": "u", "credential": "c"}]}

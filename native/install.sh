@@ -6,7 +6,8 @@
 # Or from a checkout:
 #   sudo ./native/install.sh
 # Re-run either one to update. The one-liner installs the latest release; set WT_REF=<branch or tag>
-# to install that source instead.
+# to install that source instead. WT_IMAGE=1 prepares a disk image (box/build-image.sh): nothing is started
+# and the address and password are left for the box's first boot.
 set -euo pipefail
 
 # True once the web UI answers on this machine (gives it about 2 minutes after a restart).
@@ -128,6 +129,10 @@ rm -rf "$PREFIX/app/lib"
 
 echo "==> Installing Python dependencies"
 [ -x "$PREFIX/venv/bin/python" ] || python3 -m venv "$PREFIX/venv"
+# cffi (needed by cryptography) has no 32-bit ARM wheel, so pip compiles it there.
+if [ "$(uname -m)" = armv7l ] && command -v apt-get >/dev/null; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gcc libffi-dev python3-dev </dev/null
+fi
 "$PREFIX/venv/bin/pip" install --quiet --disable-pip-version-check -r "$PREFIX/app/requirements.txt"
 "$PREFIX/venv/bin/python" -m compileall -q "$PREFIX/app"
 
@@ -156,8 +161,11 @@ IP=${IP:-$(hostname -I 2>/dev/null | awk '{print $1}' || true)}
 mkdir -p "$CONF_DIR"
 if [ ! -f "$CONF_DIR/wyze-tunnel.env" ]; then
     install -m 600 "$SRC/native/wyze-tunnel.env" "$CONF_DIR/wyze-tunnel.env"
-    sed -i "s/^WB_IP=.*/WB_IP=$IP/" "$CONF_DIR/wyze-tunnel.env"
-    sed -i "s/^#WB_PASSWORD=.*/WB_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(12))')/" "$CONF_DIR/wyze-tunnel.env"
+    # An image is copied to many boxes: each one's setup wizard makes its own password instead.
+    if [ -z "${WT_IMAGE:-}" ]; then
+        sed -i "s/^WB_IP=.*/WB_IP=$IP/" "$CONF_DIR/wyze-tunnel.env"
+        sed -i "s/^#WB_PASSWORD=.*/WB_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(12))')/" "$CONF_DIR/wyze-tunnel.env"
+    fi
 fi
 # A login changed on the web page replaces the one in the settings file.
 WB_PASSWORD=$([ -f /var/lib/wyze-tunnel/tokens/wb_login ] || sed -n 's/^WB_PASSWORD=//p' "$CONF_DIR/wyze-tunnel.env")
@@ -172,6 +180,10 @@ import_docker
 NEW_TIMER=
 [ -f /etc/systemd/system/wyze-tunnel-update.timer ] || NEW_TIMER=1
 install -m 644 "$SRC"/native/wyze-tunnel.service "$SRC"/native/wyze-tunnel-update.{service,timer,path} /etc/systemd/system/
+if [ -n "${WT_IMAGE:-}" ]; then
+    systemctl enable wyze-tunnel wyze-tunnel-update.path wyze-tunnel-update.timer
+    return 0
+fi
 systemctl daemon-reload
 systemctl enable wyze-tunnel >/dev/null
 systemctl enable --now wyze-tunnel-update.path 2>/dev/null

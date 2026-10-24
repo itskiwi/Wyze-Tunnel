@@ -9,6 +9,7 @@ Two kinds of source, both pulled by a small ffmpeg relay into MediaMTX:
 import ctypes
 import os
 import signal
+import socket
 import sys
 from pathlib import Path
 from subprocess import DEVNULL, PIPE, Popen
@@ -39,6 +40,27 @@ def tutk_available() -> bool:
     return Path(TUTK_LIB).exists()
 
 
+def local_ipv4s() -> set[str]:
+    ips = set()
+    try:
+        ips.update(socket.gethostbyname_ex(socket.gethostname())[2])
+    except OSError:
+        pass
+    try:  # the address of the default route; nothing is sent
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            ips.add(s.getsockname()[0])
+    except OSError:
+        pass
+    return ips
+
+
+def on_local_network(ip: str) -> bool:
+    """Whether go2rtc's LAN discovery can reach this camera."""
+    # shortcut: assumes /24 subnets (the home-router default); widen if someone's LAN is bigger.
+    return ip.rsplit(".", 1)[0] in {a.rsplit(".", 1)[0] for a in local_ipv4s()}
+
+
 def source_chain(cam: WyzeCamera) -> list[str]:
     """Sources to try for this camera, in order.
 
@@ -53,10 +75,13 @@ def source_chain(cam: WyzeCamera) -> list[str]:
         return chain
 
     chain = []
-    if tutk_available() and not cam.is_gwell:
+    tutk = tutk_available()
+    if tutk and not cam.is_gwell:
         chain.append("tutk")
     if go2rtc_available():
-        if cam.ip and cam.dtls and not cam.parent_dtls and not cam.is_gwell:
+        # Without the Wyze SDK, a camera at another site would fail LAN discovery before reaching the cloud stream.
+        reachable = tutk or on_local_network(cam.ip or "")
+        if cam.ip and cam.dtls and not cam.parent_dtls and not cam.is_gwell and reachable:
             chain.append("lan")
         # shortcut: unverified whether Gwell cameras (OG) answer Wyze's Kinesis WebRTC; if not, port the Gwell P2P client.
         if cam.webrtc_support:
