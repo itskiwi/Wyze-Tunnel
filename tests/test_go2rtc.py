@@ -63,3 +63,23 @@ def test_fallback_moves_to_next_source_after_5_failures():
             stream._failed()
             seen.append(stream.source)
     assert seen[:4] == ["tutk"] * 4 and seen[4] == "lan" and seen[9] == "webrtc" and seen[14] == "tutk"
+
+
+def test_cam_og_uses_get_streams(monkeypatch):
+    from unittest import mock
+
+    from wyzecam import api
+    from wyzecam.api_models import WyzeCredential
+
+    body = {"code": "1", "data": [{"params": {
+        "signaling_url": "wss://wyze-mars-webcsrv.wyzecam.com/x?X-Amz-Credential=a%252Fb",
+        "ice_servers": [{"url": "turn:t", "username": "u", "credential": "c"}],
+    }}]}
+    monkeypatch.setattr(api, "API_STATS", api.Counter())
+    resp = mock.Mock(headers={}, json=lambda: body)
+    with mock.patch.object(api, "post", return_value=resp) as post:
+        out = api.get_cam_webrtc(WyzeCredential(access_token="tok", phone_id="p"), "MAC", "GW_GC1")
+    assert post.call_args.args[0].endswith("/v4/camera/get_streams")
+    assert '"device_model":"GW_GC1"' in post.call_args.kwargs["data"].replace(" ", "")
+    assert out == {"ClientId": "p", "signalingUrl": "wss://wyze-mars-webcsrv.wyzecam.com/x?X-Amz-Credential=a%2Fb",
+                   "servers": [{"urls": "turn:t", "username": "u", "credential": "c"}]}
