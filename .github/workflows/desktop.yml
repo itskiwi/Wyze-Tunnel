@@ -1,7 +1,7 @@
 name: Desktop apps
 
-# Builds the Windows and Mac tray apps in desktop/. Push a tag like desktop-v0.1.0
-# (matching the version in desktop/src-tauri/tauri.conf.json) to publish them as a release.
+# Builds the Windows and Mac tray apps in desktop/. Push a tag like desktop-v0.1.0, or run it from the
+# Actions tab with that version (matching desktop/src-tauri/tauri.conf.json), to publish them as a release.
 # Desktop releases are never marked "latest": installers download bridge bundles from releases/latest.
 on:
   push:
@@ -11,6 +11,10 @@ on:
   pull_request:
     paths: ['desktop/**', 'windows/**', 'mac/install.sh', '.github/workflows/desktop.yml']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to tag and publish, like 0.1.0 (leave empty to only build)'
+        required: false
 
 permissions:
   contents: write
@@ -47,7 +51,7 @@ jobs:
           path: ${{ matrix.out }}
 
   release:
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || inputs.version
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -58,4 +62,6 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "Wyze Tunnel desktop ${GITHUB_REF_NAME#desktop-v}" --latest=false --generate-notes
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || format('desktop-v{0}', inputs.version) }}
+        # --target creates the tag on this commit when it doesn't exist yet (the Actions-tab route).
+        run: gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Wyze Tunnel desktop ${TAG#desktop-v}" --latest=false --generate-notes
