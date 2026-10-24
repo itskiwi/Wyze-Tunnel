@@ -235,7 +235,7 @@ def rtsp_snap_cmd(cam_name: str, interval: bool = False):
 
     return (
         ["ffmpeg", "-loglevel", "fatal", "-analyzeduration", "0", "-probesize", "32"]
-        + ["-f", "rtsp", "-rtsp_transport", "tcp", "-thread_queue_size", "500"]
+        + ["-f", "rtsp", "-rtsp_transport", "tcp"]  # newer ffmpeg rejects -thread_queue_size on inputs
         + ["-i", f"rtsp://127.0.0.1:8554/{cam_name}", "-map", "0:v:0"]
         + rotation
         + ["-f", "image2", "-frames:v", "1", "-y", img]
