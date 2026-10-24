@@ -101,7 +101,11 @@ jobs:
             -drive file=box.img,format=raw -nic user,hostfwd=tcp::8080-:80 -serial file:console.log &
           # Runners without KVM boot the image in about 10 minutes, so allow 20.
           timeout 1200 sh -c 'until curl -fsS -o /dev/null http://127.0.0.1:8080/login; do sleep 5; done' ||
-            { tail -50 console.log; exit 1; }
+            { tail -50 console.log; sudo pkill -f qemu-system; sleep 3
+              # Show why the web page never answered: the box's own log, read from its disk.
+              L=$(sudo losetup -fP --show box.img); sudo mount "${L}p1" /mnt
+              sudo journalctl -D /mnt/var/log/journal -u wyze-tunnel -u wyze-tunnel-box --no-pager | tail -150
+              exit 1; }
           echo "Web page answers on port 80"; grep -a -A3 "Wyze Tunnel is ready" console.log || true
 
       - uses: actions/upload-artifact@v4
