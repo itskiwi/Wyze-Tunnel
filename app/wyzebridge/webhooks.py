@@ -2,6 +2,7 @@ import json
 import re
 from datetime import datetime, time
 from typing import Optional
+from urllib.parse import urlparse
 
 import requests
 from wyzebridge.bridge_utils import env_cam
@@ -10,6 +11,8 @@ from wyzebridge.logging import logger
 
 ALERTS_FILE = TOKEN_PATH + "alerts.json"
 ALERT_EVENTS = ("motion", "offline")
+# Chat apps an alert can also go to, by webhook host. Only these, so a saved URL can't reach other servers.
+CHAT_HOSTS = {"discord.com": "discord", "discordapp.com": "discord", "hooks.slack.com": "slack", "api.telegram.org": "telegram"}
 # home: no motion alerts. away (holiday): motion alerts even in quiet hours. schedule: quiet hours apply.
 ALERT_MODES = ("schedule", "home", "away")
 
@@ -40,7 +43,10 @@ def save_alerts(form: dict) -> dict:
                 raise ValueError("Quiet hours should be times like 22:00") from None
     if len(quiet) == 1:
         raise ValueError("Set both a start and an end for quiet hours, or neither")
-    settings = {"server": server, "topic": topic, **quiet}
+    chat_url = str(form.get("chat_url") or "").strip()
+    if chat_url and not chat_service(chat_url):
+        raise ValueError("Paste a Discord or Slack webhook link, or a Telegram sendMessage link")
+    settings = {"server": server, "topic": topic, "chat_url": chat_url, **quiet}
     settings |= {event: bool(form.get(event)) for event in ALERT_EVENTS}
     settings["siren_away"] = bool(form.get("siren_away"))
     if "mode" in ALERTS:
@@ -65,6 +71,19 @@ def _write_alerts(settings: dict) -> None:
 ALERTS: dict = load_alerts()
 
 
+def chat_service(url: str) -> str:
+    """discord, slack or telegram for a webhook link we know how to post to, else ""."""
+    parts = urlparse(url)
+    return CHAT_HOSTS.get(parts.hostname or "", "") if parts.scheme == "https" else ""
+
+
+def chat_payload(service: str, title: str, msg: str, img: Optional[str]) -> dict:
+    if service == "discord":
+        return {"content": f"**{title}**\n{msg}", "embeds": [{"image": {"url": img}}] if img else []}
+    text = f"{title}: {msg}" + (f"\n{img}" if img else "")
+    return {"text": text}
+
+
 def alert_url(event: str) -> str:
     if ALERTS.get("topic") and (ALERTS.get(event) or event == "test"):
         return f"{ALERTS['server']}/{ALERTS['topic']}"
@@ -81,18 +100,41 @@ def in_quiet_hours(settings: dict, now: Optional[time] = None) -> bool:
 
 
 def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None) -> bool:
-    url = env_cam(f"{event}_webhooks", camera, style="original")
+    url = env_url = env_cam(f"{event}_webhooks", camera, style="original")
     if not url:
         mode = ALERTS.get("mode", "schedule")
         if event == "motion" and (mode == "home" or (mode == "schedule" and in_quiet_hours(ALERTS))):
             return False
         url = alert_url(event)
-    if not url:
+    chat = ALERTS.get("chat_url") if not env_url and (ALERTS.get(event) or event == "test") else ""
+    if not url and not chat:
+        return False
+    title = f"{event} event".title()
+    sent = bool(url) and _post(url, event, camera, msg, img, title)
+    if chat:
+        logger.debug(f"[WEBHOOKS] Sending {event.upper()} event for {camera} to {chat_service(chat)}")
+        sent = _post_json(chat, chat_payload(chat_service(chat), title, msg, img)) or sent
+    return sent
+
+
+def _post_json(url: str, payload: dict) -> bool:
+    try:
+        requests.post(url, json=payload, timeout=10).raise_for_status()
+        return True
+    except Exception as ex:
+        logger.error(f"[WEBHOOKS] {redact_url(str(ex))}")
         return False
 
+
+def redact_url(text: str) -> str:
+    """Webhook links are secrets; keep them out of the logs."""
+    return re.sub(r"https://\S+", "https://…", text)
+
+
+def _post(url: str, event: str, camera: str, msg: str, img: Optional[str], title: str) -> bool:
     header = {
         "user-agent": f"wyzebridge/{VERSION}",
-        "X-Title": f"{event} event".title(),
+        "X-Title": title,
         "X-Attach": img,
         "X-Tags": f"{camera},{event}",
         "X-Camera": camera,

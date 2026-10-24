@@ -511,8 +511,8 @@ def create_app():
     @app.route("/alerts/test", methods=["POST"])
     @auth_required
     def alerts_test():
-        if not webhooks.alert_url("test"):
-            return {"error": "Save a topic first."}, 400
+        if not (webhooks.alert_url("test") or webhooks.ALERTS.get("chat_url")):
+            return {"error": "Save a topic or a chat link first."}, 400
         if webhooks.send_webhook("test", "Wyze Tunnel", "Test alert from Wyze Tunnel. Alerts are working!"):
             return {"status": "sent"}
         return {"error": "Couldn't reach the alert server. Check the server address and your internet."}, 502
