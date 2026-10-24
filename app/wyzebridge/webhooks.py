@@ -1,6 +1,7 @@
 import json
 import re
 from datetime import datetime, time
+from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -85,7 +86,7 @@ def chat_payload(service: str, title: str, msg: str, img: Optional[str]) -> dict
 
 
 def alert_url(event: str) -> str:
-    if ALERTS.get("topic") and (ALERTS.get(event) or event == "test"):
+    if ALERTS.get("topic") and (ALERTS.get(event) or event in ("test", "update")):
         return f"{ALERTS['server']}/{ALERTS['topic']}"
     return ""
 
@@ -106,15 +107,36 @@ def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None) -
         if event == "motion" and (mode == "home" or (mode == "schedule" and in_quiet_hours(ALERTS))):
             return False
         url = alert_url(event)
-    chat = ALERTS.get("chat_url") if not env_url and (ALERTS.get(event) or event == "test") else ""
+    chat = ALERTS.get("chat_url") if not env_url and (ALERTS.get(event) or event in ("test", "update")) else ""
     if not url and not chat:
         return False
-    title = f"{event} event".title()
+    title = "Wyze Tunnel updated" if event == "update" else f"{event} event".title()
     sent = bool(url) and _post(url, event, camera, msg, img, title)
     if chat:
         logger.debug(f"[WEBHOOKS] Sending {event.upper()} event for {camera} to {chat_service(chat)}")
         sent = _post_json(chat, chat_payload(chat_service(chat), title, msg, img)) or sent
     return sent
+
+
+def announce_update() -> None:
+    """Send one alert after the bridge starts on a different version, from the update button or overnight."""
+    seen = Path(TOKEN_PATH, "last_version")
+    try:
+        last = seen.read_text().strip() if seen.exists() else ""
+        seen.write_text(VERSION)
+    except OSError:
+        return
+    if not last or last == VERSION:
+        return
+    msg = f"Now running v{VERSION} (was v{last})."
+    try:
+        body = requests.get(f"https://api.github.com/repos/itskiwi/Wyze-Tunnel/releases/tags/v{VERSION}", timeout=10).json()["body"]
+        # GitHub's generated notes are "* Title by @user in https://…/pull/1"; keep the titles.
+        notes = [re.sub(r" by @\S+.*$| in https:\S+$", "", line[2:]) for line in body.splitlines() if line.startswith("* ")]
+        msg += "".join(f"\n• {n}" for n in notes[:3])
+    except Exception:
+        pass
+    send_webhook("update", "Wyze Tunnel", msg)
 
 
 def _post_json(url: str, payload: dict) -> bool:

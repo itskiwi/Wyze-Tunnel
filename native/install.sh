@@ -9,6 +9,17 @@
 # to install that source instead.
 set -euo pipefail
 
+# True once the web UI answers on this machine (gives it about 2 minutes after a restart).
+started() {
+    local port
+    port=$(sed -n 's/^FLASK_RUN_PORT=//p' /etc/wyze-tunnel/wyze-tunnel.env 2>/dev/null)
+    for _ in $(seq 30); do
+        sleep 3
+        curl -fs --max-time 5 -o /dev/null "http://127.0.0.1:${port:-5000}/static/icon.svg" && return 0
+    done
+    return 1
+}
+
 # Everything runs inside main so a `curl | bash` pipe is fully read before anything executes.
 main() {
 
@@ -21,8 +32,15 @@ command -v systemctl >/dev/null || { echo "This installer needs a Linux system w
 
 # --update is what the daily timer and the web UI's update button run: install the latest release only if it's newer.
 UPDATE=
+STATE=/var/lib/private/wyze-tunnel
 if [ "${1:-}" = --update ]; then
-    rm -f /var/lib/private/wyze-tunnel/update-now
+    # One update at a time (the timer, the button and a manual run can overlap); a later one then finds it's up to date.
+    exec 9>/run/wyze-tunnel-update.lock
+    flock 9
+    # The update button leaves this file; without it, this is the nightly timer.
+    MANUAL=
+    [ ! -e "$STATE/update-now" ] || MANUAL=1
+    rm -f "$STATE/update-now"
     LATEST=$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest")
     LATEST=${LATEST##*/tag/v}
     CURRENT=$(sed -n 's/^VERSION=//p' "$PREFIX/app/.env" 2>/dev/null || true)
@@ -30,6 +48,16 @@ if [ "${1:-}" = --update ]; then
         echo "Wyze Tunnel is up to date (v$CURRENT)."
         return 0
     fi
+    if [ -z "$MANUAL" ] && [ "$(cat "$PREFIX/.failed-version" 2>/dev/null)" = "$LATEST" ]; then
+        echo "v$LATEST didn't start here last time, so it's skipped. Use the update button to try again."
+        return 0
+    fi
+    # Nightly: don't cut off someone watching. The bridge keeps a viewer count; give up waiting after 3 hours.
+    for i in $(seq 36); do
+        [ -z "$MANUAL" ] && [ "$(cat "$STATE/viewers" 2>/dev/null || echo 0)" -gt 0 ] 2>/dev/null || break
+        [ "$i" -gt 1 ] || echo "==> Someone is watching a camera; waiting for them to finish"
+        sleep 300
+    done
     echo "==> Updating Wyze Tunnel v$CURRENT -> v$LATEST"
     UPDATE=1
     unset WT_REF
@@ -82,6 +110,13 @@ case "$(uname -m)" in
 esac
 MTX_TAG=$(grep '^MTX_TAG=' "$SRC/app/.env" | cut -d= -f2)
 GO2RTC_TAG=$(grep '^GO2RTC_TAG=' "$SRC/app/.env" | cut -d= -f2)
+
+# Keep the working version so a failed update can be undone.
+if [ -n "$UPDATE" ]; then
+    rm -rf "$PREFIX.previous"
+    cp -a "$PREFIX" "$PREFIX.previous"
+    cp /etc/systemd/system/wyze-tunnel.service "$PREFIX.previous/"
+fi
 
 echo "==> Installing app to $PREFIX"
 mkdir -p "$PREFIX"
@@ -142,6 +177,24 @@ systemctl enable wyze-tunnel >/dev/null
 systemctl enable --now wyze-tunnel-update.path 2>/dev/null
 [ -z "$NEW_TIMER" ] || systemctl enable --now wyze-tunnel-update.timer 2>/dev/null
 systemctl restart wyze-tunnel
+
+if [ -n "$UPDATE" ]; then
+    if started; then
+        rm -rf "$PREFIX.previous" "$PREFIX/.failed-version"
+        echo "Updated to v$LATEST."
+    else
+        echo "==> v$LATEST didn't start; going back to v$CURRENT" >&2
+        systemctl stop wyze-tunnel
+        rm -rf "$PREFIX"
+        mv "$PREFIX.previous" "$PREFIX"
+        mv "$PREFIX/wyze-tunnel.service" /etc/systemd/system/
+        echo "$LATEST" > "$PREFIX/.failed-version"
+        systemctl daemon-reload
+        systemctl restart wyze-tunnel
+        exit 1
+    fi
+    return 0
+fi
 
 LOGIN="the username and password you already use."
 [ -z "$WB_PASSWORD" ] || LOGIN="username \"wbadmin\" and password:
