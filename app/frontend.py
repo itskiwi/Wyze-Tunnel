@@ -19,7 +19,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import backup, config, web_ui, webhooks, wyze_api
+from wyzebridge import backup, config, privacy, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
@@ -390,6 +390,18 @@ def create_app():
             {"mac": c.mac, "nickname": wyze_api.display_name(c), "model": c.model_name, "hidden": c.mac in hidden}
             for c in cams
         ]
+
+    @app.route("/privacy", methods=["GET", "POST"])
+    @auth_required
+    def privacy_schedule():
+        if request.method == "POST":
+            macs = {cam.mac for cam in wb.api.get_cameras() or []}
+            try:
+                privacy.save_privacy(request.get_json(silent=True) or {}, macs)
+            except ValueError as ex:
+                return {"error": str(ex)}, 400
+            return {"status": "saved"}
+        return privacy.load_privacy()
 
     @app.route("/cameras/name", methods=["POST"])
     @auth_required
