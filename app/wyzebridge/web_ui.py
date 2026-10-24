@@ -10,7 +10,7 @@ from flask import url_for as _url_for
 from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import check_password_hash
 from wyzebridge import config
-from wyzebridge import guests, integrations
+from wyzebridge import guests, integrations, pocket
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
@@ -33,6 +33,8 @@ def verify_password(username, password):
         return request.path.startswith(API_ENDPOINTS)
     if username == WbAuth.username:
         return check_password_hash(WbAuth.hashed_password(), password)
+    if not username and (paired := request.cookies.get(pocket.COOKIE)):
+        username, password = pocket.from_cookie(paired)
     if WbAuth.enabled and username and (guest := guests.check_guest(username, password)):
         if guest["family"] or request.method == "GET" and (request.path == "/" or request.path.startswith(GUEST_PATHS)):
             return guest
