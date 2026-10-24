@@ -32,6 +32,16 @@ code {
 .toast-danger { box-shadow: inset 3px 0 0 #fb7185; }
 .toast-info, .toast-primary { box-shadow: inset 3px 0 0 #38bdf8; }
 
+/* Light theme: darker accents so status colors stay readable on white */
+:root[data-theme="light"] :is(.has-text-success, .status-label[data-status="connected"], .text-emerald-400) { color: #047857; }
+:root[data-theme="light"] :is(.has-text-warning, .status-label[data-status="connecting"], .text-amber-200, .text-amber-300\/80, .text-amber-400) { color: #b45309; }
+:root[data-theme="light"] :is(.has-text-danger, .status-label[data-status="offline"], .status-label[data-status="error"], code, .text-rose-200, .text-rose-300, .text-red-200, .hover\:text-rose-200:hover) { color: #be123c; }
+@media (prefers-color-scheme: light) {
+:root:not([data-theme="dark"]) :is(.has-text-success, .status-label[data-status="connected"], .text-emerald-400) { color: #047857; }
+:root:not([data-theme="dark"]) :is(.has-text-warning, .status-label[data-status="connecting"], .text-amber-200, .text-amber-300\/80, .text-amber-400) { color: #b45309; }
+:root:not([data-theme="dark"]) :is(.has-text-danger, .status-label[data-status="offline"], .status-label[data-status="error"], code, .text-rose-200, .text-rose-300, .text-red-200, .hover\:text-rose-200:hover) { color: #be123c; }
+}
+
 /* Video placeholder play/lost icons */
 video { display: block; }
 [data-enabled=True] video.placeholder, .status .fa-circle-play, .status .fa-circle-pause,
