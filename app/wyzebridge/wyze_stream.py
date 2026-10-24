@@ -32,6 +32,19 @@ NET_MODE_CHOICES = {"auto": "any", "no_relay": "p2p", "local": "lan"}
 NET_MODES_FILE = TOKEN_PATH + "net_modes.json"
 
 
+QUALITY_CHOICES = {"hd": "hd180", "sd": "sd30"}
+QUALITY_FILE = TOKEN_PATH + "quality.json"
+
+
+def load_qualities() -> dict[str, str]:
+    """HD/SD choices from the web UI, by stream. They override QUALITY env vars."""
+    try:
+        with open(QUALITY_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
 def load_net_modes() -> dict[str, str]:
     try:
         with open(NET_MODES_FILE) as f:
@@ -122,9 +135,9 @@ class WyzeStream:
             logger.error(f"{self.camera.nickname} may not support multiple streams!!")
             # self.state = StreamStatus.DISABLED
 
-        hq_size = 4 if self.camera.is_floodlight else 3 if self.camera.is_2k else 0
-
-        self.options.update_quality(hq_size)
+        if saved := load_qualities().get(self.uri):
+            self.options.quality = saved
+        self.options.update_quality(self.hq_frame_size)
         publish_discovery(self.uri, self.camera)
 
     @property
@@ -298,6 +311,7 @@ class WyzeStream:
             "is_doorbell": self.camera.is_doorbell,
             "webrtc": self.camera.webrtc_support,
             "start_time": self.start_time,
+            "quality": self.options.quality[:2],
             "req_frame_size": self.options.frame_size,
             "req_bitrate": self.options.bitrate,
             "failures": self.failures,
@@ -325,6 +339,29 @@ class WyzeStream:
         if not self.camera.camera_info:
             return {}
         return self.camera.camera_info.get("boa_info", {})
+
+    @property
+    def hq_frame_size(self) -> int:
+        return 4 if self.camera.is_floodlight else 3 if self.camera.is_2k else 0
+
+    def quality_control(self, payload: str) -> dict:
+        """Switch this stream between HD and SD, save it, and reconnect with it."""
+        if not payload:
+            current = self.options.quality[:2]
+            return {"status": "success", "response": current, "value": current}
+        if payload not in QUALITY_CHOICES:
+            return {"status": "error", "response": "Use hd or sd"}
+        qualities = load_qualities()
+        qualities[self.uri] = QUALITY_CHOICES[payload]
+        with open(QUALITY_FILE, "w") as f:
+            json.dump(qualities, f)
+        self.options.quality = QUALITY_CHOICES[payload]
+        self.options.update_quality(self.hq_frame_size)
+        logger.info(f"[CONTROL] SET {self.uri} quality={payload}")
+        if self.state >= StreamStatus.CONNECTING:
+            self.stop()
+            self.start()
+        return {"status": "success", "response": payload, "value": payload}
 
     def net_mode_control(self, payload: str) -> dict:
         """Save how this camera may connect (auto, no_relay or local) and reconnect with it."""
@@ -407,6 +444,9 @@ class WyzeStream:
 
         if cmd == "net_mode":
             return self.net_mode_control(str(payload).lower())
+
+        if cmd == "quality":
+            return self.quality_control(str(payload).lower())
 
         if cmd == "notifications":
             return self.notification_control(str(payload).lower())
