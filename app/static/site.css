@@ -148,3 +148,7 @@ ol:has(> .num-step) { counter-reset: step; }
 .update-bar { animation: update-slide 1.4s ease-in-out infinite; }
 @keyframes update-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
 @media (prefers-reduced-motion: reduce) { .update-bar { animation: none; width: 100%; opacity: .5; } }
+
+/* Opened from the home timeline (live#camera): bring that camera into view and mark it */
+.camera { scroll-margin-top: 16px; }
+.camera:target .card { box-shadow: 0 0 0 3px rgb(var(--accent)); }
