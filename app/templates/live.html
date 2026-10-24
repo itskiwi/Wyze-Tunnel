@@ -291,7 +291,7 @@
 <p>Watching as {{ guest.guest }}. This guest login ends <time data-ts="{{ guest.expires }}"></time>.</p>
 <script>document.querySelectorAll("time[data-ts]").forEach((t) => t.textContent = new Date(t.dataset.ts * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }));</script>
 {% elif api %}
-<p>API key: <code>{{ api }}</code></p>
+<details class="inline-block"><summary class="cursor-pointer hover:text-white">Show API key</summary><code>{{ api }}</code></details>
 {% else %}
 <p class="text-amber-300/80"><i class="fas fa-triangle-exclamation"></i> Web UI login is turned off.</p>
 {% endif %}
