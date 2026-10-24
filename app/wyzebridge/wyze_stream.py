@@ -14,7 +14,7 @@ from time import sleep, time
 from typing import Optional
 
 from wyzebridge.bridge_utils import env_bool, env_cam
-from wyzebridge.config import COOLDOWN, MQTT_TOPIC
+from wyzebridge.config import COOLDOWN, MQTT_TOPIC, TOKEN_PATH
 from wyzebridge.ffmpeg import get_ffmpeg_cmd
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import publish_discovery, publish_messages, update_mqtt_state
@@ -25,6 +25,19 @@ from wyzebridge.wyze_control import camera_control
 from wyzecam import TutkError, WyzeAccount, WyzeCamera, WyzeIOTC, WyzeIOTCSession
 
 NET_MODE = {0: "P2P", 1: "RELAY", 2: "LAN"}
+# How the web UI names each mode: on the home network, direct over the internet, or through Wyze's relay servers.
+NET_MODE_LABEL = {0: "internet", 1: "relay", 2: "local"}
+# Connection choices from the web UI, saved per camera; they override NET_MODE env vars.
+NET_MODE_CHOICES = {"auto": "any", "no_relay": "p2p", "local": "lan"}
+NET_MODES_FILE = TOKEN_PATH + "net_modes.json"
+
+
+def load_net_modes() -> dict[str, str]:
+    try:
+        with open(NET_MODES_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
 
 
 StreamTuple = namedtuple("stream", ["user", "camera", "options"])
@@ -71,6 +84,7 @@ class WyzeStream:
         "options",
         "start_time",
         "_state",
+        "_net_mode",
         "uri",
         "cam_resp",
         "cam_cmd",
@@ -91,6 +105,7 @@ class WyzeStream:
         self.cam_cmd: mp.Queue
         self.process: Optional[mp.Process] = None
         self._state: c_int = mp.Value("i", StreamStatus.STOPPED, lock=False)
+        self._net_mode: c_int = mp.Value("i", -1, lock=False)
         self._motion: bool = False
         self.motion_ts: float = 0
         self.setup()
@@ -118,6 +133,11 @@ class WyzeStream:
     def state(self, value) -> None:
         self._state.value = value.value if isinstance(value, StreamStatus) else value
         update_mqtt_state(self.uri, self.status())
+
+    @property
+    def net_mode(self) -> str:
+        """local, internet or relay while connected, else ''."""
+        return NET_MODE_LABEL.get(self._net_mode.value, "") if self.connected else ""
 
     @property
     def motion(self) -> bool:
@@ -163,6 +183,7 @@ class WyzeStream:
                 StreamTuple(self.user, self.camera, self.options),
                 QueueTuple(self.cam_resp, self.cam_cmd),
                 self._state,
+                self._net_mode,
             ),
             name=self.uri,
         )
@@ -172,6 +193,7 @@ class WyzeStream:
     def stop(self) -> bool:
         self._clear_mp_queue()
         self.start_time = 0
+        self._net_mode.value = -1
         self.state = StreamStatus.STOPPING
         if self.process and self.process.is_alive():
             with contextlib.suppress(AttributeError):
@@ -249,6 +271,7 @@ class WyzeStream:
         data = {
             "name_uri": self.uri,
             "status": self.state,
+            "net_mode": self.net_mode,
             "connected": self.connected,
             "enabled": self.enabled,
             "motion": self.motion,
@@ -288,6 +311,23 @@ class WyzeStream:
         if not self.camera.camera_info:
             return {}
         return self.camera.camera_info.get("boa_info", {})
+
+    def net_mode_control(self, payload: str) -> dict:
+        """Save how this camera may connect (auto, no_relay or local) and reconnect with it."""
+        modes = load_net_modes()
+        if not payload:
+            choice = next((k for k, v in NET_MODE_CHOICES.items() if v == modes.get(self.uri)), "auto")
+            return {"status": "success", "response": choice, "value": self.net_mode}
+        if payload not in NET_MODE_CHOICES:
+            return {"status": "error", "response": f"Use one of: {', '.join(NET_MODE_CHOICES)}"}
+        modes[self.uri] = NET_MODE_CHOICES[payload]
+        with open(NET_MODES_FILE, "w") as f:
+            json.dump(modes, f)
+        logger.info(f"[CONTROL] SET {self.uri} net_mode={payload}")
+        if self.state >= StreamStatus.CONNECTING:
+            self.stop()
+            self.start()
+        return {"status": "success", "response": payload, "value": payload}
 
     def state_control(self, payload) -> dict:
         if payload in {"start", "stop", "disable", "enable"}:
@@ -350,6 +390,9 @@ class WyzeStream:
 
         if cmd == "power":
             return self.power_control(str(payload).lower())
+
+        if cmd == "net_mode":
+            return self.net_mode_control(str(payload).lower())
 
         if cmd == "notifications":
             return self.notification_control(str(payload).lower())
@@ -427,7 +470,9 @@ class WyzeStream:
             self.cam_resp.get_nowait()
 
 
-def start_tutk_stream(uri: str, stream: StreamTuple, queue: QueueTuple, state: c_int):
+def start_tutk_stream(
+    uri: str, stream: StreamTuple, queue: QueueTuple, state: c_int, net_mode: c_int
+):
     """Connect and communicate with the camera using TUTK."""
     was_offline = state.value == StreamStatus.OFFLINE
     state.value = StreamStatus.CONNECTING
@@ -437,6 +482,7 @@ def start_tutk_stream(uri: str, stream: StreamTuple, queue: QueueTuple, state: c
         with WyzeIOTC() as iotc, iotc.session(stream, state) as sess:
             assert state.value >= StreamStatus.CONNECTING, "Stream Stopped"
             v_codec, audio = get_cam_params(sess, uri)
+            net_mode.value = sess.session_check().mode
             control_thread = setup_control(sess, queue, stream.options.substream)
             audio_thread = setup_audio(sess, uri)
 
@@ -576,7 +622,7 @@ def get_audio_params(sess: WyzeIOTCSession) -> dict[str, str | int]:
 
 def check_net_mode(session_mode: int, uri: str) -> str:
     """Check if the connection mode is allowed."""
-    net_mode = env_cam("NET_MODE", uri, "any")
+    net_mode = load_net_modes().get(uri) or env_cam("NET_MODE", uri, "any")
     if "p2p" in net_mode and session_mode == 1:
         raise Exception("☁️ Connected via RELAY MODE! Reconnecting")
     if "lan" in net_mode and session_mode != 2:

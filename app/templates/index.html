@@ -69,6 +69,7 @@
                     </span>
                     <span class="truncate">{{camera.nickname}}</span>
                     <span class="status-label rounded-full bg-white/5 px-2 py-0.5 text-[11px] font-medium text-zinc-400">{{ 'disabled' if not camera.enabled else 'stopped' }}</span>
+                    <span class="net-mode rounded-full bg-white/5 px-2 py-0.5 text-[11px] font-medium text-zinc-400 {{ '' if camera.net_mode else 'is-hidden' }}" data-mode="{{ camera.net_mode }}" title="How Wyze Tunnel reaches this camera">{{ camera.net_mode }}</span>
                     {% if camera.substream %}
                     <span class="icon text-zinc-400" title="Sub-stream of {{ camera.nickname }}"><i class="fas fa-object-ungroup"></i></span>
                     {% endif %}
@@ -143,6 +144,12 @@
                             <button class="button btn" data-cmd="state" data-payload="disable"><i class="fas fa-circle-xmark"></i>Disable</button>
                             <button class="button btn" data-cmd="state" data-payload="start"><i class="fas fa-circle-play"></i>Start</button>
                             <button class="button btn" data-cmd="state" data-payload="stop"><i class="fas fa-circle-pause"></i>Stop</button>
+                        </div>
+                        <p class="menu-label"><i class="fas fa-network-wired"></i> Connection</p>
+                        <div class="grid grid-cols-3 gap-1 p-1">
+                            <button class="button btn" data-cmd="net_mode" data-payload="auto" title="Local network first, then internet, then Wyze's relay">Auto</button>
+                            <button class="button btn" data-cmd="net_mode" data-payload="no_relay" title="Local network or a direct internet connection, never Wyze's relay">No relay</button>
+                            <button class="button btn" data-cmd="net_mode" data-payload="local" title="Only connect on your home network">Local</button>
                         </div>
                         <p class="menu-label"><i class="fas fa-moon"></i> Night vision</p>
                         <div class="grid grid-cols-3 gap-1 p-1">
