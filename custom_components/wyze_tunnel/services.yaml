@@ -1,0 +1,15 @@
+send_command:
+  target:
+    entity:
+      integration: wyze_tunnel
+      domain: camera
+  fields:
+    command:
+      required: true
+      example: night_vision
+      selector:
+        text:
+    value:
+      example: "on"
+      selector:
+        text:

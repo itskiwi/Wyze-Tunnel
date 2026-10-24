@@ -1,9 +1,21 @@
 """Export and import the settings people change in the web UI. Wyze logins and tokens are never included."""
+import base64
+import hashlib
 import json
-from datetime import time
+import os
+import time as clock
+from datetime import date, time
+from pathlib import Path
+
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from wyzebridge import privacy, webhooks, wyze_api, wyze_stream
-from wyzebridge.config import VERSION
+from wyzebridge.config import TOKEN_PATH, VERSION
+from wyzebridge.logging import logger
+
+AUTO_FILE = TOKEN_PATH + "auto_backup.json"
+AUTO_KEEP = 7  # daily files kept in the folder
 
 
 def _files() -> dict[str, str]:
@@ -27,6 +39,36 @@ def export_settings() -> dict:
         except (FileNotFoundError, ValueError):
             pass
     return {"wyze_tunnel_backup": 1, "version": VERSION, "settings": settings}
+
+
+def _key(passphrase: str, salt: bytes) -> bytes:
+    return hashlib.scrypt(passphrase.encode(), salt=salt, n=2**15, r=8, p=1, maxmem=64 * 1024 * 1024, dklen=32)
+
+
+def encrypt(backup: dict, passphrase: str) -> dict:
+    """Lock a backup with a passphrase so it can be kept anywhere, even off-site."""
+    if len(passphrase) < 8:
+        raise ValueError("Use a passphrase of at least 8 characters.")
+    salt, nonce = os.urandom(16), os.urandom(12)
+    data = AESGCM(_key(passphrase, salt)).encrypt(nonce, json.dumps(backup).encode(), None)
+    b64 = lambda b: base64.b64encode(b).decode()
+    return {"wyze_tunnel_backup": 1, "encrypted": {"kdf": "scrypt", "salt": b64(salt), "nonce": b64(nonce), "data": b64(data)}}
+
+
+def unlock(backup):
+    """Return a plain backup. A locked one carries the typed passphrase beside it; plain ones pass through."""
+    if not isinstance(backup, dict) or "encrypted" not in backup:
+        return backup
+    if not isinstance(passphrase := backup.get("passphrase"), str) or not passphrase:
+        raise ValueError("This backup is locked. Type its passphrase, then choose the file again.")
+    try:
+        box = backup["encrypted"]
+        salt, nonce, data = (base64.b64decode(box[k]) for k in ("salt", "nonce", "data"))
+        return json.loads(AESGCM(_key(passphrase, salt)).decrypt(nonce, data, None))
+    except InvalidTag:
+        raise ValueError("That passphrase doesn't open this backup.") from None
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("Part of the backup is damaged, so nothing was restored.") from None
 
 
 def _str_map(value, allowed: set | None = None) -> dict[str, str]:
@@ -88,3 +130,55 @@ def import_settings(backup: dict) -> list[str]:
         with open(files[name], "w") as f:
             json.dump(value, f)
     return sorted(settings)
+
+
+def load_auto() -> dict:
+    try:
+        with open(AUTO_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def _write_auto(settings: dict) -> None:
+    # Holds the passphrase, so only the bridge's own user may read it.
+    with open(os.open(AUTO_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+        json.dump(settings, f)
+
+
+def save_auto(form: dict) -> dict:
+    """Turn the daily locked backup on (a folder and passphrase) or off (an empty folder)."""
+    folder = str(form.get("folder") or "").strip()
+    if not folder:
+        _write_auto({})
+        return {}
+    if not os.path.isabs(folder) or not os.path.isdir(folder) or not os.access(folder, os.W_OK):
+        raise ValueError("Pick a folder that already exists and that Wyze Tunnel can write to, like /media/backups.")
+    passphrase = str(form.get("passphrase") or "") or load_auto().get("passphrase", "")
+    encrypt({}, passphrase)  # raises the same "at least 8 characters" message
+    settings = {"folder": folder, "passphrase": passphrase, "last": 0}
+    _write_auto(settings)
+    return settings
+
+
+def auto_backup(force: bool = False, now: float | None = None) -> str | None:
+    """Write today's locked backup if one is due, keep the newest few, and return its path."""
+    settings = load_auto()
+    now = clock.time() if now is None else now
+    if not settings.get("folder") or (not force and now - settings.get("last", 0) < 86400):
+        return None
+    folder = Path(settings["folder"])
+    path = folder / f"wyze-tunnel-settings-{date.fromtimestamp(now).isoformat()}.json"
+    try:
+        path.write_text(json.dumps(encrypt(export_settings(), settings["passphrase"])))
+        for old in sorted(folder.glob("wyze-tunnel-settings-*.json"))[:-AUTO_KEEP]:
+            old.unlink()
+    except OSError as ex:
+        if force:
+            raise ValueError(f"Couldn't save to {folder}: {ex.strerror}") from None
+        logger.warning(f"[BACKUP] Couldn't save to {folder}: {ex}. Trying again in an hour.")
+        _write_auto({**settings, "last": now - 86400 + 3600})
+        return None
+    _write_auto({**settings, "last": now})
+    logger.info(f"[BACKUP] Saved a locked settings backup to {path}")
+    return str(path)
