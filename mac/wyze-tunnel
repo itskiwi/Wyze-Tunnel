@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Mac side of `wyze-tunnel`: start/stop the VM here, everything else runs inside it.
+set -euo pipefail
+DIR="$HOME/Library/Application Support/Wyze Tunnel"
+export LIMA_HOME="$HOME/.wyze-tunnel"
+LIMACTL="$DIR/lima/bin/limactl"
+
+case "${1:-help}" in
+    start) "$LIMACTL" start --tty=false wyze-tunnel ;;
+    stop) "$LIMACTL" stop wyze-tunnel ;;
+    # Re-run the Mac installer: also recreates a broken VM setup and refreshes this command.
+    repair) curl -fsSL https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/main/mac/install.sh | bash ;;
+    uninstall) curl -fsSL https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/main/mac/uninstall.sh | bash ;;
+    help | -h | --help)
+        "$LIMACTL" shell --workdir / wyze-tunnel sudo wyze-tunnel help | grep -v '^  uninstall'
+        echo "  start      Start the Wyze Tunnel VM (Mac)"
+        echo "  stop       Stop the Wyze Tunnel VM (Mac)"
+        echo "  uninstall  Remove Wyze Tunnel and its VM from this Mac" ;;
+    *)
+        "$LIMACTL" list -q 2>/dev/null | grep -qx wyze-tunnel || { echo "Wyze Tunnel isn't installed. Run: wyze-tunnel repair" >&2; exit 1; }
+        "$LIMACTL" start --tty=false wyze-tunnel >/dev/null 2>&1 || true
+        exec "$LIMACTL" shell --workdir / wyze-tunnel sudo wyze-tunnel "$@" ;;
+esac

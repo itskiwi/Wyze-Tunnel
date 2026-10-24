@@ -50,6 +50,7 @@ jobs:
         run: |
           docker exec os systemctl is-enabled wyze-tunnel-update.timer wyze-tunnel-update.path
           docker exec os /opt/wyze-tunnel/install.sh --update
+          docker exec os wyze-tunnel status
       - name: Update button triggers the updater
         run: |
           docker exec os sh -c 'touch /var/lib/private/wyze-tunnel/update-now'

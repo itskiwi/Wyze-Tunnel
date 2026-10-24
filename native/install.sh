@@ -118,6 +118,7 @@ WB_PASSWORD=$(sed -n 's/^WB_PASSWORD=//p' "$CONF_DIR/wyze-tunnel.env")
 
 install -m 755 "$SRC/native/uninstall.sh" "$PREFIX/uninstall.sh"
 install -m 755 "$SRC/native/install.sh" "$PREFIX/install.sh"
+install -D -m 755 "$SRC/native/wyze-tunnel" /usr/local/bin/wyze-tunnel
 import_docker
 
 # Turn on daily updates for new installs only, so a `systemctl disable` sticks across re-runs.
@@ -143,6 +144,7 @@ cat <<MSG
   It starts automatically on boot. Logs: journalctl -u wyze-tunnel -f
   Advanced settings: $CONF_DIR/wyze-tunnel.env
   Updates install automatically once a day (turn off: sudo systemctl disable --now wyze-tunnel-update.timer).
+  Trouble? Run: wyze-tunnel help   (restart, logs, repair and more)
   Uninstall: sudo $PREFIX/uninstall.sh
 MSG
 if [ -n "$DOCKER_BRIDGE" ]; then
