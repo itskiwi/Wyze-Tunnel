@@ -47,6 +47,20 @@ See the [supported cameras](#supported-cameras) section for additional informati
 
 ## Quick Start
 
+On Linux (Debian, Ubuntu, Raspberry Pi OS, Fedora, Arch), install with one command. No Docker needed:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/main/native/install.sh | sudo bash
+```
+
+Then open `http://<this-machine-ip>:5000` and sign in with your Wyze account. It starts on boot, and you run the same command again to update.
+
+- Settings: `/etc/wyze-tunnel/wyze-tunnel.env` (any option from this README, as `NAME=value`), then `sudo systemctl restart wyze-tunnel`
+- Logs: `journalctl -u wyze-tunnel -f`
+- Uninstall: `sudo systemctl disable --now wyze-tunnel && sudo rm -rf /opt/wyze-tunnel /etc/wyze-tunnel /etc/systemd/system/wyze-tunnel.service /var/lib/private/wyze-tunnel`
+
+### Docker
+
 Install [docker](https://docs.docker.com/get-docker/) and run:
 
 ```bash
