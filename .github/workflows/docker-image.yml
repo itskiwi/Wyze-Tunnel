@@ -65,6 +65,8 @@ jobs:
             type=semver,pattern={{ version }},suffix=${{ steps.image_type.outputs.suffix }}
             type=edge,branch=main,enable=${{ github.event_name == 'push' }},suffix=${{ steps.image_type.outputs.suffix }}
             type=ref,event=branch,enable=${{ contains(github.ref,'dev') }},suffix=${{ steps.image_type.outputs.suffix }}
+            # Permanent per-commit tag (sha-abc1234) so anyone can roll back to an exact build.
+            type=sha,prefix=sha-,format=short,suffix=${{ steps.image_type.outputs.suffix }}
 
       - name: Update Release Version
         id: version_bump
@@ -108,7 +110,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Bump main (not the tag) so the stable Home Assistant add-on points at the new image.
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - name: Update Release Version
         id: version_bump
         if: startsWith(github.ref, 'refs/tags/v')

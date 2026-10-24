@@ -1,5 +1,5 @@
-name: Docker Wyze Bridge
-description: WebRTC/RTSP/RTMP/LL-HLS bridge for Wyze cams in a docker container
+name: Wyze Tunnel
+description: Stable releases. WebRTC/RTSP/RTMP/HLS for your Wyze cams
 slug: docker_wyze_bridge
 url: https://github.com/itskiwi/Wyze-Tunnel
 image: ghcr.io/itskiwi/wyze-tunnel
