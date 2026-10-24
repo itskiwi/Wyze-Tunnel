@@ -1,135 +1,73 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="columns is-centered">
-    <div class="column is-5">
-        <p class="subtitle has-text-white">Wyze credentials required to complete authentication.</p>
-        <nav class="navbar block is-dark fs-display-none">
-            <div class="navbar-brand">
-                <a data-target="apiLogin" class="navbar-item is-tab is-active">
-                    <span class="icon-text">
-                        <span class="icon"><i class="fas fa-key"></i></span> <span>API Key</span></span></a>
-                <a data-target="tokenLogin" class="navbar-item is-tab">
-                    <span class="icon-text"><span class="icon"><i
-                                class="fas fa-address-card"></i></span><span>Token</span></span></a>
-            </div>
-        </nav>
-        <form id="apiLogin" class="box">
-            <div class="error"></div>
-            <div class="notification is-info">
-                <span class="icon"><i class="fas fa-circle-info"></i></span> Wyze API Key and ID can be obtained from
-                the <a href="https://developer-api-console.wyze.com/#/apikey/view" target="_blank">Wyze
-                    Developer Portal</a>.
-            </div>
-            <div class="field">
-                <label for="" class="label">Email</label>
-                <div class="control has-icons-left">
-                    <input name="email" type="email" placeholder="e.g. me@mail.com" class="input" required>
-                    <span class="icon is-small is-left">
-                        <i class="fa fa-envelope"></i>
-                    </span>
-                </div>
-            </div>
-            <div class="field">
-                <label for="" class="label">Password</label>
-                <div class="control has-icons-left">
-                    <input name="password" type="password" placeholder="*******" class="input" required>
-                    <span class="icon is-small is-left">
-                        <i class="fa fa-lock"></i>
-                    </span>
-                </div>
-            </div>
-            <div class="field">
-                <label for="" class="label">API ID</label>
-                <div class="control has-icons-left">
-                    <input name="keyId" type="text" placeholder="Key ID" class="input" pattern=".{36}"
-                        title="Key ID is 36 characters" required>
-                    <span class="icon is-small is-left">
-                        <i class="fa fa-fingerprint"></i>
-                    </span>
-                </div>
-            </div>
-            <div class="field">
-                <label for="" class="label">API Key</label>
-                <div class="control has-icons-left">
-                    <input name="apiKey" type="text" placeholder="API Key" class="input" pattern=".{60}"
-                        title="API Key is 60 characters" required>
-                    <span class="icon is-small is-left">
-                        <i class="fa fa-key"></i>
-                    </span>
-                </div>
-            </div>
-            <div class="field">
-                <button id="submitLogin" class="button is-success is-large is-fullwidth">
-                    Login
-                </button>
-            </div>
-        </form>
-        <form id="tokenLogin" class="box is-hidden">
-            <div class="error"></div>
-            <div class="field">
-                <label for="" class="label">Access Tokens</label>
-                <div class="control has-icons-left">
-                    <input name="tokens" type="text" placeholder="access tokens" class="input">
-                    <span class="icon is-small is-left">
-                        <i class="fa fa-address-card"></i>
-                    </span>
-                </div>
-            </div>
-            <div class="field">
-                <label for="" class="label">Refresh Token</label>
-                <div class="control has-icons-left">
-                    <input name="refresh" type="text" placeholder="refresh token" class="input">
-                    <span class="icon is-small is-left">
-                        <i class="fa fa-arrows-rotate"></i>
-                    </span>
-                </div>
-            </div>
-            <div class="field">
-                <button class="button is-success is-large is-fullwidth">
-                    Login
-                </button>
-            </div>
-        </form>
+<div class="mx-auto mt-6 w-full max-w-md">
+    <div class="mb-6 flex items-center gap-3">
+        <span class="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500 text-zinc-950"><i class="fas fa-video"></i></span>
+        <div>
+            <h1 class="text-xl font-semibold tracking-tight">Connect your Wyze account</h1>
+            <p class="text-sm text-zinc-400">Your cameras will show up as soon as you sign in.</p>
+        </div>
     </div>
+    <nav class="mb-4 flex gap-1 rounded-xl bg-zinc-900 p-1 ring-1 ring-white/5">
+        <a data-target="apiLogin" class="tab login-tab is-active flex-1 cursor-pointer justify-center"><i class="fas fa-key"></i>API key</a>
+        <a data-target="tokenLogin" class="tab login-tab flex-1 cursor-pointer justify-center"><i class="fas fa-address-card"></i>Token</a>
+    </nav>
+    <form id="apiLogin" class="space-y-4 rounded-2xl bg-zinc-900 p-6 ring-1 ring-white/5">
+        <div class="error empty:hidden"></div>
+        <p class="rounded-xl bg-sky-500/10 px-4 py-3 text-sm text-sky-200 ring-1 ring-sky-500/20">
+            <i class="fas fa-circle-info"></i> Wyze now requires an API ID and key. Create them for free in the
+            <a class="font-medium underline underline-offset-2" href="https://developer-api-console.wyze.com/#/apikey/view" target="_blank">Wyze Developer Portal</a>.
+        </p>
+        <label class="block"><span class="mb-1 block text-sm text-zinc-300">Email</span>
+            <input name="email" type="email" placeholder="me@mail.com" class="field" autocomplete="username" required></label>
+        <label class="block"><span class="mb-1 block text-sm text-zinc-300">Password</span>
+            <input name="password" type="password" placeholder="••••••••" class="field" autocomplete="current-password" required></label>
+        <label class="block"><span class="mb-1 block text-sm text-zinc-300">API ID</span>
+            <input name="keyId" type="text" placeholder="36 characters" class="field font-mono" pattern=".{36}" title="Key ID is 36 characters" required></label>
+        <label class="block"><span class="mb-1 block text-sm text-zinc-300">API key</span>
+            <input name="apiKey" type="text" placeholder="60 characters" class="field font-mono" pattern=".{60}" title="API Key is 60 characters" required></label>
+        <button id="submitLogin" class="button btn btn-primary w-full py-2.5 text-base">Sign in</button>
+    </form>
+    <form id="tokenLogin" class="is-hidden space-y-4 rounded-2xl bg-zinc-900 p-6 ring-1 ring-white/5">
+        <div class="error empty:hidden"></div>
+        <label class="block"><span class="mb-1 block text-sm text-zinc-300">Access token</span>
+            <input name="tokens" type="text" placeholder="access token" class="field font-mono"></label>
+        <label class="block"><span class="mb-1 block text-sm text-zinc-300">Refresh token</span>
+            <input name="refresh" type="text" placeholder="refresh token" class="field font-mono"></label>
+        <button class="button btn btn-primary w-full py-2.5 text-base">Sign in</button>
+    </form>
 </div>
 {% endblock %}
 
 {% block javascript %}
 <script>
-    const forms = document.querySelectorAll('form');
-    forms.forEach(form => {
+    const notice = (cls, icon, text) => `<p class="rounded-xl px-4 py-3 text-sm ring-1 ${cls}"><i class="fas ${icon}"></i> ${text}</p>`;
+    document.querySelectorAll('form').forEach(form => {
         const button = form.querySelector('button.button').classList;
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             button.add("is-loading");
-            fetch("login", {
-                method: 'POST',
-                body: new FormData(form)
-            }).then(resp => resp.json()).then(data => {
-                if (data.status == "success") {
-                    form.innerHTML = '<article class="message is-success container"><div class="message-body"><span class="icon"><i class="fas fa-check-circle"></i></span><span>Attempting login. <i class="fas fa-spinner fa-pulse"></i></div></article>';
-                    setTimeout(() => { window.location = '.'; }, 5000);
-                } else {
-                    console.error(data);
-                    button.remove("is-loading");
-                    form.querySelector(".error").innerHTML = '<article class="message is-danger container"><div class="message-body"><span class="icon"><i class="fas fa-circle-exclamation"></i></span><span>' + data.status + '. Please try again.</div></article>';
-                }
-            }).catch(error => { console.error(error); });
+            fetch("login", { method: 'POST', body: new FormData(form) })
+                .then(resp => resp.json()).then(data => {
+                    if (data.status == "success") {
+                        form.innerHTML = notice("bg-emerald-500/10 text-emerald-200 ring-emerald-500/30", "fa-spinner fa-pulse", "Signing in and finding your cameras…");
+                        setTimeout(() => { window.location = '.'; }, 5000);
+                    } else {
+                        console.error(data);
+                        button.remove("is-loading");
+                        form.querySelector(".error").innerHTML = notice("bg-rose-500/10 text-rose-200 ring-rose-500/30", "fa-circle-exclamation", data.status + ". Please try again.");
+                    }
+                }).catch(error => { console.error(error); button.remove("is-loading"); });
         });
     });
-    const tabs = document.querySelectorAll('a.navbar-item');
+    const tabs = document.querySelectorAll('a.login-tab');
     tabs.forEach(tab => {
         tab.addEventListener('click', function () {
             const targetFormId = this.getAttribute('data-target');
-            document.querySelectorAll('form').forEach(form => {
-                form.classList.toggle('is-hidden', form.id !== targetFormId);
-            });
-            tabs.forEach(otherTab => {
-                otherTab.classList.toggle('is-active', otherTab === tab);
-            });
+            document.querySelectorAll('form').forEach(form => form.classList.toggle('is-hidden', form.id !== targetFormId));
+            tabs.forEach(otherTab => otherTab.classList.toggle('is-active', otherTab === tab));
         });
     });
-
 </script>
 {% endblock %}
