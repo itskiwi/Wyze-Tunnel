@@ -4,6 +4,7 @@ import multiprocessing as mp
 import zoneinfo
 from collections import namedtuple
 from ctypes import c_int
+from os import getenv
 from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum
@@ -278,6 +279,8 @@ class WyzeStream:
             delay = 0
         self.start_time = time() + delay
         logger.info(f"{self.camera.nickname} failed {self.failures}x, retrying in {delay}s.")
+        if self.failures == CHRONIC_FAILURES:
+            auto_restart(self)
 
     def health_check(self, should_start: bool = True) -> int:
         self.motion
@@ -565,6 +568,22 @@ class WyzeStream:
             self.cam_cmd.get_nowait()
         with contextlib.suppress(Empty, AttributeError):
             self.cam_resp.get_nowait()
+
+
+AUTO_RESTART_EVERY = 6 * 3600
+_last_restart: dict[str, float] = {}
+
+
+def auto_restart(stream: "WyzeStream") -> bool:
+    """Reboot a camera that keeps failing, through the Wyze cloud, at most every 6 hours."""
+    if getenv("AUTO_RESTART", "true").lower() in {"false", "no", "0"} or stream.options.substream:
+        return False
+    if time() - _last_restart.get(stream.uri, 0) < AUTO_RESTART_EVERY:
+        return False
+    _last_restart[stream.uri] = time()
+    logger.warning(f"[AUTO RESTART] {stream.camera.nickname} keeps failing, restarting it")
+    Thread(target=stream.power_control, args=("restart",), daemon=True).start()
+    return True
 
 
 def backoff(failures: int) -> int:

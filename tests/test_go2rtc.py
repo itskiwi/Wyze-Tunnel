@@ -56,7 +56,8 @@ def test_fallback_moves_to_next_source_after_5_failures():
     stream.camera, stream.failures, stream.source_idx = cam(), 0, 0
     stream.sources = ["tutk", "lan", "webrtc"]
     seen = []
-    for _ in range(15):
-        stream._failed()
-        seen.append(stream.source)
+    with mock.patch("wyzebridge.wyze_stream.auto_restart"):  # covered in test_auto_restart.py
+        for _ in range(15):
+            stream._failed()
+            seen.append(stream.source)
     assert seen[:4] == ["tutk"] * 4 and seen[4] == "lan" and seen[9] == "webrtc" and seen[14] == "tutk"
