@@ -186,16 +186,17 @@ def create_app():
             )
         )
 
-        resp.set_cookie("number_of_columns", str(number_of_columns))
-        resp.set_cookie("refresh_period", str(refresh_period))
-        resp.set_cookie("show_video", "1" if show_video else "")
-        resp.set_cookie("video", video_format)
+        YEARS = 10 * 365 * 86400  # remembered on this device, not just this browser session
+        resp.set_cookie("number_of_columns", str(number_of_columns), max_age=YEARS)
+        resp.set_cookie("refresh_period", str(refresh_period), max_age=YEARS)
+        resp.set_cookie("show_video", "1" if show_video else "", max_age=YEARS)
+        resp.set_cookie("video", video_format, max_age=YEARS)
         fullscreen = "fullscreen" in request.args or bool(
             request.cookies.get("fullscreen")
         )
-        resp.set_cookie("fullscreen", "1" if fullscreen else "")
+        resp.set_cookie("fullscreen", "1" if fullscreen else "", max_age=YEARS)
         if order := request.args.get("order"):
-            resp.set_cookie("camera_order", quote_plus(order))
+            resp.set_cookie("camera_order", quote_plus(order), max_age=YEARS)
 
         return resp
 

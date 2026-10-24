@@ -12,6 +12,14 @@
         <input class="field mt-1 py-2" id="select_refresh_period" type="number" min="0" max="1200"
             value="{{refresh_period}}" /></label>
 </div>
+{% if webrtc and cam_data.cameras %}
+<p class="menu-label">Live video</p>
+<div class="preview-toggle seg mx-2 mb-2 flex" role="radiogroup" aria-label="Live video format">
+    {% for action, label in [('webrtc', 'WebRTC'), ('hls', 'HLS')] %}
+    <button data-action="{{ action }}" role="radio" aria-checked="{{ 'true' if video_format == action else 'false' }}" class="tab flex-1 justify-center">{{ label }}</button>
+    {% endfor %}
+</div>
+{% endif %}
 <p class="menu-label">All cameras</p>
 <div class="cam-control flex gap-2 px-2 pb-2" data-cam="all">
     <button class="button btn flex-1" data-cmd="quality" data-payload="sd" title="Lower resolution on every camera, uses less data">Data saver</button>
@@ -41,23 +49,12 @@
         </nav>
         {% endif %}
         {% if cam_data.cameras %}
-        <div class="preview-toggle seg">
-            <button data-action="snapshot" class="tab {{ 'is-active' if not show_video }}">Snapshot</button>
-            <details class="dropdown relative">
-                <summary data-action="video" class="tab cursor-pointer list-none {{ 'is-active' if show_video }}">
-                    Live<i class="fas fa-angle-down text-xs"></i>
-                </summary>
-                <div id="video-menu" class="menu right-0">
-                    {% if webrtc %}
-                    <a data-action="webrtc" class="menu-item cursor-pointer {{ 'bg-white/10' if video_format == 'webrtc' }}" id="webrtc-toggle">WebRTC</a>
-                    {% endif %}
-                    <a data-action="hls" class="menu-item cursor-pointer {{ 'bg-white/10' if video_format == 'hls' }}" id="hls-toggle">HLS</a>
-                    <hr class="my-1 border-zinc-800">
-                    <a data-action="autoplay" class="menu-item cursor-pointer" id="toggle-autoplay">
-                        <i class="fas fa-square{{ '-check' if autoplay}}"></i> Auto-play
-                    </a>
-                </div>
-            </details>
+        <div class="preview-toggle seg w-full sm:w-auto" role="radiogroup" aria-label="How cameras show">
+            {% set mode = 'autoplay' if show_video and autoplay else ('live' if show_video else 'snapshot') %}
+            {% for action, label, hint in [('snapshot', 'Snapshot', 'Still pictures that refresh'), ('live', 'Live', 'Tap a camera to play it'), ('autoplay', 'Auto-play', 'Every camera plays when the page opens')] %}
+            <button data-action="{{ action }}" role="radio" aria-checked="{{ 'true' if mode == action else 'false' }}" title="{{ hint }}"
+                class="tab flex-1 justify-center px-4 py-2.5 sm:flex-none">{{ label }}</button>
+            {% endfor %}
         </div>
         {% endif %}
     </div>
