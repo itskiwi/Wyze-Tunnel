@@ -34,6 +34,9 @@ command -v systemctl >/dev/null || { echo "This installer needs a Linux system w
 UPDATE=
 STATE=/var/lib/private/wyze-tunnel
 if [ "${1:-}" = --update ]; then
+    # One update at a time (the timer, the button and a manual run can overlap); a later one then finds it's up to date.
+    exec 9>/run/wyze-tunnel-update.lock
+    flock 9
     # The update button leaves this file; without it, this is the nightly timer.
     MANUAL=
     [ ! -e "$STATE/update-now" ] || MANUAL=1
