@@ -276,6 +276,10 @@ Add this repository to Home Assistant and pick one add-on:
 [![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fitskiwi%2FWyze-Tunnel)
 
 
+### 🔌 Connect apps (Home Assistant integration, Claude, API, webhooks)
+
+Open the gear menu, then **Connect apps**. Home Assistant gets a one-paste setup through HACS (cameras, motion, controls, no MQTT), Claude and other AI apps connect over MCP, and your own apps get a documented API with per-app keys and signed webhooks. Step-by-step guide with pictures and FAQs: [docs/apps-and-api.md](docs/apps-and-api.md).
+
 ## Additional Info
 
 * [Camera Commands (MQTT/REST API)](https://github.com/mrlt8/docker-wyze-bridge/wiki/Camera-Commands)

@@ -1,0 +1,291 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<header class="mx-auto mb-6 max-w-2xl pt-2">
+    <h1 class="page-title">Connect apps</h1>
+    <p class="mt-1 text-sm text-zinc-400">Let Home Assistant, Claude and your other apps see your cameras. Each app gets its own key,
+        and you can take it back any time.</p>
+</header>
+
+<div class="mx-auto grid max-w-2xl gap-3 sm:grid-cols-3" role="tablist" aria-label="What do you want to connect?">
+    {% for id, icon, title, text in [
+        ("ha", "fa-house", "Home Assistant", "Cameras, motion and controls on your dashboards"),
+        ("ai", "fa-comment-dots", "Claude and AI apps", "Ask about your cameras in a chat"),
+        ("other", "fa-code", "Other apps", "Node-RED, scripts, automations")] %}
+    <button type="button" role="tab" aria-selected="false" aria-controls="panel-{{ id }}" data-panel="{{ id }}"
+        class="pick surface p-4 text-left ring-2 ring-transparent transition hover:ring-zinc-700 aria-selected:ring-accent">
+        <span class="grid h-10 w-10 place-items-center rounded-full bg-accent/15 text-accent"><i class="fas {{ icon }}"></i></span>
+        <span class="mt-3 block font-display text-lg font-extrabold text-zinc-50">{{ title }}</span>
+        <span class="mt-0.5 block text-sm text-zinc-400">{{ text }}</span>
+    </button>
+    {% endfor %}
+</div>
+
+<section id="panel-ha" role="tabpanel" class="panel surface mx-auto mt-4 max-w-2xl p-5" hidden>
+    <h2 class="font-display text-xl font-extrabold text-zinc-50">Connect Home Assistant</h2>
+    <p class="mt-1 text-sm text-zinc-400">Three steps, about two minutes. Your cameras show up with live video, motion and controls.
+        You don't need MQTT.</p>
+    <ol class="mt-4 space-y-5">
+        <li class="flex gap-3">
+            <span class="step">1</span>
+            <div class="min-w-0 flex-1">
+                <h3 class="font-semibold">Add Wyze Tunnel to HACS</h3>
+                <p class="text-sm text-zinc-400">Opens your Home Assistant. Click <strong>Download</strong>, then restart Home Assistant when it asks.</p>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                    <a class="btn" target="_blank" rel="noopener"
+                        href="https://my.home-assistant.io/redirect/hacs_repository/?owner=itskiwi&repository=Wyze-Tunnel&category=integration">
+                        <i class="fas fa-arrow-up-right-from-square"></i>Open HACS</a>
+                    <a class="text-sm text-zinc-400 underline underline-offset-2" href="https://hacs.xyz/docs/use/" target="_blank" rel="noopener">No HACS yet?</a>
+                </div>
+            </div>
+        </li>
+        <li class="flex gap-3">
+            <span class="step">2</span>
+            <div class="min-w-0 flex-1">
+                <h3 class="font-semibold">Make a setup code</h3>
+                <label class="mt-2 block text-sm">
+                    <span class="text-zinc-400">Home Assistant finds Wyze Tunnel at</span>
+                    <input id="haUrl" class="field mt-1 font-mono" type="url" spellcheck="false" />
+                </label>
+                <p id="haUrlHint" class="mt-1 text-xs text-zinc-500">Change this if Home Assistant uses a different address to reach this computer.</p>
+                <button type="button" id="haMake" class="btn btn-primary mt-3"><i class="fas fa-key"></i>Make setup code</button>
+                <div id="haOut" class="mt-3" hidden></div>
+            </div>
+        </li>
+        <li class="flex gap-3">
+            <span class="step">3</span>
+            <div class="min-w-0 flex-1">
+                <h3 class="font-semibold">Add the integration</h3>
+                <p class="text-sm text-zinc-400">Paste the setup code when Home Assistant asks for it. That's it.</p>
+                <a class="btn mt-2" target="_blank" rel="noopener"
+                    href="https://my.home-assistant.io/redirect/config_flow_start/?domain=wyze_tunnel">
+                    <i class="fas fa-arrow-up-right-from-square"></i>Add Wyze Tunnel</a>
+            </div>
+        </li>
+    </ol>
+</section>
+
+<section id="panel-ai" role="tabpanel" class="panel surface mx-auto mt-4 max-w-2xl p-5" hidden>
+    <h2 class="font-display text-xl font-extrabold text-zinc-50">Connect Claude or another AI app</h2>
+    <p class="mt-1 text-sm text-zinc-400">Ask things like "is anyone at the front door?" or "which cameras are offline?".
+        The app talks only to Wyze Tunnel on your network.</p>
+    <fieldset class="mt-4">
+        <legend class="text-sm text-zinc-400">What can it do?</legend>
+        <div class="mt-2 grid gap-2 sm:grid-cols-2">
+            <label class="choice"><input type="radio" name="aiScope" value="view" checked class="accent-accent" />
+                <span><span class="block font-medium">Look only</span><span class="text-sm text-zinc-400">Pictures, status and events</span></span></label>
+            <label class="choice"><input type="radio" name="aiScope" value="control" class="accent-accent" />
+                <span><span class="block font-medium">Look and control</span><span class="text-sm text-zinc-400">Also lights, siren, night vision</span></span></label>
+        </div>
+    </fieldset>
+    <div class="seg mt-4" role="radiogroup" aria-label="Which app?">
+        {% for value, label in [("code", "Claude Code"), ("desktop", "Claude Desktop"), ("other", "Other MCP app")] %}
+        <button type="button" role="radio" class="tab" data-ai="{{ value }}" aria-checked="{{ 'true' if loop.first else 'false' }}">{{ label }}</button>
+        {% endfor %}
+    </div>
+    <button type="button" id="aiMake" class="btn btn-primary mt-4 flex"><i class="fas fa-key"></i>Make my connection</button>
+    <div id="aiOut" class="mt-3" hidden>
+        <p id="aiHow" class="text-sm text-zinc-400"></p>
+        <div class="secret mt-2"><pre id="aiSnippet" class="snippet"></pre><button type="button" class="copy btn" data-copy="aiSnippet"><i class="fas fa-copy"></i>Copy</button></div>
+        <p class="mt-2 text-sm text-zinc-300"><i class="fas fa-circle-info"></i> Copy it now. The key inside is only shown once.
+            Making a new one for the same app replaces this one.</p>
+    </div>
+</section>
+
+<section id="panel-other" role="tabpanel" class="panel mx-auto mt-4 max-w-2xl space-y-4" hidden>
+    <div class="surface p-5">
+        <h2 class="font-display text-xl font-extrabold text-zinc-50">Let an app use Wyze Tunnel</h2>
+        <p class="mt-1 text-sm text-zinc-400">The app sends this key with each request. <a class="underline underline-offset-2"
+                href="https://github.com/itskiwi/Wyze-Tunnel/blob/main/docs/apps-and-api.md#the-api" target="_blank" rel="noopener">API guide</a>
+            · <a class="underline underline-offset-2" href="static/openapi.json" target="_blank">API reference</a></p>
+        <form id="keyForm" class="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
+            <label class="block text-sm">
+                <span class="text-zinc-400">App name</span>
+                <input class="field mt-1" name="name" required maxlength="32" placeholder="Node-RED" autocomplete="off" />
+            </label>
+            <label class="block text-sm">
+                <span class="text-zinc-400">It can</span>
+                <select class="field mt-1" name="scope">
+                    <option value="view">Look only</option>
+                    <option value="control">Look and control</option>
+                </select>
+            </label>
+            <button type="submit" class="btn btn-primary justify-self-start"><i class="fas fa-key"></i>Make key</button>
+        </form>
+        <div id="keyOut" class="mt-3" hidden></div>
+    </div>
+
+    <div class="surface p-5">
+        <h2 class="font-display text-xl font-extrabold text-zinc-50">Send events to an app</h2>
+        <p class="mt-1 text-sm text-zinc-400">Wyze Tunnel posts to your app's webhook link when something happens. These ignore quiet hours,
+            so automations always run.</p>
+        <form id="hookForm" class="mt-3 space-y-3">
+            <label class="block text-sm">
+                <span class="text-zinc-400">Webhook link</span>
+                <input class="field mt-1 font-mono" name="url" type="url" required autocomplete="off" spellcheck="false"
+                    placeholder="http://homeassistant.local:8123/api/webhook/…" />
+            </label>
+            <fieldset class="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                <legend class="mb-1 text-zinc-400">Send</legend>
+                {% for e, label in [("motion", "Motion"), ("offline", "Camera offline"), ("street", "Street Watch requests"), ("update", "Updates")] %}
+                <label class="flex items-center gap-2"><input type="checkbox" name="events" value="{{ e }}" class="h-4 w-4 accent-accent" {{ 'checked' if e in ('motion', 'offline') }} />{{ label }}</label>
+                {% endfor %}
+            </fieldset>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i>Add webhook</button>
+        </form>
+        <div id="hookOut" class="mt-3" hidden></div>
+    </div>
+</section>
+<p id="status" class="mx-auto mt-3 max-w-2xl text-sm" role="status"></p>
+
+<section class="surface mx-auto mt-8 max-w-2xl p-5">
+    <h2 class="font-semibold">Apps with a key</h2>
+    <ul class="mt-2 divide-y divide-zinc-800 text-sm">
+        {% for t in tokens %}
+        <li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
+            <span class="font-medium text-zinc-100">{{ t.name }}</span>
+            <span class="chip {{ 'bg-accent/15 text-accent' if t.scope == 'control' else 'bg-zinc-800 text-zinc-300' }}">{{ 'Look and control' if t.scope == 'control' else 'Look only' }}</span>
+            <span class="text-zinc-500">…{{ t.hint }} · {% if t.last_used %}used <time data-ts="{{ t.last_used }}"></time>{% else %}not used yet{% endif %}</span>
+            <button type="button" class="remove btn ml-auto py-1" data-url="apps/tokens/{{ t.id }}" data-name="{{ t.name }}">Remove</button>
+        </li>
+        {% else %}
+        <li class="py-2 text-zinc-500">None yet. Pick an app above to start.</li>
+        {% endfor %}
+    </ul>
+</section>
+
+<section class="surface mx-auto mt-4 max-w-2xl p-5">
+    <h2 class="font-semibold">Webhooks</h2>
+    <ul class="mt-2 divide-y divide-zinc-800 text-sm">
+        {% for h in hooks %}
+        <li class="py-2.5">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span class="min-w-0 flex-1 truncate font-mono text-zinc-100" title="{{ h.url }}">{{ h.url }}</span>
+                <button type="button" class="test btn py-1" data-url="apps/hooks/{{ h.id }}/test">Send test</button>
+                <button type="button" class="remove btn py-1" data-url="apps/hooks/{{ h.id }}" data-name="this webhook">Remove</button>
+            </div>
+            <p class="mt-1 text-zinc-500">{{ h.events | join(', ') }}
+                {% if h.last %}· last sent <time data-ts="{{ h.last.at }}"></time>:
+                <span class="{{ 'text-emerald-300' if h.last.ok else 'text-rose-300' }}">{{ h.last.status }}</span>{% endif %}</p>
+        </li>
+        {% else %}
+        <li class="py-2 text-zinc-500">None yet.</li>
+        {% endfor %}
+    </ul>
+</section>
+{% endblock %}
+
+{% block javascript %}
+<script>
+    const post = (url, data, method = "POST") => fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data || {}) })
+        .then((resp) => resp.json().then((body) => resp.ok ? body : Promise.reject(new Error(body.error || resp.statusText))));
+    const say = (ok, text) => { const el = document.getElementById("status"); el.className = `mx-auto mt-3 max-w-2xl text-sm ${ok ? "text-emerald-300" : "text-rose-300"}`; el.textContent = text; };
+    const base = location.origin + location.pathname.replace(/apps\/?$/, "");
+    const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+    let copyId = 0;
+    const secretBox = (label, value, note) => {
+        const id = `copy${++copyId}`;
+        return `<p class="text-sm text-zinc-400">${label}</p><div class="secret mt-1"><pre id="${id}" class="snippet">${esc(value)}</pre>` +
+            `<button type="button" class="copy btn" data-copy="${id}"><i class="fas fa-copy"></i>Copy</button></div>` +
+            (note ? `<p class="mt-2 text-sm text-zinc-300"><i class="fas fa-circle-info"></i> ${note}</p>` : "");
+    };
+    const once = "Copy it now. It's only shown once. Making a new one for the same app replaces this one.";
+
+    document.querySelectorAll("time[data-ts]").forEach((t) => t.textContent = new Date(t.dataset.ts * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }));
+
+    const pickers = document.querySelectorAll(".pick");
+    const open = (id) => {
+        pickers.forEach((p) => p.setAttribute("aria-selected", p.dataset.panel === id));
+        document.querySelectorAll(".panel").forEach((p) => p.hidden = p.id !== `panel-${id}`);
+        history.replaceState(null, "", `#${id}`);
+    };
+    pickers.forEach((p) => p.addEventListener("click", () => open(p.dataset.panel)));
+    if (["#ha", "#ai", "#other"].includes(location.hash)) open(location.hash.slice(1));
+
+    document.addEventListener("click", (e) => {
+        const btn = e.target.closest(".copy");
+        if (!btn) return;
+        navigator.clipboard.writeText(document.getElementById(btn.dataset.copy).textContent).then(() => btn.lastChild.textContent = "Copied");
+    });
+
+    // Home Assistant: the setup code is the address plus a control key, in one paste.
+    const haUrl = document.getElementById("haUrl");
+    haUrl.value = base.replace(/\/$/, "");
+    if (location.pathname.includes("hassio_ingress")) {
+        haUrl.value = "";
+        document.getElementById("haUrlHint").textContent = "You're inside Home Assistant, so type the add-on's address, like http://homeassistant.local:5000";
+    }
+    document.getElementById("haMake").addEventListener("click", (e) => {
+        if (!/^https?:\/\/[^\s]+$/.test(haUrl.value.trim())) return say(false, "Type the address first, like http://192.168.1.20:5000");
+        e.target.disabled = true;
+        post("apps/tokens", { name: "Home Assistant", scope: "control" }).then(({ token }) => {
+            const code = "wt1." + btoa(JSON.stringify({ url: haUrl.value.trim().replace(/\/$/, ""), token })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+            const out = document.getElementById("haOut");
+            out.innerHTML = secretBox("Your setup code", code, once);
+            out.hidden = false;
+        }).catch((err) => say(false, err.message)).finally(() => e.target.disabled = false);
+    });
+
+    // Claude and other MCP apps
+    const mcpUrl = `${base}api/v1/mcp`;
+    let aiApp = "code", aiToken = "";
+    const aiSnippets = {
+        code: [`Run this in a terminal on the computer where you use Claude Code:`,
+            (t) => `claude mcp add --transport http wyze-tunnel ${mcpUrl} --header "Authorization: Bearer ${t}"`],
+        desktop: [`In Claude Desktop, open Settings, Developer, Edit Config. Add this inside "mcpServers" (or replace the file if it's empty), save, then restart Claude. Needs Node.js.`,
+            (t) => JSON.stringify({ mcpServers: { "wyze-tunnel": { command: "npx", args: ["-y", "mcp-remote", mcpUrl, "--allow-http", "--header", "Authorization:${WT_KEY}"], env: { WT_KEY: `Bearer ${t}` } } } }, null, 2)],
+        other: [`Give your app this address and header. It uses MCP over HTTP.`,
+            (t) => `URL:    ${mcpUrl}\nHeader: Authorization: Bearer ${t}`],
+    };
+    const showAi = () => {
+        if (!aiToken) return;
+        document.getElementById("aiHow").textContent = aiSnippets[aiApp][0];
+        document.getElementById("aiSnippet").textContent = aiSnippets[aiApp][1](aiToken);
+        document.getElementById("aiOut").hidden = false;
+    };
+    document.querySelectorAll("[data-ai]").forEach((b) => b.addEventListener("click", () => {
+        aiApp = b.dataset.ai;
+        document.querySelectorAll("[data-ai]").forEach((x) => x.setAttribute("aria-checked", x === b));
+        showAi();
+    }));
+    document.getElementById("aiMake").addEventListener("click", (e) => {
+        const scope = document.querySelector("[name=aiScope]:checked").value;
+        const name = { code: "Claude Code", desktop: "Claude Desktop", other: "AI app" }[aiApp];
+        e.target.disabled = true;
+        post("apps/tokens", { name, scope }).then(({ token }) => { aiToken = token; showAi(); })
+            .catch((err) => say(false, err.message)).finally(() => e.target.disabled = false);
+    });
+
+    document.getElementById("keyForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const form = Object.fromEntries(new FormData(e.target));
+        post("apps/tokens", form).then(({ token }) => {
+            const out = document.getElementById("keyOut");
+            out.innerHTML = secretBox("Key", token, once) + `<div class="mt-3">` +
+                secretBox("Try it", `curl -H "Authorization: Bearer ${token}" ${base}api/v1/cameras`) + `</div>`;
+            out.hidden = false;
+        }).catch((err) => say(false, err.message));
+    });
+
+    document.getElementById("hookForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const data = new FormData(e.target);
+        post("apps/hooks", { url: data.get("url"), events: data.getAll("events") }).then(({ secret }) => {
+            const out = document.getElementById("hookOut");
+            out.innerHTML = secretBox("Saved. Signing secret, if your app checks signatures:", secret, once) +
+                `<button type="button" class="btn mt-3" onclick="location.reload()">Done</button>`;
+            out.hidden = false;
+        }).catch((err) => say(false, err.message));
+    });
+
+    document.querySelectorAll(".remove").forEach((btn) => btn.addEventListener("click", () => {
+        if (!confirm(`Remove ${btn.dataset.name}? It stops working right away.`)) return;
+        post(btn.dataset.url, null, "DELETE").then(() => location.reload()).catch((err) => say(false, err.message));
+    }));
+    document.querySelectorAll(".test").forEach((btn) => btn.addEventListener("click", () => {
+        btn.disabled = true;
+        post(btn.dataset.url).then((r) => say(r.ok, r.ok ? `Sent. Your app answered ${r.status}.` : `Didn't go through: ${r.status}.`))
+            .catch((err) => say(false, err.message)).finally(() => btn.disabled = false);
+    }));
+</script>
+{% endblock %}

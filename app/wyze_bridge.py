@@ -4,7 +4,7 @@ import sys
 from dataclasses import replace
 from threading import Thread
 
-from wyzebridge import config, guests
+from wyzebridge import config, guests, integrations
 from wyzebridge.auth import STREAM_AUTH, WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream
 from wyzebridge.logging import logger
@@ -38,6 +38,7 @@ class WyzeBridge(Thread):
         WbAuth.set_email(email=self.api.get_user().email, force=fresh_data)
         self.mtx.setup_auth(WbAuth.api, STREAM_AUTH)
         guests.sync_stream_auth()
+        integrations.sync_stream_auth()
         self.setup_streams()
         if self.streams.total < 1:
             return signal.raise_signal(signal.SIGINT)

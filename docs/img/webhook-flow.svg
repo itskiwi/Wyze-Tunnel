@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 200" font-family="Nunito, ui-rounded, system-ui, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">How a webhook is sent</title>
+  <desc id="d">A camera sees motion. Wyze Tunnel signs the event with your secret and posts it to your app. Your app checks the signature and runs the automation.</desc>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#15895a"/></marker></defs>
+  <rect width="880" height="200" rx="28" fill="#f5f4f0"/>
+  <g font-size="14" fill="#5d6058">
+    <circle cx="70" cy="70" r="20" fill="#15895a"/><text x="70" y="76" text-anchor="middle" fill="#fff" font-weight="800" font-size="17">1</text>
+    <text x="30" y="122" font-weight="800" font-size="16" fill="#1a1c19">Motion</text>
+    <text x="30" y="144">A camera sees</text><text x="30" y="162">something</text>
+    <circle cx="290" cy="70" r="20" fill="#15895a"/><text x="290" y="76" text-anchor="middle" fill="#fff" font-weight="800" font-size="17">2</text>
+    <text x="250" y="122" font-weight="800" font-size="16" fill="#1a1c19">Signed</text>
+    <text x="250" y="144">Wyze Tunnel signs it</text><text x="250" y="162">with your secret</text>
+    <circle cx="510" cy="70" r="20" fill="#15895a"/><text x="510" y="76" text-anchor="middle" fill="#fff" font-weight="800" font-size="17">3</text>
+    <text x="470" y="122" font-weight="800" font-size="16" fill="#1a1c19">Posted</text>
+    <text x="470" y="144">JSON goes to your</text><text x="470" y="162">webhook link</text>
+    <circle cx="730" cy="70" r="20" fill="#15895a"/><text x="730" y="76" text-anchor="middle" fill="#fff" font-weight="800" font-size="17">4</text>
+    <text x="690" y="122" font-weight="800" font-size="16" fill="#1a1c19">Automation</text>
+    <text x="690" y="144">Your app checks it</text><text x="690" y="162">and turns on lights</text>
+  </g>
+  <g stroke="#15895a" stroke-width="2.5" marker-end="url(#a)">
+    <path d="M96 70H262"/><path d="M316 70H482"/><path d="M536 70H702"/>
+  </g>
+</svg>
