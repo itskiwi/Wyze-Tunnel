@@ -24,7 +24,7 @@
     {% set tips = [] %}
     {% if cam.status == -90 %}{% set _ = tips.append("The camera isn't reachable. Check that it has power and Wi-Fi, then unplug it for 10 seconds.") %}{% endif %}
     {% if cam.chronic %}{% set _ = tips.append("This camera has failed to connect " ~ cam.failures ~ " times in a row, so Wyze Tunnel restarted it and now retries only every 5 minutes. If that didn't help, unplug it for 10 seconds or check its Wi-Fi signal in the Wyze app.") %}{% endif %}
-    {% if not cam.enabled %}{% set _ = tips.append("This camera is turned off in Wyze Tunnel. Open Live, tap the sliders on the camera, then Stream: Enable.") %}{% endif %}
+    {% if not cam.enabled %}{% set _ = tips.append("This camera is turned off in Wyze Tunnel. Open Live, tap the sliders on the camera, then Stream: Turn on.") %}{% endif %}
     {% if 0 <= wifi < 40 %}{% set _ = tips.append("Weak Wi-Fi (" ~ wifi ~ "%). Move the camera or router closer, or add a mesh point.") %}{% endif %}
     {% if 0 <= sd_free < 10 %}{% set _ = tips.append("The SD card is almost full. Old clips get overwritten, so check Wyze app settings if you need them.") %}{% endif %}
     {% if cam.net_mode == "relay" %}{% set _ = tips.append("Streaming through Wyze's relay servers, which adds delay and can drop. If the camera is on your home Wi-Fi, check that Wyze Tunnel is on the same network.") %}{% endif %}
