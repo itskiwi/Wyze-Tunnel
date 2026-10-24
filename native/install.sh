@@ -74,7 +74,9 @@ mkdir -p "$CONF_DIR"
 if [ ! -f "$CONF_DIR/wyze-tunnel.env" ]; then
     install -m 600 "$SRC/native/wyze-tunnel.env" "$CONF_DIR/wyze-tunnel.env"
     sed -i "s/^WB_IP=.*/WB_IP=$IP/" "$CONF_DIR/wyze-tunnel.env"
+    sed -i "s/^#WB_PASSWORD=.*/WB_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(12))')/" "$CONF_DIR/wyze-tunnel.env"
 fi
+WB_PASSWORD=$(sed -n 's/^WB_PASSWORD=//p' "$CONF_DIR/wyze-tunnel.env")
 
 install -m 644 "$SRC/native/wyze-tunnel.service" /etc/systemd/system/wyze-tunnel.service
 systemctl daemon-reload
@@ -88,8 +90,8 @@ cat <<MSG
   1. Open http://${IP:-<this-machine-ip>}:5000 in your browser.
   2. Sign in with your Wyze email, password, API ID and API key.
      Get the API ID and key at https://developer-api-console.wyze.com/#/apikey/view
-  3. Next time, log in to the web page as "wbadmin" with the part of your
-     Wyze email before the @ as the password.
+  3. Then log in to the web page as "wbadmin" with the password:
+     ${WB_PASSWORD:-the one you already use (set WB_PASSWORD in the settings file to change it)}
 
   It starts automatically on boot. Logs: journalctl -u wyze-tunnel -f
   Advanced settings: $CONF_DIR/wyze-tunnel.env
