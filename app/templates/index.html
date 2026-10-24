@@ -1,100 +1,100 @@
 {% extends 'base.html' %}
 
+{% block settings_menu %}
+<p class="menu-label">Layout</p>
+<div class="grid grid-cols-2 gap-2 px-2 pb-2">
+    <label class="text-xs text-zinc-400">Columns
+        <input class="field mt-1 py-2" id="select_number_of_columns" type="number" min="1" max="6"
+            value="{{number_of_columns}}" /></label>
+    <label class="text-xs text-zinc-400" title="Refresh previews every N seconds">Refresh, sec
+        <input class="field mt-1 py-2" id="select_refresh_period" type="number" min="0" max="1200"
+            value="{{refresh_period}}" /></label>
+</div>
+<p class="menu-label">Restart</p>
+<div id="restart-menu">
+    <a data-restart="cameras" class="menu-item cursor-pointer"><i class="fas fa-video w-4"></i>Camera connections</a>
+    <a data-restart="rtsp_server" class="menu-item cursor-pointer"><i class="fas fa-network-wired w-4"></i>Stream server</a>
+    <a data-restart="cam_data" class="menu-item cursor-pointer"><i class="fas fa-rotate w-4"></i>Reload camera list</a>
+    <a data-restart="all" class="menu-item cursor-pointer"><i class="fas fa-cloud-arrow-down w-4"></i>Clear cache and reconnect</a>
+</div>
+<hr class="my-1 border-zinc-800">
+{% endblock %}
+
 {% block content %}
-<header id="topbar" class="fs-display-none mb-6 flex flex-wrap items-center gap-3">
-    <a href="./" class="mr-2 flex items-center gap-2 text-lg font-semibold tracking-tight">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500 text-zinc-950"><i
-                class="fas fa-video text-sm"></i></span>
-        Wyze Tunnel
-    </a>
-    <nav class="flex items-center gap-1 rounded-xl bg-zinc-900 p-1 ring-1 ring-white/5">
+<div class="summary fs-display-none flex flex-wrap items-center gap-2.5 pb-4 pt-2">
+    <h1 class="page-title mr-1.5 text-[30px]">{{ cam_data.enabled if cam_data.enabled != cam_data.available else cam_data.total }} camera{{ '' if (cam_data.enabled if cam_data.enabled != cam_data.available else cam_data.total) == 1 else 's' }}</h1>
+    <span class="chip chip-ok is-hidden" data-count="connected"></span>
+    <span class="chip chip-warn is-hidden" data-count="connecting"></span>
+    <span class="chip chip-bad is-hidden" data-count="offline"></span>
+    <div class="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
         {% if cam_data.enabled != cam_data.available %}
-        <a data-filter="enabled" class="tab filter is-active cursor-pointer">
-            <i class="fas fa-plug-circle-check"></i><span><strong>{{ cam_data.enabled }}</strong> enabled</span></a>
-        <a data-filter="all" class="tab filter cursor-pointer">
-            <i class="fas fa-users-viewfinder"></i><span>All cameras</span></a>
-        {% else %}
-        <span class="tab"><i class="fas fa-users-viewfinder"></i><span>{{ cam_data.total }} cameras</span></span>
+        <nav class="seg" aria-label="Which cameras">
+            <a data-filter="enabled" class="tab filter is-active cursor-pointer">Shown</a>
+            <a data-filter="all" class="tab filter cursor-pointer">All {{ cam_data.total }}</a>
+        </nav>
         {% endif %}
-    </nav>
-    <a href="cameras" class="tab"><i class="fas fa-eye"></i><span>Cameras</span></a>
-    <a href="alerts" class="tab"><i class="fas fa-bell"></i><span>Alerts</span></a>
-    <a href="health" class="tab"><i class="fas fa-heart-pulse"></i><span>Health</span></a>
-    <a href="account" class="tab"><i class="fas fa-key"></i><span>Login</span></a>
-    {% if cam_data.cameras and cam_data.cameras.values()|selectattr("record")|list %}
-    <a href="recordings" class="tab"><i class="fas fa-clock-rotate-left"></i><span>Recordings</span></a>
-    {% endif %}
-    <button id="menu-toggle" class="btn ml-auto md:hidden" aria-label="Settings" aria-controls="refresh-menu">
-        <i class="fas fa-sliders"></i>
-    </button>
-    <div id="refresh-menu" class="hidden w-full flex-wrap items-center gap-2 md:ml-auto md:flex md:w-auto [&.is-active]:flex">
-        <label class="relative hidden md:block" title="Columns">
-            <i class="fas fa-table-columns pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500"></i>
-            <input class="field w-24 pl-8" id="select_number_of_columns" type="number" min="1" max="6"
-                value="{{number_of_columns}}" aria-label="Number of columns" />
-        </label>
-        <label class="relative flex-1 md:flex-none" title="Refresh previews every N seconds">
-            <i class="fa-solid fa-rotate pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500"></i>
-            <input class="field w-full pl-8 md:w-24" id="select_refresh_period" type="number" min="0" max="1200"
-                value="{{refresh_period}}" aria-label="Refresh period in seconds" />
-        </label>
-        <button class="theme-toggle btn" aria-label="Switch theme"><i class="fas fa-circle-half-stroke"></i></button>
-        <details class="dropdown relative">
-            <summary class="btn cursor-pointer list-none text-rose-300 hover:text-rose-200">
-                <i class="fas fa-power-off"></i><span>Restart</span>
-            </summary>
-            <div id="restart-menu" class="menu right-0">
-                <a data-restart="cameras" class="menu-item cursor-pointer"><i class="fas fa-video w-4"></i>Camera connections</a>
-                <a data-restart="rtsp_server" class="menu-item cursor-pointer"><i class="fas fa-network-wired w-4"></i>Stream server</a>
-                <a data-restart="cam_data" class="menu-item cursor-pointer"><i class="fas fa-rotate w-4"></i>Reload camera list</a>
-                <a data-restart="all" class="menu-item cursor-pointer"><i class="fas fa-cloud-arrow-down w-4"></i>Clear cache and reconnect</a>
-            </div>
-        </details>
+        {% if cam_data.cameras %}
+        <div class="preview-toggle seg">
+            <button data-action="snapshot" class="tab {{ 'is-active' if not show_video }}">Snapshot</button>
+            <details class="dropdown relative">
+                <summary data-action="video" class="tab cursor-pointer list-none {{ 'is-active' if show_video }}">
+                    Live<i class="fas fa-angle-down text-xs"></i>
+                </summary>
+                <div id="video-menu" class="menu right-0">
+                    {% if webrtc %}
+                    <a data-action="webrtc" class="menu-item cursor-pointer {{ 'bg-white/10' if video_format == 'webrtc' }}" id="webrtc-toggle">WebRTC</a>
+                    {% endif %}
+                    <a data-action="hls" class="menu-item cursor-pointer {{ 'bg-white/10' if video_format == 'hls' }}" id="hls-toggle">HLS</a>
+                    <hr class="my-1 border-zinc-800">
+                    <a data-action="autoplay" class="menu-item cursor-pointer" id="toggle-autoplay">
+                        <i class="fas fa-square{{ '-check' if autoplay}}"></i> Auto-play
+                    </a>
+                </div>
+            </details>
+        </div>
+        {% endif %}
     </div>
-</header>
+</div>
 
 <div id="connection-lost" class="mb-4 flex items-center gap-3 rounded-xl bg-rose-500/10 px-4 py-3 text-rose-200 ring-1 ring-rose-500/30" style="display:none;">
     <i class="fas fa-house-signal"></i><span>Lost connection to the bridge. Reconnecting…</span>
 </div>
 <div id="alert" class="is-hidden"></div>
 
-<div class="cameras grid grid-cols-1 gap-4 md:[grid-template-columns:repeat(var(--cols,2),minmax(0,1fr))]">
+<div class="cameras grid grid-cols-1 gap-3.5 md:[grid-template-columns:repeat(var(--cols,2),minmax(0,1fr))]">
     {% if cam_data.cameras %}
     {% for cam_uri,camera in cam_data.cameras.items() %}
     <div id="{{ cam_uri }}" class="camera {{'is-hidden' if not camera.enabled}}" data-enabled="{{camera.enabled}}"
         data-connected="{{camera.connected}}" data-battery="{{camera.is_battery}}" data-doorbell="{{camera.is_doorbell}}">
-        <div class="card group relative overflow-hidden rounded-2xl bg-zinc-900 ring-1 ring-white/5 transition-shadow">
-            <header class="card-header fs-display-none flex items-center gap-2 px-4 py-3">
-                <div class="card-header-title flex min-w-0 items-center gap-2 font-medium">
+        <div class="card group relative rounded-[22px] bg-zinc-900 shadow-[var(--shadow)]">
+            <header class="card-header pointer-events-none absolute inset-x-2.5 top-2.5 z-10 flex items-start gap-2">
+                <div class="card-header-title pointer-events-auto flex min-w-0 items-center gap-2 rounded-full bg-[#0f110f]/60 py-1.5 pl-2.5 pr-3 text-sm font-semibold text-[#fff] backdrop-blur">
                     <span class="icon status {{'enabled' if camera.enabled}}" data-cam="{{cam_uri}}">
-                        <i class="fas fa-circle-stop text-zinc-500" aria-hidden="true"></i>
+                        <i class="fas fa-circle-stop text-[#b9bdb5]" aria-hidden="true"></i>
                     </span>
                     <span class="truncate">{{camera.nickname}}</span>
-                    <span class="status-label rounded-full bg-white/5 px-2 py-0.5 text-[11px] font-medium text-zinc-400">{{ 'disabled' if not camera.enabled else 'stopped' }}</span>
-                    <span class="net-mode rounded-full bg-white/5 px-2 py-0.5 text-[11px] font-medium text-zinc-400 {{ '' if camera.net_mode else 'is-hidden' }}" data-mode="{{ camera.net_mode }}" title="How Wyze Tunnel reaches this camera">{{ camera.net_mode }}</span>
+                    <span class="status-label rounded-full bg-[#fff]/15 px-2 py-0.5 text-[11px] font-medium text-[#e5e5e5]">{{ 'disabled' if not camera.enabled else 'stopped' }}</span>
+                    <span class="net-mode rounded-full bg-[#fff]/15 px-2 py-0.5 text-[11px] font-medium text-[#e5e5e5] {{ '' if camera.net_mode else 'is-hidden' }}" data-mode="{{ camera.net_mode }}" title="How Wyze Tunnel reaches this camera">{{ camera.net_mode }}</span>
                     {% if camera.substream %}
-                    <span class="icon text-zinc-400" title="Sub-stream of {{ camera.nickname }}"><i class="fas fa-object-ungroup"></i></span>
+                    <span class="icon text-[#d4d4d4]" title="Sub-stream of {{ camera.nickname }}"><i class="fas fa-object-ungroup"></i></span>
                     {% endif %}
                     {% if camera.camera_info %}
                     {% if camera.camera_info.sdParm and camera.camera_info.sdParm.status == "1"%}
-                    <span class="icon text-zinc-400" title="{{ (camera.camera_info.sdParm.free|int/1024)|round(2) }} of {{ (camera.camera_info.sdParm.capacity|int/1024)|round(2) }} GB free on SD card">
+                    <span class="icon text-[#d4d4d4]" title="{{ (camera.camera_info.sdParm.free|int/1024)|round(2) }} of {{ (camera.camera_info.sdParm.capacity|int/1024)|round(2) }} GB free on SD card">
                         <i class="fas fa-sd-card"></i></span>
                     {% endif %}
                     {% if camera.camera_info.channelResquestResult.audio == "1"%}
-                    <span class="icon text-zinc-400" title="Audio enabled"><i class="fas fa-volume-high"></i></span>
+                    <span class="icon text-[#d4d4d4]" title="Audio enabled"><i class="fas fa-volume-high"></i></span>
                     {% endif %}
                     {% endif %}
                     {% if camera.is_battery %}
-                    <span class="icon battery cursor-pointer text-zinc-400"><i class="fas fa-battery-empty"></i></span>
+                    <span class="icon battery cursor-pointer text-[#d4d4d4]"><i class="fas fa-battery-empty"></i></span>
                     {% endif %}
                     <span class="icon motion is-hidden text-amber-400" title="Motion detected"><i class="fas fa-person-running"></i></span>
                 </div>
-                <span class="drag_handle h-6 flex-1" draggable="true" title="Drag to reorder"></span>
-                <button class="toggle-details rounded-lg p-1.5 text-zinc-400 hover:bg-white/5 hover:text-white" data-cam="{{cam_uri}}" title="Camera details">
-                    <i class="fas fa-circle-info" aria-hidden="true"></i>
-                </button>
+                <span class="drag_handle fs-display-none pointer-events-auto ml-auto hidden h-8 w-8 flex-none cursor-move place-items-center rounded-full bg-[#0f110f]/60 text-[#fff] md:group-hover:grid" draggable="true" title="Drag to reorder"><i class="fas fa-grip pointer-events-none"></i></span>
             </header>
-            <div class="card-image relative bg-black">
+            <div class="card-image relative overflow-hidden rounded-[22px] bg-black">
                 <figure class="image relative aspect-video">
                     {% if show_video and (camera.on_demand or camera.enabled) %}
                     {% set is_webrtc = webrtc and (video_format == "webrtc" or camera.webrtc and video_format == "kvs") %}
@@ -114,26 +114,24 @@
                     </div>
                     {% endif %}
                     {% if not show_video %}
-                    <div class="cam-overlay absolute inset-x-0 bottom-0 flex items-center justify-end gap-2 bg-gradient-to-t from-black/70 to-transparent p-3">
-                        <button class="update-preview btn bg-black/60 text-[#fff]" data-cam="{{cam_uri}}" title="Update preview">
-                            <i class="fas fa-arrows-rotate"></i>
+                    <div class="cam-overlay absolute bottom-2.5 left-2.5 flex items-center">
+                        <button class="update-preview cam-action h-8 w-8 bg-[#0f110f]/60 text-[#fff] backdrop-blur" data-cam="{{cam_uri}}" title="Update preview" aria-label="Update preview">
+                            <i class="fas fa-arrows-rotate text-sm"></i>
                         </button>
-                        <span class="age rounded-md bg-black/60 px-2 py-0.5 text-xs text-[#e4e4e7]" data-age={{camera.img_time}}></span>
+                        <span class="age rounded-full bg-[#0f110f]/60 px-2 py-0.5 font-mono text-xs text-[#e5e5e5]" data-age={{camera.img_time}}></span>
                     </div>
                     {% endif %}
                 </figure>
             </div>
-            <div class="content is-hidden max-h-96 overflow-auto px-4 py-3 text-xs">
+            <div class="content is-hidden absolute inset-0 z-[5] overflow-auto rounded-[22px] bg-zinc-900 px-4 pb-16 pt-14 text-xs">
                 <table class="w-full table-fixed [&_td]:break-words [&_td]:py-1 [&_td]:align-top [&_td:first-child]:w-2/5 [&_td:first-child]:pr-3 [&_td:first-child]:text-zinc-400">
                     <tbody></tbody>
                 </table>
             </div>
-            <footer class="card-footer fs-display-none grid grid-cols-2 border-t border-white/5 text-sm">
-                <details class="dropdown relative">
-                    <summary class="flex cursor-pointer list-none items-center justify-center gap-2 py-2.5 text-zinc-300 hover:bg-white/5 hover:text-white">
-                        <i class="fas fa-sliders"></i> Controls
-                    </summary>
-                    <div class="menu cam-control bottom-full left-2 mb-2" data-cam="{{cam_uri}}">
+            <div class="cam-acts fs-display-none absolute bottom-2.5 right-2.5 z-10 flex gap-1.5">
+                <details class="dropdown">
+                    <summary class="cam-action" title="Controls" aria-label="Controls for {{ camera.nickname }}"><i class="fas fa-sliders"></i></summary>
+                    <div class="menu cam-menu cam-control" data-cam="{{cam_uri}}">
                         <p class="menu-label"><i class="fas fa-power-off"></i> Power</p>
                         <div class="grid grid-cols-3 gap-1 p-1">
                             <button class="button btn" data-cmd="power" data-payload="on">On</button>
@@ -187,11 +185,9 @@
                         </div>
                     </div>
                 </details>
-                <details class="dropdown relative border-l border-white/5">
-                    <summary class="flex cursor-pointer list-none items-center justify-center gap-2 py-2.5 text-zinc-300 hover:bg-white/5 hover:text-white">
-                        <i class="fas fa-photo-film"></i> Streams
-                    </summary>
-                    <div class="menu bottom-full right-2 mb-2">
+                <details class="dropdown">
+                    <summary class="cam-action" title="Stream links" aria-label="Stream links for {{ camera.nickname }}"><i class="fas fa-link"></i></summary>
+                    <div class="menu cam-menu">
                         <p class="menu-label">Video streams</p>
                         {% if camera.webrtc_url %}
                         <a href="{{camera.webrtc_url}}" class="menu-item stream-link" target="_blank"><i class="fas fa-file-code w-4"></i>WebRTC{% if api %}<i class="fas fa-lock ml-auto text-xs text-zinc-500"></i>{% endif %}</a>
@@ -214,34 +210,15 @@
                         <a href="{{camera.thumbnail_url}}" class="menu-item" target="_blank"><i class="fas fa-file-image w-4"></i>API thumbnail{% if api %}<i class="fas fa-lock ml-auto text-xs text-zinc-500"></i>{% endif %}</a>
                     </div>
                 </details>
-            </footer>
+                <button class="toggle-details cam-action" data-cam="{{cam_uri}}" title="Camera details" aria-label="Details for {{ camera.nickname }}">
+                    <i class="fas fa-circle-info" aria-hidden="true"></i>
+                </button>
+            </div>
         </div>
     </div>
     {% endfor %}
 </div>
 
-<div class="preview-toggle fs-display-none mt-8 flex justify-center">
-    <div class="flex items-center gap-1 rounded-xl bg-zinc-900 p-1 ring-1 ring-white/5">
-        <button data-action="snapshot" class="tab {{ 'is-active' if not show_video }}">
-            <i class="fas fa-image"></i><span>Snapshot</span>
-        </button>
-        <details class="dropdown relative">
-            <summary data-action="video" class="tab cursor-pointer list-none {{ 'is-active' if show_video }}">
-                <i class="fas fa-film"></i><span>Video</span><i class="fas fa-angle-down text-xs"></i>
-            </summary>
-            <div id="video-menu" class="menu bottom-full left-1/2 mb-2 -translate-x-1/2">
-                {% if webrtc %}
-                <a data-action="webrtc" class="menu-item cursor-pointer {{ 'bg-white/10' if video_format == 'webrtc' }}" id="webrtc-toggle">WebRTC</a>
-                {% endif %}
-                <a data-action="hls" class="menu-item cursor-pointer {{ 'bg-white/10' if video_format == 'hls' }}" id="hls-toggle">HLS</a>
-                <hr class="my-1 border-white/10">
-                <a data-action="autoplay" class="menu-item cursor-pointer" id="toggle-autoplay">
-                    <i class="fas fa-square{{ '-check' if autoplay}}"></i> Auto-play
-                </a>
-            </div>
-        </details>
-    </div>
-</div>
 <div class="fullscreen">
     <button class="btn h-10 w-10 rounded-full p-0" title="Toggle fullscreen">
         <i class="fas fa-maximize"></i>
@@ -249,18 +226,16 @@
 </div>
 {% else %}
 </div>
-<div class="mx-auto mt-16 max-w-md text-center text-zinc-400">
-    <i class="fas fa-video-slash text-3xl"></i>
-    <p class="mt-3">No cameras found on this Wyze account yet.</p>
-    <p class="mt-1 text-sm">Add a camera in the Wyze app, then use Restart → Reload camera list.</p>
+<div class="surface mx-auto mt-10 max-w-md p-8 text-center text-zinc-400">
+    <svg class="mascot mx-auto h-14 w-14" aria-hidden="true"><use href="#mark" /></svg>
+    <p class="mt-4 font-display text-xl font-extrabold text-zinc-50">No cameras yet</p>
+    <p class="mt-1 text-sm">Add a camera in the Wyze app. Then open Settings, the gear at the top, and pick Reload camera list.</p>
 </div>
 {% endif %}
 {% endblock %}
 
 
 {% block api_info %}
-<p class="mb-2"><a href="diagnostics" class="hover:text-zinc-300 underline underline-offset-2" title="A report with secrets removed, for bug reports">
-    <i class="fas fa-file-medical"></i> Download diagnostics</a></p>
 {% if api %}
 <p>API key: <code>{{ api }}</code></p>
 {% else %}

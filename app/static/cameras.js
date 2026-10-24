@@ -26,7 +26,7 @@ async function renderCameraToggles(list, status, headers = {}) {
     const row = document.createElement("label");
     row.className = "flex cursor-pointer items-center gap-3 px-4 py-3";
     const box = Object.assign(document.createElement("input"), { type: "checkbox", value: cam.mac, checked: !cam.hidden });
-    box.className = "h-4 w-4 accent-emerald-500";
+    box.className = "h-4 w-4 accent-accent";
     box.addEventListener("change", save);
     const name = document.createElement("span");
     name.className = "flex-1";

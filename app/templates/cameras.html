@@ -1,18 +1,13 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<header class="mb-6 flex flex-wrap items-center gap-3">
-    <a href="./" class="mr-2 flex items-center gap-2 text-lg font-semibold tracking-tight">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500 text-zinc-950"><i
-                class="fas fa-video text-sm"></i></span>
-        Wyze Tunnel
-    </a>
-    <h1 class="text-lg text-zinc-400">Cameras</h1>
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Cameras</h1>
 </header>
 
 <div class="mx-auto max-w-xl">
     <p class="text-sm text-zinc-400">Unchecked cameras are hidden and don't stream, which saves bandwidth.</p>
-    <div id="camList" class="mt-4 divide-y divide-zinc-800 rounded-2xl bg-zinc-900 ring-1 ring-white/5">
+    <div id="camList" class="mt-4 divide-y divide-zinc-800 surface">
         <p class="px-4 py-3 text-sm text-zinc-500">Loading…</p>
     </div>
     <p id="camStatus" class="mt-3 text-sm text-zinc-400" role="status"></p>
