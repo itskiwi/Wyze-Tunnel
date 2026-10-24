@@ -4,6 +4,8 @@ base: template:_images/debian-12
 cpus: 2
 memory: 2GiB
 disk: 10GiB
+# No containers needed; skips a 250 MB nerdctl download on first install.
+containerd: {system: false, user: false}
 # Web UI goes to Mac port 5050 because macOS AirPlay already uses 5000.
 portForwards:
   - {guestPort: 5000, hostPort: 5050, hostIP: 0.0.0.0}
