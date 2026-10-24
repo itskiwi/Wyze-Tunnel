@@ -248,6 +248,8 @@
                         {% endif %}
                         {% if camera.record %}
                         <a href="recordings?cam={{cam_uri}}" class="menu-item"><i class="fas fa-clock-rotate-left w-4"></i>Recordings</a>
+                        {% elif not current_guest() %}
+                        <a href="recordings#setup" class="menu-item"><i class="fas fa-clock-rotate-left w-4"></i>Turn on recording</a>
                         {% endif %}
                         <button class="menu-item copy-rtsp"><i class="fas fa-copy w-4"></i>Copy RTSP link</button>
                         <p class="menu-label">Snapshots</p>
@@ -314,10 +316,10 @@
     document.addEventListener('DOMContentLoaded', addApiKey);
 </script>
 {% endif %}
-<script src="static/site.js"></script>
+<script src="static/site.js?v={{ version }}"></script>
 {% if show_video %}
 {% if (webrtc and video_format == "webrtc") or video_format =="kvs" %}
-<script src="static/webrtc.js"></script>
+<script src="static/webrtc.js?v={{ version }}"></script>
 {% else %}
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
 {% endif %}

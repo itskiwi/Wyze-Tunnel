@@ -16,6 +16,47 @@
     {% endif %}
 </header>
 
+{% if not current_guest() %}
+<details id="setup" class="surface mb-5 p-5" {{ 'open' if not cameras }}>
+    <summary class="cursor-pointer font-semibold">{{ 'Recording settings' if cameras else 'Choose cameras to record' }}</summary>
+    <form id="setupForm" class="mt-3 space-y-4">
+        <p class="text-sm text-zinc-400">Recordings stay on this computer. They use {{ disk.used|filesizeformat }}{% if disk.free %},
+            with {{ disk.free|filesizeformat }} free{% endif %}. A camera takes roughly 10 to 20 GB a day.</p>
+        <label class="flex items-start gap-3">
+            <input type="checkbox" name="all" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.get('all') }} />
+            <span><span class="block">Record every camera</span>
+                <span class="text-sm text-zinc-400">Cameras you add later record too.</span></span>
+        </label>
+        <fieldset id="camList">
+            <legend class="text-sm text-zinc-400">Or pick cameras</legend>
+            {% for uri, name in all_cams.items() %}
+            <label class="mt-2 flex items-center gap-3">
+                <input type="checkbox" name="cams" value="{{ uri }}" class="h-4 w-4 accent-accent"
+                    {{ 'checked' if uri in locked or uri in settings.get('cams', []) }} {{ 'disabled data-locked' if uri in locked }} />
+                <span>{{ name }}</span>
+                {% if uri in locked %}<span class="text-sm text-zinc-500">{{ locked[uri] }}</span>{% endif %}
+            </label>
+            {% else %}
+            <p class="mt-2 text-sm text-zinc-500">No cameras yet.</p>
+            {% endfor %}
+        </fieldset>
+        <label class="block max-w-xs">
+            <span class="text-sm text-zinc-400">Keep recordings for</span>
+            <select name="keep_days" class="field mt-1">
+                {% for days in keep_choices %}
+                <option value="{{ days }}" {{ 'selected' if days == settings.get('keep_days', default_keep) }}>{{ days }} day{{ 's' if days > 1 }}</option>
+                {% endfor %}
+            </select>
+            <span class="mt-1 block text-sm text-zinc-500">Older clips are deleted on their own.</span>
+        </label>
+        <div class="flex flex-wrap items-center gap-3">
+            <button class="btn btn-primary" type="submit">Save</button>
+            <span id="setupStatus" class="text-sm text-zinc-400" role="status"></span>
+        </div>
+    </form>
+</details>
+{% endif %}
+
 {% if cameras and not playback %}
 <div class="mx-auto mt-16 max-w-md text-center text-zinc-400">
     <i class="fas fa-clock-rotate-left text-3xl"></i>
@@ -42,13 +83,44 @@
 <div class="mx-auto mt-16 max-w-md text-center text-zinc-400">
     <i class="fas fa-clock-rotate-left text-3xl"></i>
     <p class="mt-3">No cameras are recording yet.</p>
-    <p class="mt-1 text-sm">Turn on recording for a camera with <code>RECORD_ALL=true</code> or
-        <code>RECORD_&lt;CAMERA_NAME&gt;=true</code>, then come back here.</p>
+    <p class="mt-1 text-sm">{{ "Ask the owner to turn on recording." if current_guest() else "Pick the ones to record above, and clips show up here a minute or so later." }}</p>
 </div>
 {% endif %}
 {% endblock %}
 
 {% block javascript %}
+<script>
+    if (location.hash === "#setup") document.getElementById("setup")?.setAttribute("open", "");
+    const setupForm = document.getElementById("setupForm");
+    // "Record every camera" covers the list, so its switches are shown on and can't be changed.
+    function syncAll() {
+        const all = setupForm.all.checked;
+        setupForm.querySelectorAll("[name=cams]:not([data-locked])").forEach((c) => {
+            c.disabled = all;
+            if (all) c.checked = true; else c.checked = c.defaultChecked;
+        });
+    }
+    setupForm?.all.addEventListener("change", syncAll);
+    if (setupForm) syncAll();
+    setupForm?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const out = document.getElementById("setupStatus");
+        const body = {
+            all: setupForm.all.checked,
+            // With "every camera" on, keep the earlier picks for when it's switched off again.
+            cams: [...setupForm.querySelectorAll("[name=cams]:not([data-locked])")].filter((c) => setupForm.all.checked ? c.defaultChecked : c.checked).map((c) => c.value),
+            keep_days: Number(setupForm.keep_days.value),
+        };
+        out.textContent = "Saving…";
+        fetch("recordings/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+            .then((resp) => resp.json().then((r) => resp.ok ? r : Promise.reject(new Error(r.error || resp.statusText))))
+            .then(() => {
+                out.textContent = "Saved. Cameras reconnect for a moment.";
+                setTimeout(() => location.reload(), 8000);
+            })
+            .catch((err) => { out.textContent = err.message; });
+    });
+</script>
 <script>
     // shortcut: long recordings are cut into 10-minute clips because the proxied MP4 can't seek; add Range support if people want one long timeline.
     const CLIP_SECONDS = 600;
