@@ -1,0 +1,50 @@
+from datetime import time
+from unittest import mock
+
+import pytest
+from wyzebridge import webhooks
+
+
+@pytest.fixture(autouse=True)
+def alerts_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(webhooks, "ALERTS_FILE", str(tmp_path / "alerts.json"))
+    monkeypatch.setattr(webhooks, "ALERTS", {})
+
+
+def test_save_validates_and_persists():
+    with pytest.raises(ValueError):
+        webhooks.save_alerts({"topic": "has spaces"})
+    with pytest.raises(ValueError):
+        webhooks.save_alerts({"topic": "ok", "server": "ftp://x"})
+    with pytest.raises(ValueError):
+        webhooks.save_alerts({"topic": "ok", "quiet_start": "22:00"})
+    saved = webhooks.save_alerts({"topic": "my-topic", "motion": "on", "quiet_start": "22:00", "quiet_end": "07:00"})
+    assert saved == {"server": "https://ntfy.sh", "topic": "my-topic", "quiet_start": "22:00",
+                     "quiet_end": "07:00", "motion": True, "offline": False}
+    assert webhooks.load_alerts() == saved == webhooks.ALERTS
+    assert webhooks.alert_url("motion") == "https://ntfy.sh/my-topic"
+    assert webhooks.alert_url("offline") == ""
+    assert webhooks.alert_url("test") == "https://ntfy.sh/my-topic"
+
+
+def test_quiet_hours_wrap_past_midnight():
+    night = {"quiet_start": "22:00", "quiet_end": "07:00"}
+    assert webhooks.in_quiet_hours(night, time(23, 30))
+    assert webhooks.in_quiet_hours(night, time(6, 59))
+    assert not webhooks.in_quiet_hours(night, time(7, 0))
+    assert not webhooks.in_quiet_hours(night, time(12, 0))
+    day = {"quiet_start": "09:00", "quiet_end": "17:00"}
+    assert webhooks.in_quiet_hours(day, time(12, 0)) and not webhooks.in_quiet_hours(day, time(18, 0))
+    assert not webhooks.in_quiet_hours({}, time(12, 0))
+
+
+def test_send_uses_saved_topic_and_respects_quiet_hours(monkeypatch):
+    webhooks.save_alerts({"topic": "t", "motion": "on", "offline": "on", "quiet_start": "00:00", "quiet_end": "23:59"})
+    with mock.patch.object(webhooks.requests, "post") as post:
+        assert not webhooks.send_webhook("motion", "CAM", "motion!")  # quiet hours
+        assert webhooks.send_webhook("offline", "CAM", "offline!")  # quiet hours are motion only
+    assert post.call_args.args[0] == "https://ntfy.sh/t"
+    monkeypatch.setenv("MOTION_WEBHOOKS", "https://example.com/hook")
+    with mock.patch.object(webhooks.requests, "post") as post:
+        assert webhooks.send_webhook("motion", "CAM", "motion!")  # env webhooks ignore UI quiet hours
+    assert post.call_args.args[0] == "https://example.com/hook"

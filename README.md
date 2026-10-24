@@ -281,6 +281,10 @@ The web-ui can be accessed on the default port `5000`:
 http://localhost:5000/
 ```
 
+- **Alerts**: phone notifications through the free [ntfy](https://ntfy.sh) app when there's motion (with a snapshot) or a camera goes offline, plus quiet hours. Set them up in the web UI under Alerts. Motion alerts use Wyze's cloud motion events. `MOTION_WEBHOOKS` and `OFFLINE_WEBHOOKS`, if you set them, take priority.
+- **Recordings**: play and download clips for cameras with recording turned on.
+- **Install as an app**: use "Add to Home Screen" on your phone. `f` opens the full-screen camera wall, `r` refreshes previews and `1`-`6` sets the number of columns.
+
 See also: 
 * [WebUI page](https://github.com/mrlt8/docker-wyze-bridge/wiki/WebUI)
 * [WebUI API page](https://github.com/mrlt8/docker-wyze-bridge/wiki/WebUI-API)
