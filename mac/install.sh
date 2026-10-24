@@ -45,6 +45,13 @@ main() {
         limactl create --name="$VM" --tty=false "$DIR/wyze-tunnel.yaml" </dev/null
     fi
 
+    # `wyze-tunnel` rescue command (restart, logs, repair...) for new Terminal windows.
+    mkdir -p "$DIR/bin"
+    curl -fsSL "https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/$REF/mac/wyze-tunnel" -o "$DIR/bin/wyze-tunnel"
+    chmod +x "$DIR/bin/wyze-tunnel"
+    grep -qs 'Wyze Tunnel/bin' "$HOME/.zprofile" ||
+        echo 'export PATH="$HOME/Library/Application Support/Wyze Tunnel/bin:$PATH"' >> "$HOME/.zprofile"
+
     say "Starting the VM"
     limactl start --tty=false "$VM" </dev/null
     limactl start-at-login "$VM" </dev/null >/dev/null 2>&1 || true
@@ -84,7 +91,8 @@ VM
         echo "  Then log in with the username and password you already use."
     fi
     echo "  RTSP:  rtsp://$MAC_IP:8554/<camera-name>"
-    echo "  It starts automatically when you log in. Run this command again any time to update."
+    echo "  It starts automatically when you log in and updates itself daily."
+    echo "  Trouble? Open a new Terminal window and run: wyze-tunnel help"
     [ -n "${WT_NO_OPEN:-}" ] || { sleep 3 && open http://localhost:5050 || true; }
 }
 
