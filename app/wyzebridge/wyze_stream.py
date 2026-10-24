@@ -14,7 +14,7 @@ from time import sleep, time
 from typing import Optional
 
 from wyzebridge.bridge_utils import env_bool, env_cam
-from wyzebridge.config import COOLDOWN, MQTT_TOPIC, TOKEN_PATH
+from wyzebridge.config import CHRONIC_FAILURES, COOLDOWN, COOLDOWN_MAX, MQTT_TOPIC, TOKEN_PATH
 from wyzebridge.ffmpeg import get_ffmpeg_cmd
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import publish_discovery, publish_messages, update_mqtt_state
@@ -92,6 +92,7 @@ class WyzeStream:
         "rtsp_fw_enabled",
         "_motion",
         "motion_ts",
+        "failures",
     )
 
     def __init__(self, camera: WyzeCamera, options: WyzeStreamOptions) -> None:
@@ -108,6 +109,7 @@ class WyzeStream:
         self._net_mode: c_int = mp.Value("i", -1, lock=False)
         self._motion: bool = False
         self.motion_ts: float = 0
+        self.failures: int = 0
         self.setup()
 
     def setup(self):
@@ -236,8 +238,14 @@ class WyzeStream:
             state = self.state
             self.stop()
             if state < StreamStatus.STOPPING:
-                self.start_time = time() + COOLDOWN
-                logger.info(f"{self.camera.nickname} will cooldown for {COOLDOWN}s.")
+                self.failures += 1
+                delay = backoff(self.failures)
+                self.start_time = time() + delay
+                logger.info(
+                    f"{self.camera.nickname} failed {self.failures}x, retrying in {delay}s."
+                )
+        elif self.state == StreamStatus.CONNECTED:
+            self.failures = 0
         elif (
             self.state == StreamStatus.STOPPED
             and self.options.reconnect
@@ -292,6 +300,8 @@ class WyzeStream:
             "start_time": self.start_time,
             "req_frame_size": self.options.frame_size,
             "req_bitrate": self.options.bitrate,
+            "failures": self.failures,
+            "chronic": self.failures >= CHRONIC_FAILURES,
         }
         if self.connected and not self.camera.camera_info:
             self.update_cam_info()
@@ -470,6 +480,11 @@ class WyzeStream:
             self.cam_resp.get_nowait()
 
 
+def backoff(failures: int) -> int:
+    """Seconds to wait before retry number `failures`: doubles, capped at COOLDOWN_MAX."""
+    return min(COOLDOWN * 2 ** min(failures - 1, 16), COOLDOWN_MAX)
+
+
 def start_tutk_stream(
     uri: str, stream: StreamTuple, queue: QueueTuple, state: c_int, net_mode: c_int
 ):
@@ -486,7 +501,9 @@ def start_tutk_stream(
             control_thread = setup_control(sess, queue, stream.options.substream)
             audio_thread = setup_audio(sess, uri)
 
-            ffmpeg_cmd = get_ffmpeg_cmd(uri, v_codec, audio, stream.camera.is_vertical)
+            ffmpeg_cmd = get_ffmpeg_cmd(
+                uri, v_codec, audio, stream.camera.is_vertical, sess.preferred_frame_rate
+            )
             assert state.value >= StreamStatus.CONNECTING, "Stream Stopped"
             state.value = StreamStatus.CONNECTED
             with Popen(ffmpeg_cmd, stdin=PIPE) as ffmpeg:
