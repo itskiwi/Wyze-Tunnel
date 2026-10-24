@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 
 import wyzecam
 from requests import get
-from requests.exceptions import ConnectionError, HTTPError, RequestException
+from requests.exceptions import HTTPError, RequestException
 from wyzebridge.auth import get_secret
 from wyzebridge.bridge_utils import env_bool, env_filter
 from wyzebridge.config import IMG_PATH, MOTION, TOKEN_PATH
@@ -65,7 +65,7 @@ def authenticated(func: Callable[..., Any]) -> Callable[..., Any]:
             return func(self, *args, **kwargs)
         except (RateLimitError, wyzecam.api.WyzeAPIError) as ex:
             logger.error(f"[API] {ex}")
-        except ConnectionError as ex:
+        except RequestException as ex:
             logger.warning(f"[API] {ex}")
 
     return wrapper
@@ -237,7 +237,7 @@ class WyzeApi:
 
         logger.info(f'☁️ Pulling "{uri}" thumbnail to {save_to}')
         try:
-            img = get(thumb)
+            img = get(thumb, timeout=15)
             img.raise_for_status()
         except Exception as ex:
             logger.warning(f"ERROR pulling thumbnail：{ex}")
