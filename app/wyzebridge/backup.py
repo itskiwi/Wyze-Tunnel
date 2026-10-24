@@ -1,7 +1,8 @@
 """Export and import the settings people change in the web UI. Wyze logins and tokens are never included."""
 import json
+from datetime import time
 
-from wyzebridge import webhooks, wyze_api, wyze_stream
+from wyzebridge import privacy, webhooks, wyze_api, wyze_stream
 from wyzebridge.config import VERSION
 
 
@@ -13,6 +14,7 @@ def _files() -> dict[str, str]:
         "cam_names": wyze_api.CAM_NAMES_FILE,
         "net_modes": wyze_stream.NET_MODES_FILE,
         "quality": wyze_stream.QUALITY_FILE,
+        "privacy": privacy.PRIVACY_FILE,
     }
 
 
@@ -47,6 +49,16 @@ def _alerts(value) -> dict:
     return value
 
 
+def _privacy(value) -> dict:
+    if not isinstance(value, dict):
+        raise ValueError
+    _str_list(value.get("cams", []))
+    for key in ("start", "end"):
+        if value.get("cams") or key in value:
+            time.fromisoformat(str(value.get(key)))  # ValueError if missing or not HH:MM
+    return value
+
+
 def import_settings(backup: dict) -> list[str]:
     """Validate everything first, then write. Raises ValueError with a message for the user."""
     if not isinstance(backup, dict) or backup.get("wyze_tunnel_backup") != 1:
@@ -60,6 +72,7 @@ def import_settings(backup: dict) -> list[str]:
         "net_modes": lambda v: _str_map(v, set(wyze_stream.NET_MODE_CHOICES.values())),
         "quality": lambda v: _str_map(v, set(wyze_stream.QUALITY_CHOICES.values())),
         "alerts": _alerts,
+        "privacy": _privacy,
     }
     try:
         clean = {name: checked[name](value) for name, value in settings.items()}

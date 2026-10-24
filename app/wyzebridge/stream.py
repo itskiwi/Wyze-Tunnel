@@ -10,6 +10,7 @@ from wyzebridge.ffmpeg import rtsp_snap_cmd
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import bridge_status, cam_control, publish_topic, update_preview
 from wyzebridge.mtx_event import RtspEvent
+from wyzebridge.privacy import PrivacySchedule
 from wyzebridge.webhooks import ALERTS
 from wyzebridge.wyze_events import WyzeEvents
 
@@ -98,6 +99,7 @@ class StreamManager:
         event = RtspEvent(self.streams)
         events = None
         last_health = 0.0
+        privacy = PrivacySchedule()
         while not self.stop_flag:
             # One bad iteration must not end monitoring, or no stream ever reconnects.
             try:
@@ -112,6 +114,7 @@ class StreamManager:
                     last_health = time.time()
                     mtx_health()
                     bridge_status(mqtt, self.streams)
+                    privacy.check(self.streams)
             except Exception:
                 logger.exception("[MONITOR] Error in stream monitor loop")
                 time.sleep(1)
