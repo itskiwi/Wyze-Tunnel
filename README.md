@@ -45,6 +45,17 @@ See the [supported cameras](#supported-cameras) section for additional informati
 
 ## Quick Start
 
+### Tunnel Box (Raspberry Pi or mini PC)
+
+Turn a spare Raspberry Pi 4/5 or a 64-bit mini PC (like an Intel N100) into a box that just runs Wyze Tunnel. Nothing to install or type:
+
+1. Download the image from the [latest release](https://github.com/itskiwi/Wyze-Tunnel/releases/latest): `wyze-tunnel-box-pi.img.xz` for a Raspberry Pi, `wyze-tunnel-box-pc.img.xz` for a mini PC.
+2. Write it to a microSD card (Pi) or a USB stick or SSD (PC) with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (**Choose OS** → **Use Custom**) or [balenaEtcher](https://etcher.balena.io/).
+3. Plug the box into your router with a network cable and turn it on.
+4. After a few minutes, open **http://wyze-tunnel.local** on your phone or computer and sign in with your Wyze account. The setup page then shows the box's login. With a screen attached, the box also shows a QR code to scan instead.
+
+On Wi-Fi only? In Raspberry Pi Imager, click **Edit settings** before writing the card and enter your Wi-Fi there. The box updates itself every night, like the Linux install below, and `wyze-tunnel help` works over SSH if you turn that on in Imager too. If `wyze-tunnel.local` doesn't open (some Android phones), use the box's address from your router's device list. With two boxes, the second one is `wyze-tunnel-2.local`.
+
 ### Windows and Mac app
 
 Download **Wyze Tunnel** for Windows (`.exe`) or Mac (`.dmg`) from the [latest desktop release](https://github.com/itskiwi/Wyze-Tunnel/releases?q=desktop-v), open it and click **Set up**. The app keeps Wyze Tunnel running from the tray or menu bar.
