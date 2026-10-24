@@ -74,6 +74,7 @@ Then open `http://<this-machine-ip>:5000` and sign in with your Wyze account. It
 - Settings: `/etc/wyze-tunnel/wyze-tunnel.env` (any option from this README, as `NAME=value`), then `sudo systemctl restart wyze-tunnel`
 - Logs: `journalctl -u wyze-tunnel -f`
 - Versions: it installs the latest [release](https://github.com/itskiwi/Wyze-Tunnel/releases) for your CPU (x86_64, arm64 or armv7, with ffmpeg and MediaMTX included). Add `WT_REF=main` (or a branch or tag) before `bash` to install that source instead.
+- Updates: it checks for a new release once a day and installs it (or use the ↻ button next to the version in the web UI). Turn off with `sudo systemctl disable --now wyze-tunnel-update.timer`.
 - Logs rotate automatically (journald). With `LOG_FILE=true`, the debug log goes to `/var/lib/wyze-tunnel/logs/debug.log` and rotates at 5 MB.
 - Coming from Docker? The installer finds your `wyze-bridge` container and copies its sign-in and snapshots over, then tells you how to stop the container.
 - Reporting a bug? Use **Download diagnostics** at the bottom of the web page. It has versions, camera models and recent logs, with emails, IPs, MACs, passwords and tokens removed.
@@ -152,7 +153,7 @@ Recoding streams has been updated to use MediaMTX with the option to delete olde
 
 Use `RECORD_ALL` or `RECORD_CAM_NAME` to enable recording.
 
-- `RECORD_PATH` Available variables are `%path` or `{cam_name}`, `%Y` `%m` `%d` `%H` `%M` `%S` `%f` `%s` (time in strftime format).
+- `RECORD_PATH` Available variables are `%path` or `{cam_name}`, `%Y` `%m` `%d` `%H` `%M` `%S` `%f` `%s` (time in strftime format). Keep all of `%Y %m %d %H %M %S %f` in it so the web UI's Recordings page can play clips.
 - `RECORD_LENGTH` Length of each clip. Use `s` for seconds , `h` for hours. Defaults to `60s`
 - `RECORD_KEEP` Delete older clips. Use `s` for seconds , `h` for hours. Set to 0s to disable automatic deletion. Defaults to `0s`
 
@@ -280,6 +281,10 @@ The web-ui can be accessed on the default port `5000`:
 ```text
 http://localhost:5000/
 ```
+
+- **Alerts**: phone notifications through the free [ntfy](https://ntfy.sh) app when there's motion (with a snapshot) or a camera goes offline, plus quiet hours. Set them up in the web UI under Alerts. Motion alerts use Wyze's cloud motion events. `MOTION_WEBHOOKS` and `OFFLINE_WEBHOOKS`, if you set them, take priority.
+- **Recordings**: play and download clips for cameras with recording turned on.
+- **Install as an app**: use "Add to Home Screen" on your phone. `f` opens the full-screen camera wall, `r` refreshes previews and `1`-`6` sets the number of columns.
 
 See also: 
 * [WebUI page](https://github.com/mrlt8/docker-wyze-bridge/wiki/WebUI)

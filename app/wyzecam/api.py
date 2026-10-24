@@ -3,7 +3,7 @@ import json
 import time
 import urllib.parse
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from hashlib import md5
 from os import getenv
 from functools import partial
@@ -69,7 +69,9 @@ class RateLimitError(Exception):
     def get_reset_time(reset_by: str) -> int:
         ts_format = "%a %b %d %H:%M:%S %Z %Y"
         try:
-            return int(datetime.strptime(reset_by, ts_format).timestamp())
+            # %Z parses "UTC" but leaves the datetime naive, which .timestamp() would read as local time.
+            parsed = datetime.strptime(reset_by, ts_format).replace(tzinfo=timezone.utc)
+            return int(parsed.timestamp())
         except Exception:
             return 0
 

@@ -17,6 +17,10 @@
         <span class="tab"><i class="fas fa-users-viewfinder"></i><span>{{ cam_data.total }} cameras</span></span>
         {% endif %}
     </nav>
+    <a href="alerts" class="tab"><i class="fas fa-bell"></i><span>Alerts</span></a>
+    {% if cam_data.cameras and cam_data.cameras.values()|selectattr("record")|list %}
+    <a href="recordings" class="tab"><i class="fas fa-clock-rotate-left"></i><span>Recordings</span></a>
+    {% endif %}
     <button id="menu-toggle" class="btn ml-auto md:hidden" aria-label="Settings" aria-controls="refresh-menu">
         <i class="fas fa-sliders"></i>
     </button>
@@ -145,6 +149,32 @@
                             <button class="button btn" data-cmd="night_vision" data-payload="off">Off</button>
                             <button class="button btn" data-cmd="night_vision" data-payload="auto">Auto</button>
                         </div>
+                        {% if camera.is_pan_cam %}
+                        <p class="menu-label"><i class="fas fa-arrows-up-down-left-right"></i> Pan and tilt</p>
+                        <div class="grid grid-cols-3 gap-1 p-1">
+                            <span></span>
+                            <button class="button btn" data-cmd="rotary_degree" data-payload="up" aria-label="Tilt up"><i class="fas fa-chevron-up"></i></button>
+                            <span></span>
+                            <button class="button btn" data-cmd="rotary_degree" data-payload="left" aria-label="Pan left"><i class="fas fa-chevron-left"></i></button>
+                            <button class="button btn" data-cmd="reset_rotation" data-payload="3" title="Back to center" aria-label="Back to center"><i class="fas fa-crosshairs"></i></button>
+                            <button class="button btn" data-cmd="rotary_degree" data-payload="right" aria-label="Pan right"><i class="fas fa-chevron-right"></i></button>
+                            <span></span>
+                            <button class="button btn" data-cmd="rotary_degree" data-payload="down" aria-label="Tilt down"><i class="fas fa-chevron-down"></i></button>
+                            <span></span>
+                        </div>
+                        {% endif %}
+                        {% if camera.is_floodlight %}
+                        <p class="menu-label"><i class="fas fa-lightbulb"></i> Floodlight</p>
+                        <div class="grid grid-cols-2 gap-1 p-1">
+                            <button class="button btn" data-cmd="floodlight" data-payload="on">On</button>
+                            <button class="button btn" data-cmd="floodlight" data-payload="off">Off</button>
+                        </div>
+                        {% endif %}
+                        <p class="menu-label"><i class="fas fa-bell"></i> Siren</p>
+                        <div class="grid grid-cols-2 gap-1 p-1">
+                            <button class="button btn text-rose-300" data-cmd="alarm" data-payload="on">Sound</button>
+                            <button class="button btn" data-cmd="alarm" data-payload="off">Stop</button>
+                        </div>
                     </div>
                 </details>
                 <details class="dropdown relative border-l border-white/5">
@@ -165,6 +195,10 @@
                         {% if camera.boa_url %}
                         <a href="{{camera.boa_url}}" class="menu-item" target="_blank"><i class="fas fa-sd-card w-4"></i>SD card</a>
                         {% endif %}
+                        {% if camera.record %}
+                        <a href="recordings?cam={{cam_uri}}" class="menu-item"><i class="fas fa-clock-rotate-left w-4"></i>Recordings</a>
+                        {% endif %}
+                        <button class="menu-item copy-rtsp"><i class="fas fa-copy w-4"></i>Copy RTSP link</button>
                         <p class="menu-label">Snapshots</p>
                         <a href="{{camera.snapshot_url}}" class="menu-item" target="_blank"><i class="fas fa-file-image w-4"></i>RTSP snapshot{% if api %}<i class="fas fa-lock ml-auto text-xs text-zinc-500"></i>{% endif %}</a>
                         <a href="{{camera.thumbnail_url}}" class="menu-item" target="_blank"><i class="fas fa-file-image w-4"></i>API thumbnail{% if api %}<i class="fas fa-lock ml-auto text-xs text-zinc-500"></i>{% endif %}</a>

@@ -16,11 +16,13 @@ cmd.exe /c 'wsl.exe --status >nul 2>&1'
 if ($LASTEXITCODE) {
     Say 'Turning on WSL (Windows will ask for permission)'
     wsl.exe --install --no-distribution
+    if ($LASTEXITCODE) { throw "Turning on WSL didn't finish ($LASTEXITCODE). Approve the Windows permission prompt and try again." }
     Write-Output 'Restart your PC, then open Wyze Tunnel again.'
     exit 3
 }
 
-$Distros = wsl.exe -l -q | ForEach-Object { $_.Trim() }
+# Older inbox wsl.exe ignores WSL_UTF8 and prints UTF-16, hence the NUL stripping.
+$Distros = wsl.exe -l -q | ForEach-Object { ($_ -replace "`0", '').Trim() }
 if ($Distros -notcontains $Distro) {
     Say 'Updating WSL'
     wsl.exe --update  # --name and --location need WSL 2.4.4+
@@ -33,7 +35,7 @@ if ($Distros -notcontains $Distro) {
 }
 
 Say 'Installing Wyze Tunnel inside WSL'
-Wsl -d $Distro -u root -- bash -euo pipefail -c "command -v curl >/dev/null || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl >/dev/null; }; curl -fsSL https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/$Ref/native/install.sh | WT_REF=$Ref bash >/dev/null"
+Wsl -d $Distro -u root -- bash -euo pipefail -c "command -v curl >/dev/null || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl >/dev/null; }; curl -fsSL https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/$Ref/native/install.sh | WT_REF=$env:WT_REF bash >/dev/null"
 
 $Password = wsl.exe -d $Distro -u root --exec sed -n 's/^WB_PASSWORD=//p' /etc/wyze-tunnel/wyze-tunnel.env
 Say 'Done! Wyze Tunnel is running.'

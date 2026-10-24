@@ -14,16 +14,19 @@ from flask import (
     request,
     send_from_directory,
 )
+import requests
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import config, web_ui
+from wyzebridge import config, web_ui, webhooks
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
+from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED
 from wyzebridge.web_ui import url_for
 
 
 def create_app():
     app = Flask(__name__)
+    app.jinja_env.globals["can_update"] = bool(os.getenv("WT_UPDATE_FILE"))
     wb = WyzeBridge()
     try:
         wb.start()
@@ -108,7 +111,7 @@ def create_app():
         if wb.api.mfa and "verification_code" not in wb.api.mfa:
             return {"state": "mfa", "mfa_type": wb.api.mfa["mfa_type"]}
         if wb.api.login_error:
-            return {"state": "error", "error": wb.api.login_error}
+            return {"state": "error", "error": wb.api.login_error, "retry_at": wb.api.login_retry_at}
         return {"state": "signing_in" if wb.api.creds.is_set else "idle"}
 
     @app.route("/")
@@ -275,6 +278,15 @@ def create_app():
         )
         return resp
 
+    @app.route("/update", methods=["POST"])
+    @auth_required
+    def self_update():
+        """Native installs: ask wyze-tunnel-update.path to install the latest release."""
+        if not (flag := os.getenv("WT_UPDATE_FILE")):
+            return {"result": "error", "error": "This install can't update itself"}, 400
+        Path(flag).touch()
+        return {"result": "ok"}
+
     @app.route("/restart/<string:restart_cmd>")
     @auth_required
     def restart_bridge(restart_cmd: str):
@@ -299,6 +311,83 @@ def create_app():
         else:
             return {"result": "error"}
         return {"result": "ok", "restart": restart_cmd.split(",")}
+
+    @app.route("/alerts", methods=["GET", "POST"])
+    @auth_required
+    def alerts():
+        if request.method == "POST":
+            try:
+                webhooks.save_alerts(request.get_json(silent=True) or request.form.to_dict())
+            except ValueError as ex:
+                return {"error": str(ex)}, 400
+            return {"status": "saved"}
+        settings = webhooks.ALERTS or {"server": "https://ntfy.sh", "motion": True, "offline": True}
+        return render_template(
+            "alerts.html",
+            settings=settings,
+            # Anyone who knows an ntfy.sh topic can read it, so suggest one nobody can guess.
+            suggested_topic=f"wyze-tunnel-{secrets.token_hex(6)}",
+            api=WbAuth.api,
+            version=config.VERSION,
+        )
+
+    @app.route("/alerts/test", methods=["POST"])
+    @auth_required
+    def alerts_test():
+        if not webhooks.alert_url("test"):
+            return {"error": "Save a topic first."}, 400
+        if webhooks.send_webhook("test", "Wyze Tunnel", "Test alert from Wyze Tunnel. Alerts are working!"):
+            return {"status": "sent"}
+        return {"error": "Couldn't reach the alert server. Check the server address and your internet."}, 502
+
+    @app.route("/recordings")
+    @auth_required
+    def recordings_page():
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return render_template(
+            "recordings.html",
+            cameras={uri: cam for uri, cam in cams.items() if cam.get("record")},
+            selected=request.args.get("cam"),
+            playback=PLAYBACK_ENABLED,
+            api=WbAuth.api,
+            version=config.VERSION,
+        )
+
+    @app.route("/recordings/<string:cam_name>")
+    @auth_required
+    def recordings(cam_name: str):
+        """List recorded segments: [{"start": RFC3339, "duration": seconds}]."""
+        resp = mtx_playback("list", path=cam_name)
+        if not resp.ok:  # MediaMTX answers 404 when a camera has no recordings yet
+            return [], 200 if resp.status_code == 404 else resp.status_code
+        return [{"start": r["start"], "duration": r["duration"]} for r in resp.json()]
+
+    @app.route("/recordings/<string:cam_name>/play")
+    @auth_required
+    def play_recording(cam_name: str):
+        """Stream an MP4 of a recording. Needs ?start=<RFC3339>&duration=<seconds>."""
+        args = {"start": request.args.get("start"), "duration": request.args.get("duration")}
+        if not all(args.values()):
+            return {"error": "start and duration are required"}, 400
+        resp = mtx_playback("get", stream=True, path=cam_name, format="mp4", **args)
+        if not resp.ok:
+            return {"error": resp.text.strip()}, resp.status_code
+        name = f"{cam_name}_{args['start']}.mp4".replace(":", "-")
+        return Response(
+            resp.iter_content(64 * 1024),
+            mimetype="video/mp4",
+            headers={"Content-Disposition": f'inline; filename="{name}"'},
+        )
+
+    def mtx_playback(endpoint: str, stream: bool = False, **params) -> requests.Response:
+        try:
+            return requests.get(
+                f"http://{PLAYBACK_ADDR}/{endpoint}", params=params, stream=stream, timeout=10
+            )
+        except requests.RequestException as ex:
+            resp = requests.Response()
+            resp.status_code, resp._content = 503, str(ex).encode()
+            return resp
 
     @app.route("/cams.m3u8")
     @auth_required

@@ -83,3 +83,17 @@ def test_status_reveals_web_password_only_to_the_wizard_browser(monkeypatch):
     shown = client.get(f"/login/status?setup={token}").json
     assert shown == {"state": "done", "username": WbAuth.username, "password": "s3cret"}
     assert "password" not in client.get(f"/login/status?setup={token}").json  # only once
+
+
+def test_rate_limit_gives_wizard_the_reset_time(monkeypatch):
+    from wyzecam.api import RateLimitError
+
+    class Resp:
+        headers = {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset-By": "Sat Oct 24 09:04:58 UTC 2026"}
+
+    def login(**kw):
+        raise RateLimitError(Resp)
+
+    api = make_api(monkeypatch, login)
+    api.attempt_login(web=True)
+    assert api.login_retry_at == 1792832698  # 2026-10-24T09:04:58Z, whatever the host timezone

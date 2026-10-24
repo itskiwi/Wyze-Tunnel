@@ -28,6 +28,12 @@
         })();
     </script>
     <title>Wyze Tunnel</title>
+    <link rel="manifest" href="static/manifest.webmanifest" />
+    <link rel="icon" href="static/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="static/icon-192.png" />
+    <meta name="theme-color" content="#09090b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
     <link rel="stylesheet" href="static/tailwind.css" />
@@ -49,7 +55,8 @@
             <a class="font-semibold text-zinc-300 hover:text-white" href="https://github.com/itskiwi/Wyze-Tunnel">
                 <i class="fa-brands fa-github"></i> Wyze Tunnel</a>
             <span>v{{ version }}</span>
-            <button id="checkUpdate" class="hover:text-white" title="Check for updates" data-version="{{version}}">
+            <button id="checkUpdate" class="hover:text-white" title="Check for updates" data-version="{{version}}"
+                data-can-update="{{ 1 if can_update else '' }}">
                 <i class="fas fa-arrows-rotate"></i></button>
         </p>
         <p class="mt-1 text-xs">Based on <a class="hover:text-zinc-300 underline underline-offset-2"
