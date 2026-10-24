@@ -345,6 +345,16 @@ All environment variables are optional.
 * [BOA HTTP Server/Motion Alerts](https://github.com/mrlt8/docker-wyze-bridge/wiki/Boa-HTTP-Server)
 * [Debugging Options](https://github.com/mrlt8/docker-wyze-bridge/wiki/Advanced-Option#debugging-options)
 
+### How Wyze Tunnel connects to each camera
+
+Each camera has a list of ways to connect, and Wyze Tunnel moves to the next one after 5 failed tries in a row (`SOURCE_FALLBACK_AFTER`):
+
+1. `tutk`: the Wyze SDK, the classic way. Works on your network and remotely, and supports controls like pan/tilt and the siren.
+2. `lan`: [go2rtc](https://github.com/AlexxIT/go2rtc)'s built-in Wyze client. It works on your network only, for cameras with DTLS firmware.
+3. `webrtc`: Wyze's cloud WebRTC, through go2rtc. It works for cameras that the Wyze app streams over WebRTC.
+
+Controls only work over `tutk`. To pick the order yourself, set `SOURCE_<CAMERA_NAME>`, `SOURCE_<MODEL>` or `SOURCE`, e.g. `SOURCE_FRONT_DOOR=lan,tutk` or `SOURCE_HL_CAM4=webrtc`. Use `auto` for the default. The Doorbell Pro and OG cameras (`GW_*`) are off unless you opt in with `SOURCE_<CAMERA_NAME>=webrtc`. Stream URLs stay the same whichever way a camera connects.
+
 ## Other Wyze Projects
 
 Honorable Mentions:

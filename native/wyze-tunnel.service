@@ -11,6 +11,7 @@ Environment=PATH=/opt/wyze-tunnel/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/
 Environment=TOKEN_PATH=/var/lib/wyze-tunnel/tokens IMG_DIR=/var/lib/wyze-tunnel/img
 Environment="RECORD_PATH=/var/lib/wyze-tunnel/record/%%path/%%Y-%%m-%%d_%%H-%%M-%%S"
 Environment=MEDIAMTX_BIN=/opt/wyze-tunnel/mediamtx MEDIAMTX_CONFIG=/var/lib/wyze-tunnel/mediamtx.yml
+Environment=GO2RTC_BIN=/opt/wyze-tunnel/go2rtc GO2RTC_CONFIG=/var/lib/wyze-tunnel/go2rtc.yaml
 Environment=TUTK_LIB=/opt/wyze-tunnel/libIOTCAPIs_ALL.so LOG_PATH=/var/lib/wyze-tunnel/logs
 # The web UI's update button creates this file; wyze-tunnel-update.path picks it up.
 Environment=WT_UPDATE_FILE=/var/lib/wyze-tunnel/update-now

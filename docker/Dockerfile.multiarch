@@ -28,6 +28,7 @@ RUN echo "BUILDING IMAGE FOR ${TARGETARCH}" && \
     | tar xzf - -C . \
     && curl -SL https://github.com/bluenviron/mediamtx/releases/download/v${MTX_TAG}/mediamtx_v${MTX_TAG}_linux_${MTX_ARCH}.tar.gz \
     | tar xzf - -C app \
+    && curl -fSL -o app/go2rtc https://github.com/AlexxIT/go2rtc/releases/download/v${GO2RTC_TAG}/go2rtc_linux_${TARGETARCH} && chmod +x app/go2rtc \
     && cp app/lib/lib.${TARGETARCH} usr/local/lib/libIOTCAPIs_ALL.so \
     && rm -rf app/*.txt app/lib/  \ 
     && if [ -z "${BUILD_DATE}" ]; then echo BUILD_DATE=$(date) > .build_date; else echo BUILD_DATE=${BUILD_DATE} > .build_date; fi

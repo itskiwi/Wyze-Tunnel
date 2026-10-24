@@ -75,12 +75,13 @@ if ! has_deps; then
 fi
 
 case "$(uname -m)" in
-    x86_64) LIB_ARCH=amd64 MTX_ARCH=amd64 ;;
-    aarch64) LIB_ARCH=arm64 MTX_ARCH=arm64v8 ;;
-    armv7l) LIB_ARCH=arm MTX_ARCH=armv7 ;;
+    x86_64) LIB_ARCH=amd64 MTX_ARCH=amd64 G2R_ARCH=amd64 ;;
+    aarch64) LIB_ARCH=arm64 MTX_ARCH=arm64v8 G2R_ARCH=arm64 ;;
+    armv7l) LIB_ARCH=arm MTX_ARCH=armv7 G2R_ARCH=arm ;;
     *) echo "Unsupported CPU: $(uname -m) (need x86_64, aarch64 or armv7l)" >&2; exit 1 ;;
 esac
 MTX_TAG=$(grep '^MTX_TAG=' "$SRC/app/.env" | cut -d= -f2)
+GO2RTC_TAG=$(grep '^GO2RTC_TAG=' "$SRC/app/.env" | cut -d= -f2)
 
 echo "==> Installing app to $PREFIX"
 mkdir -p "$PREFIX"
@@ -101,6 +102,15 @@ else
     echo "==> Downloading MediaMTX v$MTX_TAG ($MTX_ARCH)"
     curl -fsSL "https://github.com/bluenviron/mediamtx/releases/download/v${MTX_TAG}/mediamtx_v${MTX_TAG}_linux_${MTX_ARCH}.tar.gz" \
         | tar xzf - -C "$PREFIX" mediamtx mediamtx.yml
+fi
+if [ -x "$SRC/go2rtc" ]; then
+    cp --remove-destination "$SRC/go2rtc" "$PREFIX/"
+else
+    echo "==> Downloading go2rtc v$GO2RTC_TAG ($G2R_ARCH)"
+    # Optional: without it, cameras still connect the classic way.
+    curl -fsSL -o "$PREFIX/go2rtc.new" "https://github.com/AlexxIT/go2rtc/releases/download/v${GO2RTC_TAG}/go2rtc_linux_${G2R_ARCH}" \
+        && chmod +x "$PREFIX/go2rtc.new" && mv -f "$PREFIX/go2rtc.new" "$PREFIX/go2rtc" \
+        || echo "   (couldn't download go2rtc; skipping)"
 fi
 rm -rf "$PREFIX/bin"
 [ -z "$FFMPEG" ] && install -D -m 755 "$SRC/bin/ffmpeg" "$PREFIX/bin/ffmpeg"
