@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<header class="mb-6 flex flex-wrap items-center gap-3">
+    <a href="./" class="mr-2 flex items-center gap-2 text-lg font-semibold tracking-tight">
+        <span class="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500 text-zinc-950"><i
+                class="fas fa-video text-sm"></i></span>
+        Wyze Tunnel
+    </a>
+    <h1 class="text-lg text-zinc-400">Events</h1>
+</header>
+
+{% if events %}
+<ul class="mx-auto grid max-w-5xl gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {% for event in events %}
+    <li class="overflow-hidden rounded-2xl bg-zinc-900 ring-1 ring-white/5">
+        <div class="aspect-video bg-black">
+            {% if event.img %}
+            <img src="{{ event.img }}" alt="Motion on {{ event.name }}" loading="lazy" class="h-full w-full object-cover"
+                onerror="this.replaceWith(Object.assign(document.createElement('p'), {className: 'grid h-full place-items-center text-sm text-zinc-500', textContent: 'Snapshot expired'}))" />
+            {% endif %}
+        </div>
+        <div class="flex items-center gap-2 px-4 py-3 text-sm">
+            <span class="font-medium">{{ event.name }}</span>
+            <time class="event-time ml-auto text-zinc-400" datetime="{{ event.ts }}"></time>
+        </div>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<div class="mx-auto mt-16 max-w-md text-center text-zinc-400">
+    <p>No motion events yet.</p>
+    {% if not motion_on %}
+    <p class="mt-1 text-sm">Turn on motion alerts under <a class="underline underline-offset-2" href="alerts">Alerts</a> to start collecting them.</p>
+    {% else %}
+    <p class="mt-1 text-sm">Events show up here as Wyze reports motion. This list resets when Wyze Tunnel restarts.</p>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block javascript %}
+<script>
+    // Server timestamps are Unix seconds; show them in the viewer's own time zone.
+    document.querySelectorAll(".event-time").forEach((el) => {
+        const date = new Date(Number(el.getAttribute("datetime")) * 1000);
+        el.textContent = date.toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+        el.setAttribute("datetime", date.toISOString());
+    });
+</script>
+{% endblock %}

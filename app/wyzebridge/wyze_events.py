@@ -10,6 +10,10 @@ from wyzebridge.webhooks import send_webhook
 from wyzebridge.wyze_stream import WyzeStream
 
 
+# shortcut: kept in memory, so the history clears on restart; persist it if people want older events.
+EVENT_LOG: deque[dict] = deque(maxlen=100)
+
+
 class WyzeEvents:
     __slots__ = "api", "streams", "events", "last_check", "last_ts"
 
@@ -41,6 +45,9 @@ class WyzeEvents:
                 event_time = datetime.fromtimestamp(self.last_ts)
                 msg = f"Motion detected on {stream.uri} at {event_time: %H:%M:%S}"
                 logger.info(f"[MOTION] {msg}")
+                EVENT_LOG.appendleft(
+                    {"uri": stream.uri, "name": stream.camera.nickname, "ts": self.last_ts, "img": img}
+                )
                 send_webhook("motion", stream.uri, msg, img)
                 if MOTION_START:
                     stream.start()

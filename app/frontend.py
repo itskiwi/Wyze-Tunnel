@@ -23,6 +23,7 @@ from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
 from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED
 from wyzebridge.web_ui import url_for
+from wyzebridge.wyze_events import EVENT_LOG
 
 
 def create_app():
@@ -320,6 +321,17 @@ def create_app():
             "health.html",
             cameras=web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"],
             now=time.time(),
+            api=WbAuth.api,
+            version=config.VERSION,
+        )
+
+    @app.route("/events")
+    @auth_required
+    def events():
+        return render_template(
+            "events.html",
+            events=list(EVENT_LOG),
+            motion_on=bool(config.MOTION or webhooks.ALERTS.get("motion")),
             api=WbAuth.api,
             version=config.VERSION,
         )
