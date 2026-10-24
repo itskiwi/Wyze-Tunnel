@@ -20,7 +20,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import backup, config, guests, privacy, shares, street_watch, web_ui, webhooks, wyze_api
+from wyzebridge import backup, config, guests, pocket, privacy, shares, street_watch, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
@@ -504,10 +504,43 @@ def create_app():
         guests.remove_guest(name)
         return {"status": "removed"}
 
-    @app.route("/settings/backup")
+    @app.route("/pair", methods=["POST"])
+    @auth_required
+    def pair_start():
+        if not WbAuth.enabled:
+            return {"error": "Login is turned off (WB_AUTH=False), so any phone on your network can already open it."}, 400
+        if web_ui.current_guest():
+            return {"error": "Only the owner can pair a phone."}, 403
+        path = url_for("pair_phone", code=pocket.new_code())
+        host, _, port = request.host.rpartition(":") if request.host.count(":") == 1 else (request.host, "", "")
+        port = f":{port}" if port else ""
+        if host in ("localhost", "127.0.0.1", "[::1]"):
+            host = pocket.lan_ip()
+        codes = {"home": f"{request.scheme}://{host}{port}{path}"}
+        if (ts_host := pocket.tailscale_host()) and ts_host != host:
+            codes["anywhere"] = f"http://{ts_host}{port}{path}"
+        return {k: {"url": url, "qr": pocket.qr_svg(url)} for k, url in codes.items()}
+
+    @app.route("/pair/<string:code>")
+    def pair_phone(code: str):
+        if not WbAuth.enabled:
+            return redirect(url_for("index"))
+        if not (cookie := pocket.claim(code, request.user_agent.string, WbAuth.username)):
+            return render_template("pair.html", version=config.VERSION), 410
+        resp = redirect(url_for("index", pocket=1))
+        resp.set_cookie(pocket.COOKIE, cookie, max_age=pocket.COOKIE_SECONDS, httponly=True, samesite="Lax", secure=request.is_secure)
+        return resp
+
+    @app.route("/settings/backup", methods=["GET", "POST"])
     @auth_required
     def settings_backup():
-        resp = make_response(backup.export_settings())
+        data = backup.export_settings()
+        if request.method == "POST":
+            try:
+                data = backup.encrypt(data, str((request.get_json(silent=True) or {}).get("passphrase") or ""))
+            except ValueError as ex:
+                return {"error": str(ex)}, 400
+        resp = make_response(data)
         resp.headers["Content-Disposition"] = "attachment; filename=wyze-tunnel-settings.json"
         return resp
 
@@ -515,7 +548,7 @@ def create_app():
     @auth_required
     def settings_restore():
         try:
-            restored = backup.import_settings(request.get_json(silent=True))
+            restored = backup.import_settings(backup.unlock(request.get_json(silent=True)))
         except ValueError as ex:
             return {"error": str(ex)}, 400
         # Hidden cameras, names, quality and connection choices apply when streams restart.

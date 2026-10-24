@@ -1,6 +1,15 @@
 {% extends 'base.html' %}
 
 {% block content %}
+{% if request.args.pocket %}
+<section id="pocketTip" class="surface mb-4 p-4 sm:p-5" role="status">
+    <h2 class="font-display text-lg font-extrabold text-zinc-50">This phone is paired</h2>
+    <p class="mt-1 text-sm text-zinc-400">Put Wyze Tunnel on your home screen so it opens like an app. On iPhone, tap Share, then
+        Add to Home Screen. On Android, open the browser menu and tap Install app.</p>
+    <button class="btn mt-3" onclick="this.parentElement.remove()">Got it</button>
+</section>
+<script>matchMedia("(display-mode: standalone)").matches && document.getElementById("pocketTip").remove();</script>
+{% endif %}
 {% set online = cameras.values()|selectattr('connected')|list|length %}
 {% set offline = cameras.values()|selectattr('status', 'equalto', -90)|list|length %}
 <header class="pb-5 pt-2">

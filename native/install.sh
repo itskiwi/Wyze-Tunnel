@@ -128,6 +128,10 @@ rm -rf "$PREFIX/app/lib"
 
 echo "==> Installing Python dependencies"
 [ -x "$PREFIX/venv/bin/python" ] || python3 -m venv "$PREFIX/venv"
+# cffi (needed by cryptography) has no 32-bit ARM wheel, so pip compiles it there.
+if [ "$(uname -m)" = armv7l ] && command -v apt-get >/dev/null; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gcc libffi-dev python3-dev </dev/null
+fi
 "$PREFIX/venv/bin/pip" install --quiet --disable-pip-version-check -r "$PREFIX/app/requirements.txt"
 "$PREFIX/venv/bin/python" -m compileall -q "$PREFIX/app"
 

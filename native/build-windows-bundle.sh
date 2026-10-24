@@ -34,7 +34,7 @@ unzip -q "$TMP/dl.zip" mediamtx.exe mediamtx.yml -d "$STAGE"
 get "https://github.com/AlexxIT/go2rtc/releases/download/v${GO2RTC_TAG}/go2rtc_win64.zip"
 unzip -q "$TMP/dl.zip" go2rtc.exe -d "$STAGE"
 get "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-unzip -q -j "$TMP/dl.zip" '*/bin/ffmpeg.exe' -d "$STAGE/bin"
+unzip -q -j "$TMP/dl.zip" '*/bin/ffmpeg.exe' '*/bin/ffprobe.exe' -d "$STAGE/bin"
 
 (cd "$TMP" && zip -qr "$OUT/wyze-tunnel-windows-x86_64.zip" wyze-tunnel)
 echo "$OUT/wyze-tunnel-windows-x86_64.zip"
