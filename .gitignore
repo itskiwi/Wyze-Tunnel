@@ -8,3 +8,4 @@
 *.env
 *.pyc
 !/app/.env
+!/native/wyze-tunnel.env

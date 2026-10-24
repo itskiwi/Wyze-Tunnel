@@ -1,0 +1,36 @@
+[Unit]
+Description=Wyze Tunnel - WebRTC/RTSP/RTMP/HLS bridge for Wyze cams
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+WorkingDirectory=/opt/wyze-tunnel/app
+Environment=PYTHONUNBUFFERED=1 FLASK_APP=frontend
+Environment=TOKEN_PATH=/var/lib/wyze-tunnel/tokens IMG_DIR=/var/lib/wyze-tunnel/img
+Environment="RECORD_PATH=/var/lib/wyze-tunnel/record/%%path/%%Y-%%m-%%d_%%H-%%M-%%S"
+Environment=MEDIAMTX_BIN=/opt/wyze-tunnel/mediamtx MEDIAMTX_CONFIG=/var/lib/wyze-tunnel/mediamtx.yml
+Environment=TUTK_LIB=/opt/wyze-tunnel/libIOTCAPIs_ALL.so
+# Settings in this file override the defaults above.
+EnvironmentFile=/etc/wyze-tunnel/wyze-tunnel.env
+# Start from a clean MediaMTX config each time, like a fresh container; the bridge edits it on startup.
+ExecStartPre=/bin/cp /opt/wyze-tunnel/mediamtx.yml /var/lib/wyze-tunnel/mediamtx.yml
+ExecStart=/opt/wyze-tunnel/venv/bin/flask run --host=0.0.0.0
+Restart=always
+RestartSec=5
+
+DynamicUser=yes
+StateDirectory=wyze-tunnel
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+# Uncomment for hardware video encoding (VAAPI/QSV) via /dev/dri:
+#SupplementaryGroups=video render
+
+[Install]
+WantedBy=multi-user.target
