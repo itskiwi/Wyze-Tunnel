@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% set hide_nav = true %}
 
+{% block title %}Setup · {% endblock %}
 {% block content %}
 <div class="mx-auto mt-4 w-full max-w-[440px]">
     <div class="flex items-center gap-3">
@@ -55,6 +56,8 @@
     <form data-step="account" class="step-view mt-5 hidden space-y-5">
         <h1 class="page-title text-[26px]">Sign in to Wyze</h1>
         <p class="text-zinc-400">Use the email and password from the Wyze app. They stay on this device.</p>
+        <p class="text-sm text-zinc-400">Signed up with Google or Apple? Set a password in the Wyze app first: Account, Security,
+            Password. Google or Apple sign-in keeps working there.</p>
         <label class="block">
             <span class="text-sm font-medium">Email</span>
             <input name="email" type="email" required autocomplete="username"

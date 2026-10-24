@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 
+{% block title %}Recordings · {% endblock %}
 {% block content %}
 <header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
     <h1 class="page-title">Recordings</h1>
@@ -224,7 +225,7 @@
             })
             .catch((err) => {
                 clips.innerHTML = '<p class="p-3 text-sm text-rose-300"></p>';
-                clips.firstChild.textContent = `Couldn't load recordings. ${err.message}. Try Restart → Stream server on the main page.`;
+                clips.firstChild.textContent = `Couldn't load recordings. ${err.message}. Open Live, then the gear menu, and restart the stream server.`;
             });
     }
 
