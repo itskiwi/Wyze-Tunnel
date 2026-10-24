@@ -52,7 +52,7 @@ def get_ffmpeg_cmd(
         a_options += ["-ar", "8000"]
     rtsp_transport = "udp" if "udp" in env_bool("MTX_PROTOCOLS") else "tcp"
     fio_cmd = r"use_fifo=1:fifo_options=attempt_recovery=1\\\:drop_pkts_on_overflow=1:"
-    rss_cmd = f"[{fio_cmd}{{}}f=rtsp:{rtsp_transport=:}]rtsp://0.0.0.0:8554/{uri}"
+    rss_cmd = f"[{fio_cmd}{{}}f=rtsp:{rtsp_transport=:}]rtsp://127.0.0.1:8554/{uri}"
     rtsp_ss = rss_cmd.format("")
     if env_cam("AUDIO_STREAM", uri, style="original") and audio:
         rtsp_ss += "|" + rss_cmd.format("select=a:") + "_audio"
@@ -236,7 +236,7 @@ def rtsp_snap_cmd(cam_name: str, interval: bool = False):
     return (
         ["ffmpeg", "-loglevel", "fatal", "-analyzeduration", "0", "-probesize", "32"]
         + ["-f", "rtsp", "-rtsp_transport", "tcp", "-thread_queue_size", "500"]
-        + ["-i", f"rtsp://0.0.0.0:8554/{cam_name}", "-map", "0:v:0"]
+        + ["-i", f"rtsp://127.0.0.1:8554/{cam_name}", "-map", "0:v:0"]
         + rotation
         + ["-f", "image2", "-frames:v", "1", "-y", img]
     )

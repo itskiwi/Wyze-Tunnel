@@ -45,3 +45,17 @@ def test_restore_rejects_bad_files(setup):
     assert wyze_api.load_cam_names() == {}  # nothing written when any part is bad
     tokens = {"wyze_tunnel_backup": 1, "settings": {"auth": {"token": "x"}}}
     assert client.post("/settings/restore", json=tokens).status_code == 400
+
+
+def test_locked_backup_round_trip(setup):
+    client, wyze_api, _, _ = setup
+    wyze_api.save_cam_name("AA", "Porch")
+    assert client.post("/settings/backup", json={"passphrase": "short"}).status_code == 400
+    locked = client.post("/settings/backup", json={"passphrase": "correct horse"}).json
+    assert "Porch" not in str(locked) and "settings" not in locked
+
+    wyze_api.save_cam_name("AA", "")
+    assert "locked" in client.post("/settings/restore", json=locked).json["error"]
+    assert "doesn't open" in client.post("/settings/restore", json={**locked, "passphrase": "wrong one"}).json["error"]
+    assert client.post("/settings/restore", json={**locked, "passphrase": "correct horse"}).json["status"] == "restored"
+    assert wyze_api.load_cam_names() == {"AA": "Porch"}
