@@ -17,7 +17,7 @@ from wyzebridge.stream import Stream, StreamManager
 
 auth = HTTPBasicAuth()
 
-API_ENDPOINTS = "/api", "/img", "/snapshot", "/thumb", "/photo", "/recordings", "/metrics.prom", "/signaling"
+API_ENDPOINTS = "/api", "/img", "/snapshot", "/thumb", "/photo", "/recordings", "/detections", "/metrics.prom", "/signaling"
 # What a guest login can open: the camera grid and live video, nothing that changes anything.
 GUEST_PATHS = "/img/", "/snapshot/", "/thumb/", "/signaling/", "/webrtc/", "/api/sse_status"
 

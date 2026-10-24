@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Search footage</h1>
+    {% if enabled %}
+    <label class="ml-auto w-full sm:w-64">
+        <span class="sr-only">Camera</span>
+        <select id="cam" class="field">
+            <option value="">All cameras</option>
+            {% for uri, name in cameras.items() %}
+            <option value="{{ uri }}">{{ name }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    {% endif %}
+</header>
+
+{% if enabled %}
+<div id="labels" class="seg mb-5 max-w-full overflow-x-auto" role="group" aria-label="What was seen"></div>
+<div id="playerBox" class="mb-5 hidden overflow-hidden rounded-3xl bg-black">
+    <video id="player" class="aspect-video max-h-[70vh] w-full" controls playsinline></video>
+    <p id="nowPlaying" class="bg-zinc-900 px-4 py-3 text-sm text-zinc-400"></p>
+</div>
+<ul id="hits" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></ul>
+<p id="status" class="mt-6 text-center text-sm text-zinc-500" role="status">Loading…</p>
+<div class="mt-4 text-center"><button id="more" class="btn hidden" type="button">Show older</button></div>
+{% else %}
+<div class="mx-auto mt-16 max-w-md text-center text-zinc-400">
+    <i class="fas fa-magnifying-glass text-3xl"></i>
+    <p class="mt-3">Find the moments a person, car or animal showed up, then play that part of the recording.</p>
+    <p class="mt-3 text-sm">Turn it on with <code>DETECT_ALL=true</code> (or <code>DETECT_&lt;CAMERA_NAME&gt;=true</code>).
+        It watches cameras that are recording, on this computer, and nothing is sent to the cloud.</p>
+    <p class="mt-3 text-sm">Already run Frigate? Set <code>FRIGATE_URL</code> to its address, like <code>http://frigate:5000</code>,
+        to search its detections here instead, packages included if your Frigate model finds them.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block javascript %}
+{% if enabled %}
+<script>
+    const cameras = {{ cameras|tojson }};
+    const hits = document.getElementById("hits");
+    const status = document.getElementById("status");
+    const more = document.getElementById("more");
+    const select = document.getElementById("cam");
+    const params = new URLSearchParams(location.search);
+    let label = params.get("label") || "";
+    let oldest = 0;
+    select.value = params.get("cam") || "";
+
+    function drawLabels(labels) {
+        const box = document.getElementById("labels");
+        box.replaceChildren();
+        for (const name of ["", ...labels]) {
+            const tab = document.createElement("button");
+            tab.type = "button";
+            tab.className = "tab" + (name === label ? " is-active" : "");
+            tab.setAttribute("aria-pressed", name === label);
+            tab.textContent = name ? name[0].toUpperCase() + name.slice(1) : "Everything";
+            tab.addEventListener("click", () => { label = name; load(); });
+            box.append(tab);
+        }
+    }
+
+    function card(hit) {
+        const li = document.createElement("li");
+        li.className = "surface overflow-hidden";
+        const when = new Date(hit.ts * 1000);
+        li.innerHTML = `<button type="button" class="block w-full text-left">
+            <div class="aspect-video bg-black"><img loading="lazy" class="h-full w-full object-cover" alt=""></div>
+            <div class="flex items-center gap-2 px-4 py-3 text-sm"><span class="font-medium"></span>
+            <span class="text-zinc-400"></span><time class="ml-auto text-zinc-400"></time></div></button>`;
+        const what = hit.label[0].toUpperCase() + hit.label.slice(1);
+        const where = cameras[hit.cam] || hit.cam;
+        li.querySelector("img").src = hit.thumb;
+        li.querySelector("img").alt = `${what} on ${where}`;
+        li.querySelector(".font-medium").textContent = what;
+        li.querySelector(".text-zinc-400").textContent = where;
+        li.querySelector("time").textContent = when.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+        li.querySelector("time").dateTime = when.toISOString();
+        li.querySelector("button").addEventListener("click", () => play(hit, `${what} on ${where}, ${when.toLocaleString()}`));
+        return li;
+    }
+
+    function play(hit, caption) {
+        const box = document.getElementById("playerBox");
+        const player = document.getElementById("player");
+        box.classList.remove("hidden");
+        player.src = hit.clip;
+        player.onerror = () => { document.getElementById("nowPlaying").textContent = `${caption}. This part of the recording isn't available any more.`; };
+        player.play().catch(() => { });
+        document.getElementById("nowPlaying").textContent = caption;
+        box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    function load(append = false) {
+        if (!append) {
+            oldest = 0;
+            hits.replaceChildren();
+            history.replaceState(null, "", "?" + new URLSearchParams({ ...(label && { label }), ...(select.value && { cam: select.value }) }));
+        }
+        status.textContent = "Loading…";
+        more.classList.add("hidden");
+        const query = new URLSearchParams({ label, cam: select.value, ...(oldest && { before: oldest }) });
+        fetch(`api/detections?${query}`)
+            .then((resp) => resp.ok ? resp.json() : Promise.reject(new Error(`The bridge answered ${resp.status}`)))
+            .then((body) => {
+                drawLabels(body.labels);
+                body.detections.forEach((hit) => hits.append(card(hit)));
+                if (body.detections.length) oldest = body.detections.at(-1).ts;
+                more.classList.toggle("hidden", body.detections.length < 120);
+                status.textContent = hits.children.length ? "" : "Nothing spotted yet. Hits show up here as they happen.";
+            })
+            .catch((err) => { status.textContent = `Couldn't search. ${err.message}.`; });
+    }
+
+    select.addEventListener("change", () => load());
+    more.addEventListener("click", () => load(true));
+    load();
+</script>
+{% endif %}
+{% endblock %}

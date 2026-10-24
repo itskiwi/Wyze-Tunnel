@@ -1,6 +1,7 @@
 import os
 import secrets
 import time
+from datetime import datetime, timezone
 from threading import Thread
 from functools import wraps
 from pathlib import Path
@@ -19,7 +20,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import backup, config, guests, privacy, shares, web_ui, webhooks, wyze_api
+from wyzebridge import backup, config, detect, guests, privacy, shares, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
@@ -570,6 +571,51 @@ def create_app():
         if not (share := shares.get_share(token)):
             return "This link has ended or doesn't exist.", 404
         return recording_mp4(share["cam"], {"start": share["start"], "duration": share["duration"]})
+
+    @app.route("/search")
+    @auth_required
+    def search_page():
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return render_template(
+            "search.html",
+            cameras={uri: cam["nickname"] for uri, cam in cams.items()},
+            enabled=detect.enabled(),
+            api=WbAuth.api,
+            version=config.VERSION,
+        )
+
+    @app.route("/api/detections")
+    @auth_required
+    def detections():
+        """What was spotted, newest first. Filter with ?label=person&cam=front-door; page with ?before=<ts>."""
+        try:
+            before = float(request.args.get("before") or 0)
+        except ValueError:
+            return {"error": "before should be a Unix time"}, 400
+        hits = detect.search(request.args.get("label", ""), request.args.get("cam", ""), before)
+        for hit in hits:
+            hit["thumb"] = f"detections/{hit['id']}.jpg"
+            if hit["source"] == "frigate":
+                hit["clip"] = f"detections/{hit['id']}.mp4"
+            else:  # a 30-second window of the recording, starting just before the detection
+                start = datetime.fromtimestamp(hit["ts"] - 5, timezone.utc).isoformat()
+                hit["clip"] = f"recordings/{quote_plus(hit['cam'])}/play?start={quote_plus(start)}&duration=30"
+        return {"labels": detect.labels(), "detections": hits}
+
+    @app.route("/detections/<int:det_id>.<any(jpg, mp4):ext>")
+    @auth_required
+    def detection_media(det_id: int, ext: str):
+        if not (hit := detect.get(det_id)):
+            return redirect("/static/notavailable.svg", code=307)
+        if hit["source"] != "frigate":  # local clips play from the recordings
+            return send_from_directory(detect.THUMB_DIR, f"{det_id}.jpg") if ext == "jpg" else ("", 404)
+        try:
+            resp = detect.frigate_media(hit["ext_id"], "thumbnail.jpg" if ext == "jpg" else "clip.mp4")
+        except requests.RequestException:
+            return {"error": "Couldn't reach Frigate"}, 502
+        if not resp.ok:
+            return {"error": "Frigate doesn't have this clip any more"}, resp.status_code
+        return Response(resp.iter_content(64 * 1024), mimetype=resp.headers.get("content-type", f"image/{ext}"))
 
     def recording_mp4(cam_name: str, args: dict):
         resp = mtx_playback("get", stream=True, path=cam_name, format="mp4", **args)

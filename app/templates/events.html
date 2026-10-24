@@ -3,6 +3,7 @@
 {% block content %}
 <header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
     <h1 class="page-title">Events</h1>
+    <a class="btn" href="search"><i class="fas fa-magnifying-glass"></i>Search footage</a>
 </header>
 
 {% if events %}
@@ -11,12 +12,13 @@
     <li class="surface overflow-hidden">
         <div class="aspect-video bg-black">
             {% if event.img %}
-            <img src="{{ event.img }}" alt="Motion on {{ event.name }}" loading="lazy" class="h-full w-full object-cover"
+            <img src="{{ event.img }}" alt="{{ (event.label or 'motion')|capitalize }} on {{ event.name }}" loading="lazy" class="h-full w-full object-cover"
                 onerror="this.replaceWith(Object.assign(document.createElement('p'), {className: 'grid h-full place-items-center text-sm text-zinc-500', textContent: 'Snapshot expired'}))" />
             {% endif %}
         </div>
         <div class="flex items-center gap-2 px-4 py-3 text-sm">
             <span class="font-medium">{{ event.name }}</span>
+            {% if event.label %}<span class="text-zinc-400">{{ event.label|capitalize }}</span>{% endif %}
             <time class="event-time ml-auto text-zinc-400" datetime="{{ event.ts }}"></time>
         </div>
     </li>
