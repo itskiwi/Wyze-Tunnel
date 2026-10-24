@@ -19,7 +19,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import backup, config, guests, privacy, shares, web_ui, webhooks, wyze_api
+from wyzebridge import backup, config, guests, network, privacy, shares, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
@@ -358,6 +358,19 @@ def create_app():
             now=time.time(),
             api=WbAuth.api,
             version=config.VERSION,
+        )
+
+    @app.route("/network")
+    @auth_required
+    def network_page():
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return render_template(
+            "network.html",
+            seen=sorted(network.SEEN.values(), key=lambda e: -e["last"]),
+            other=network.other_connections(cams),
+            cloud_down=network.cloud_down(),
+            keys_saved=network.lan_keys_saved(wyze_api.LAN_KEYS_FILE),
+            now=time.time(),
         )
 
     @app.route("/events")
