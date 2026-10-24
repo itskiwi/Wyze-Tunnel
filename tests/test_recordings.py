@@ -12,9 +12,9 @@ import requests  # noqa: E402
 
 
 def make_client():
-    with mock.patch("wyze_bridge.WyzeBridge"):
-        import frontend
+    import frontend
 
+    with mock.patch.object(frontend, "WyzeBridge"):
         app = frontend.create_app()
     from wyzebridge.auth import WbAuth
 
