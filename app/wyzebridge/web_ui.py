@@ -23,11 +23,22 @@ API_ENDPOINTS = "/api", "/img", "/snapshot", "/thumb", "/photo"
 def verify_password(username, password):
     if config.HASS_TOKEN and request.remote_addr == "172.30.32.2":
         return True
-    if WbAuth.api in (request.args.get("api"), request.headers.get("api")):
+    if WbAuth.api and WbAuth.api in (request.args.get("api"), request.headers.get("api")):
         return request.path.startswith(API_ENDPOINTS)
     if username == WbAuth.username:
         return check_password_hash(WbAuth.hashed_password(), password)
     return WbAuth.enabled == False
+
+
+def cross_site_request() -> bool:
+    """True when a browser sent this request from another website (CSRF)."""
+    if site := request.headers.get("Sec-Fetch-Site"):
+        return site not in ("same-origin", "none")
+    # Older browsers: compare the Origin header with the host they were talking to.
+    if origin := request.headers.get("Origin"):
+        host = request.headers.get("X-Forwarded-Host") or request.host
+        return urlparse(origin).netloc != host
+    return False
 
 
 @auth.error_handler
