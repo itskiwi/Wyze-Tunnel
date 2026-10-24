@@ -1,8 +1,6 @@
-[![Docker](https://github.com/mrlt8/docker-wyze-bridge/actions/workflows/docker-image.yml/badge.svg)](https://github.com/mrlt8/docker-wyze-bridge/actions/workflows/docker-image.yml)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/mrlt8/docker-wyze-bridge?logo=github)](https://github.com/mrlt8/docker-wyze-bridge/releases/latest)
-[![Docker Image Size (latest semver)](https://img.shields.io/docker/image-size/mrlt8/wyze-bridge?sort=semver&logo=docker&logoColor=white)](https://hub.docker.com/r/mrlt8/wyze-bridge)
-[![Docker Pulls](https://img.shields.io/docker/pulls/mrlt8/wyze-bridge?logo=docker&logoColor=white)](https://hub.docker.com/r/mrlt8/wyze-bridge)
-![GitHub Repo stars](https://img.shields.io/github/stars/mrlt8/docker-wyze-bridge?style=social)
+[![Docker](https://github.com/itskiwi/Wyze-Tunnel/actions/workflows/docker-image.yml/badge.svg)](https://github.com/itskiwi/Wyze-Tunnel/actions/workflows/docker-image.yml)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/itskiwi/Wyze-Tunnel?logo=github)](https://github.com/itskiwi/Wyze-Tunnel/releases/latest)
+![GitHub Repo stars](https://img.shields.io/github/stars/itskiwi/Wyze-Tunnel?style=social)
 # WebRTC/RTMP/RTSP/HLS Bridge for Wyze Cam
 
 ![479shots_so](https://user-images.githubusercontent.com/67088095/224595527-05242f98-c4ab-4295-b9f5-07051ced1008.png)
