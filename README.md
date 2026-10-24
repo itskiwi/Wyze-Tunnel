@@ -310,6 +310,7 @@ http://localhost:5000/
 - **Share a clip**: on the Recordings page, Share makes a link anyone can open for 24 hours to watch that one clip, without a login.
 - **Camera settings**: each camera's controls have a Camera settings section for the status light, timestamp, motion box, Wyze motion detection and app alerts, and flipping the image. Pan cameras add Follow motion and Patrol, the Cam v4 gets a Spotlight button, and doorbells get the three Quick reply messages.
 - **Monitoring**: `/api/health` returns `ok` or `degraded` with a list of issues (offline, weak Wi-Fi, full SD card, relay, repeated failures). `/metrics.prom` serves Prometheus metrics per camera plus Wyze API call counts. Both accept the API key like other `/api` endpoints.
+- **Pair a phone**: open the gear menu, then Pair a phone, and scan the code. The phone signs in without a password and shows up under Share access, where you can remove it. With [Tailscale](https://tailscale.com/download) on the computer and the phone, you also get an Anywhere code that works away from home with no router changes.
 - **Install as an app**: use "Add to Home Screen" on your phone. `f` opens the full-screen camera wall, `r` refreshes previews and `1`-`6` sets the number of columns.
 
 See also: 

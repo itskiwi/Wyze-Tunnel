@@ -65,6 +65,7 @@
                     {% block settings_menu %}{% endblock %}
                     <a href="cameras" class="menu-item"><i class="fas fa-eye w-4"></i>Choose cameras</a>
                     <a href="account" class="menu-item"><i class="fas fa-key w-4"></i>Wyze login</a>
+                    {% if not current_guest() %}<a href="account#phone" class="menu-item"><i class="fas fa-mobile-screen w-4"></i>Pair a phone</a>{% endif %}
                     <a href="diagnostics" class="menu-item" title="A report with secrets removed, for bug reports"><i class="fas fa-file-medical w-4"></i>Download diagnostics</a>
                 </div>
             </details>
