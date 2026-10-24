@@ -31,13 +31,24 @@
         <p class="mt-1 text-sm text-zinc-400">In the app, tap <strong>+</strong> and type this topic. Keep it private: anyone who knows it can see your alerts.</p>
         <label class="mt-3 block text-sm">
             <span class="text-zinc-400">Topic</span>
-            <input class="field mt-1 font-mono" name="topic" required pattern="[A-Za-z0-9_\-]{1,64}"
+            <input class="field mt-1 font-mono" name="topic" pattern="[A-Za-z0-9_\-]{1,64}"
                 value="{{ settings.topic or suggested_topic }}" />
         </label>
         <details class="mt-3 text-sm text-zinc-400">
             <summary class="cursor-pointer">Use your own ntfy server</summary>
             <input class="field mt-2" name="server" type="url" value="{{ settings.server or 'https://ntfy.sh' }}" />
         </details>
+    </section>
+
+    <section class="surface p-5">
+        <h2 class="font-semibold">Also send to a chat <span class="text-sm font-normal text-zinc-400">(optional)</span></h2>
+        <p class="mt-1 text-sm text-zinc-400">Paste a Discord or Slack webhook link, or a Telegram link like
+            <code class="break-all">https://api.telegram.org/bot&lt;token&gt;/sendMessage?chat_id=&lt;id&gt;</code>. Keep it private.</p>
+        <label class="mt-3 block text-sm">
+            <span class="text-zinc-400">Chat link</span>
+            <input class="field mt-1 font-mono" name="chat_url" type="url" autocomplete="off" spellcheck="false"
+                placeholder="https://discord.com/api/webhooks/…" value="{{ settings.chat_url or '' }}" />
+        </label>
     </section>
 
     <section class="surface p-5">
