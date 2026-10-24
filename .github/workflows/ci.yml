@@ -23,6 +23,17 @@ jobs:
         run: shellcheck -S error native/*.sh mac/*.sh
       - run: pytest -q tests
 
+  home-assistant:
+    name: Home Assistant integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install pytest-homeassistant-custom-component==0.13.316 PyTurboJPEG
+      - run: pytest -q -c tests_ha/pytest.ini tests_ha
+
   install:
     name: install (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
