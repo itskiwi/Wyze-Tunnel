@@ -55,7 +55,8 @@ jobs:
         run: |
           docker exec os sh -c 'touch /var/lib/private/wyze-tunnel/update-now'
           timeout 60 sh -c 'until docker exec os sh -c "! test -e /var/lib/private/wyze-tunnel/update-now"; do sleep 2; done'
-          timeout 300 sh -c 'while docker exec os systemctl is-active -q wyze-tunnel-update; do sleep 2; done'
+          # A oneshot unit is "activating" while it runs.
+          timeout 300 sh -c 'while [ "$(docker exec os systemctl show -p ActiveState --value wyze-tunnel-update)" = activating ]; do sleep 2; done'
           docker exec os journalctl -u wyze-tunnel-update --no-pager -n 5
       - name: Update installs a newer release
         run: |
