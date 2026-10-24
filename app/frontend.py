@@ -30,6 +30,10 @@ from wyzebridge.wyze_events import EVENT_LOG
 from wyzecam.api import API_STATS
 
 
+# Links with any of these open the live grid, so wall displays and old bookmarks keep working.
+GRID_ARGS = {"columns", "refresh", "video", "snapshot", "autoplay", "webrtc", "hls", "kvs", "fullscreen", "order"}
+
+
 def create_app():
     app = Flask(__name__)
     app.jinja_env.globals["can_update"] = bool(os.getenv("WT_UPDATE_FILE"))
@@ -61,7 +65,7 @@ def create_app():
         if request.path.startswith(("/static/", "/img/", "/snapshot/", "/thumb/", "/photo/", "/share/")):
             return
         # A neighbor opens their Street Watch link from a chat app; sending the form is still same-site only.
-        if request.method == "GET" and (request.path in ("/", "/login", "/cams.m3u8") or request.path.startswith("/street/")):
+        if request.method == "GET" and (request.path in ("/", "/live", "/login", "/cams.m3u8") or request.path.startswith("/street/")):
             return
         if web_ui.cross_site_request():
             return {"error": "Cross-site request blocked"}, 403
@@ -126,6 +130,26 @@ def create_app():
     @app.route("/")
     @auth_required
     def index():
+        """Home: what happened today. Watch-only guests and wall displays (grid options in the link) get the live grid."""
+        guest = web_ui.current_guest()
+        if guest and not guest["family"]:
+            return live()
+        if request.args.keys() & GRID_ARGS or request.cookies.get("fullscreen"):
+            return redirect(f"live?{request.query_string.decode()}")
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return render_template(
+            "home.html",
+            cameras={uri: cam for uri, cam in cams.items() if cam.get("enabled")},
+            events=list(EVENT_LOG),
+            motion_on=bool(config.MOTION or webhooks.ALERTS.get("motion")),
+            api="" if guest else WbAuth.api,
+            guest=guest,
+            version=config.VERSION,
+        )
+
+    @app.route("/live")
+    @auth_required
+    def live():
         if not (columns := request.args.get("columns")):
             columns = request.cookies.get("number_of_columns", "2")
         if not (refresh := request.args.get("refresh")):
@@ -147,7 +171,7 @@ def create_app():
         guest = web_ui.current_guest()
         resp = make_response(
             render_template(
-                "index.html",
+                "live.html",
                 cam_data=web_ui.all_cams(wb.streams, wb.api.total_cams),
                 number_of_columns=number_of_columns,
                 refresh_period=refresh_period,
@@ -378,15 +402,8 @@ def create_app():
         )
 
     @app.route("/events")
-    @auth_required
     def events():
-        return render_template(
-            "events.html",
-            events=list(EVENT_LOG),
-            motion_on=bool(config.MOTION or webhooks.ALERTS.get("motion")),
-            api=WbAuth.api,
-            version=config.VERSION,
-        )
+        return redirect("./")  # The event list now lives on the home timeline.
 
     @app.route("/cameras")
     @auth_required

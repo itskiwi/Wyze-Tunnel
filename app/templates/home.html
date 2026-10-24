@@ -1,0 +1,192 @@
+{% extends 'base.html' %}
+
+{% block content %}
+{% if request.args.pocket %}
+<section id="pocketTip" class="surface mb-4 p-4 sm:p-5" role="status">
+    <h2 class="font-display text-lg font-extrabold text-zinc-50">This phone is paired</h2>
+    <p class="mt-1 text-sm text-zinc-400">Put Wyze Tunnel on your home screen so it opens like an app. On iPhone, tap Share, then
+        Add to Home Screen. On Android, open the browser menu and tap Install app.</p>
+    <button class="btn mt-3" onclick="this.parentElement.remove()">Got it</button>
+</section>
+<script>matchMedia("(display-mode: standalone)").matches && document.getElementById("pocketTip").remove();</script>
+{% endif %}
+{% set online = cameras.values()|selectattr('connected')|list|length %}
+{% set offline = cameras.values()|selectattr('status', 'equalto', -90)|list|length %}
+<header class="pb-5 pt-2">
+    <p class="font-mono text-xs text-zinc-500" id="today"></p>
+    <h1 class="page-title mt-1 text-[30px]" id="story">Today at home</h1>
+    <p class="mt-1 max-w-prose text-zinc-400" id="story-detail"></p>
+    {% if cameras %}
+    <div class="mt-3 flex flex-wrap gap-2">
+        {% if online %}<span class="chip chip-ok">{{ online }} live</span>{% endif %}
+        {% if offline %}<a href="health" class="chip chip-bad">{{ offline }} offline</a>{% endif %}
+    </div>
+    {% endif %}
+</header>
+
+<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-10">
+    {% if cameras %}
+    <aside class="min-w-0 lg:col-start-2 lg:row-start-1" aria-labelledby="cams-h">
+        <div class="flex items-center pb-2">
+            <h2 id="cams-h" class="menu-label px-0 pt-0">Cameras</h2>
+            <a href="live" class="ml-auto text-sm font-semibold text-accent hover:underline">Live view</a>
+        </div>
+        <ul class="-mx-4 flex snap-x scroll-px-4 gap-2.5 overflow-x-auto px-4 pb-2 sm:-mx-6 sm:scroll-px-6 sm:px-6 lg:mx-0 lg:grid lg:grid-cols-2 lg:overflow-visible lg:px-0">
+            {% for uri, cam in cameras.items() %}
+            {% set state = 'live' if cam.connected else 'offline' if cam.status == -90 else 'idle' %}
+            <li class="w-40 flex-none snap-start lg:w-auto">
+                <a href="live#{{ uri }}" class="group block rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+                    <div class="aspect-video overflow-hidden rounded-2xl bg-black">
+                        {% if cam.img_url %}
+                        <img src="{{ cam.img_url }}" alt="" loading="lazy" class="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+                            onerror="this.remove()" />
+                        {% endif %}
+                    </div>
+                    <p class="mt-1.5 flex items-center gap-1.5 text-sm font-medium text-zinc-200">
+                        <span class="h-2 w-2 flex-none rounded-full {{ {'live': 'bg-accent', 'offline': 'bg-rose-400', 'idle': 'bg-zinc-600'}[state] }}" title="{{ state }}"></span>
+                        <span class="truncate">{{ cam.nickname }}</span><span class="sr-only">, {{ state }}</span>
+                    </p>
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+    </aside>
+    {% endif %}
+
+    <section class="min-w-0 lg:col-start-1 lg:row-start-1" aria-label="Timeline">
+        <div id="timeline"></div>
+        <div id="timeline-empty" class="surface hidden p-6 text-zinc-400">
+            {% if not cameras %}
+            <p class="font-display text-lg font-extrabold text-zinc-50">No cameras yet</p>
+            <p class="mt-1 text-sm">Add a camera in the Wyze app. Then open Settings, the gear at the top, and pick Choose cameras.</p>
+            {% elif not motion_on %}
+            <p class="font-display text-lg font-extrabold text-zinc-50">Motion is off</p>
+            <p class="mt-1 text-sm">Turn on motion under <a class="font-semibold text-accent hover:underline" href="alerts">Alerts</a> and this page fills in with what your cameras saw.</p>
+            {% else %}
+            <p class="font-display text-lg font-extrabold text-zinc-50">Nothing yet</p>
+            <p class="mt-1 text-sm">Motion shows up here as Wyze reports it. The list starts fresh when Wyze Tunnel restarts.</p>
+            {% endif %}
+        </div>
+    </section>
+</div>
+
+<template id="day-tpl">
+    <section class="mb-7">
+        <h2 class="menu-label sticky top-0 z-10 -mx-1 flex items-baseline bg-zinc-950 px-1 py-2"><span data-day></span><span class="ml-auto font-mono normal-case tracking-normal" data-count></span></h2>
+        <ol></ol>
+    </section>
+</template>
+<template id="row-tpl">
+    <li class="group grid grid-cols-[3.5rem_0.75rem_minmax(0,1fr)] gap-x-2 sm:grid-cols-[3.75rem_0.75rem_minmax(0,1fr)] sm:gap-x-3">
+        <time class="whitespace-nowrap pt-3 text-right font-mono text-[11px] tabular-nums sm:text-xs text-zinc-500"></time>
+        <div class="relative flex justify-center">
+            <span class="absolute inset-y-0 w-px bg-zinc-700 group-first:top-[18px] group-last:bottom-[calc(100%-18px)]"></span>
+            <span class="relative mt-[13px] h-2.5 w-2.5 rounded-full bg-zinc-600 ring-4 ring-zinc-950" data-dot></span>
+        </div>
+        <a class="mb-1 flex min-w-0 items-center gap-3 rounded-2xl p-2 transition hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+            <div class="aspect-video w-24 flex-none overflow-hidden rounded-xl bg-black sm:w-36" data-thumb></div>
+            <div class="min-w-0">
+                <p class="truncate font-semibold text-zinc-50" data-name></p>
+                <p class="text-sm text-zinc-400" data-what></p>
+                <p class="mt-0.5 text-sm font-semibold text-accent" data-action></p>
+            </div>
+        </a>
+    </li>
+</template>
+{% endblock %}
+
+{% block api_info %}
+{% if guest %}<p>Signed in as {{ guest.guest }}.</p>{% endif %}
+{% endblock %}
+
+{% block javascript %}
+<script>
+    (() => {
+        const events = {{ events|tojson }};  // newest first; ts is Unix seconds
+        const recording = {{ cameras|dictsort|selectattr('1.record')|map('first')|list|tojson }};
+        const GROUP_SECONDS = 600;  // motion on one camera within 10 minutes reads as one moment, not a list of junk
+
+        const time = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        const dayKey = (ts) => new Date(ts * 1000).toDateString();
+        const today = new Date().toDateString();
+        const yesterday = new Date(Date.now() - 864e5).toDateString();
+        const dayName = (ts) => ({ [today]: "Today", [yesterday]: "Yesterday" })[dayKey(ts)]
+            || new Date(ts * 1000).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+        document.getElementById("today").textContent = new Date().toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+
+        // Group bursts: same camera, same day, close together.
+        const moments = [];
+        for (const e of events) {
+            const last = moments.at(-1);
+            if (last && last.uri === e.uri && last.first - e.ts <= GROUP_SECONDS && dayKey(last.first) === dayKey(e.ts)) {
+                last.first = e.ts;
+                last.count++;
+            } else {
+                moments.push({ ...e, first: e.ts, count: 1 });
+            }
+        }
+
+        // The story line: what the day looked like, in one sentence.
+        let seen = 0;
+        try { seen = Number(localStorage.getItem("homeSeen")) || 0; localStorage.setItem("homeSeen", events[0]?.ts || seen); } catch { }
+        const todays = events.filter((e) => dayKey(e.ts) === today);
+        const story = document.getElementById("story"), detail = document.getElementById("story-detail");
+        if (todays.length) {
+            const per = {};
+            todays.forEach((e) => per[e.name] = (per[e.name] || 0) + 1);
+            const names = Object.keys(per).sort((a, b) => per[b] - per[a]);
+            const fresh = seen ? events.filter((e) => e.ts > seen).length : 0;
+            story.textContent = `Motion ${todays.length === 1 ? "once" : todays.length + " times"} today`;
+            detail.textContent = (names.length === 1 ? `All on ${names[0]}. ` : `On ${names.length} cameras, mostly ${names[0]}. `)
+                + `Last at ${time(todays[0].ts)}.` + (fresh ? ` ${fresh} new since you last looked.` : "");
+        } else if (events.length) {
+            story.textContent = "Quiet so far today";
+            detail.textContent = `The last motion was ${dayName(events[0].ts).toLowerCase()} at ${time(events[0].ts)}, on ${events[0].name}.`;
+        }
+
+        const timeline = document.getElementById("timeline");
+        const dayTpl = document.getElementById("day-tpl"), rowTpl = document.getElementById("row-tpl");
+        let list = null, day = "";
+        for (const m of moments) {
+            if (dayKey(m.ts) !== day) {
+                day = dayKey(m.ts);
+                const section = dayTpl.content.cloneNode(true);
+                section.querySelector("[data-day]").textContent = dayName(m.ts);
+                const n = events.filter((e) => dayKey(e.ts) === day).length;
+                section.querySelector("[data-count]").textContent = `${n} event${n === 1 ? "" : "s"}`;
+                list = section.querySelector("ol");
+                timeline.append(section);
+            }
+            const row = rowTpl.content.cloneNode(true);
+            const t = row.querySelector("time");
+            t.textContent = time(m.ts);
+            t.dateTime = new Date(m.ts * 1000).toISOString();
+            if (m.ts > seen && seen) row.querySelector("[data-dot]").classList.replace("bg-zinc-600", "bg-accent");
+            row.querySelector("[data-name]").textContent = m.name;
+            row.querySelector("[data-what]").textContent = m.count === 1 ? "Motion"
+                : `Motion ${m.count} times, ${time(m.first)} to ${time(m.ts)}`;
+            const link = row.querySelector("a"), records = recording.includes(m.uri);
+            link.href = records ? `recordings?cam=${encodeURIComponent(m.uri)}&t=${m.first}` : `live#${encodeURIComponent(m.uri)}`;
+            row.querySelector("[data-action]").textContent = records ? "Play the clip" : "See the camera";
+            const thumb = row.querySelector("[data-thumb]");
+            if (m.count > 1) thumb.classList.add("shadow-[5px_-5px_0_-1px_rgb(var(--zinc-700))]", "!overflow-visible");
+            if (m.img) {
+                const img = Object.assign(document.createElement("img"), { src: m.img, alt: `${m.name} at ${time(m.ts)}`, loading: "lazy" });
+                img.className = "h-full w-full rounded-xl object-cover";
+                img.onerror = () => img.replaceWith(Object.assign(document.createElement("span"), {
+                    className: "grid h-full place-items-center text-xs text-zinc-500", textContent: "Snapshot expired" }));
+                thumb.append(img);
+            }
+            list.append(row);
+        }
+        document.getElementById("timeline-empty").classList.toggle("hidden", moments.length > 0);
+
+        // Coming back to the tab after a while shows fresh events.
+        let hiddenAt = 0;
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) hiddenAt = Date.now();
+            else if (hiddenAt && Date.now() - hiddenAt > 60000) location.reload();
+        });
+    })();
+</script>
+{% endblock %}
