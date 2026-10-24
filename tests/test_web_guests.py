@@ -61,3 +61,17 @@ def test_guest_login_ends_on_time(setup):
         assert client.get("/", headers=basic("Sam", password)).status_code == 401
         guests.prune()
     assert guests.list_guests() == [] and guests._load()["guests"] == []
+
+
+def test_family_login_has_full_access_but_not_owner_login(setup):
+    client, guests, _ = setup
+    password = client.post("/guests", json={"name": "Mom", "hours": 0}, headers=basic("owner", "ownerpass")).json["password"]
+    mom = basic("Mom", password)
+    page = client.get("/", headers=mom)
+    assert b"Signed in as Mom" in page.data and b"apikey" not in page.data
+    assert client.get("/cameras", headers=mom).status_code == 200
+    assert client.post("/account", json={"username": "x", "password": "longenough"}, headers=mom).status_code == 403
+    with mock.patch("wyzebridge.guests.time.time", return_value=2**40):
+        assert client.get("/cameras", headers=mom).status_code == 200  # never ends
+    client.delete("/guests/Mom", headers=basic("owner", "ownerpass"))
+    assert client.get("/", headers=mom).status_code == 401

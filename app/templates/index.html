@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
-{% set hide_nav = guest %}
+{% set watch_only = guest and not guest.family %}
+{% set hide_nav = watch_only %}
 
 {% block settings_menu %}
 <p class="menu-label">Layout</p>
@@ -130,7 +131,7 @@
                 </table>
             </div>
             <div class="cam-acts fs-display-none absolute bottom-2.5 right-2.5 z-10 flex gap-1.5">
-                {% if not guest %}
+                {% if not watch_only %}
                 <details class="dropdown">
                     <summary class="cam-action" title="Controls" aria-label="Controls for {{ camera.nickname }}"><i class="fas fa-sliders"></i></summary>
                     <div class="menu cam-menu cam-control" data-cam="{{cam_uri}}">
@@ -250,7 +251,9 @@
 
 
 {% block api_info %}
-{% if guest %}
+{% if guest and guest.family %}
+<p>Signed in as {{ guest.guest }}.</p>
+{% elif guest %}
 <p>Watching as {{ guest.guest }}. This guest login ends <time data-ts="{{ guest.expires }}"></time>.</p>
 <script>document.querySelectorAll("time[data-ts]").forEach((t) => t.textContent = new Date(t.dataset.ts * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }));</script>
 {% elif api %}

@@ -301,7 +301,7 @@ http://localhost:5000/
 - **Recordings**: play and download clips for cameras with recording turned on.
 - **Home Assistant**: open `/ha-dashboard.yaml` and paste it into a new dashboard (Settings, Dashboards, Add dashboard, then the Raw configuration editor) for a live view of every camera. With `MQTT_DISCOVERY` on, a "Wyze Tunnel" device also shows how many cameras are streaming, offline and in total.
 - **Auto restart**: a camera that fails to connect 10 times in a row gets restarted through the Wyze cloud, at most once every 6 hours. Set `AUTO_RESTART=false` to turn this off.
-- **Guest logins**: on the Login page, give someone a name and password that can watch the cameras and live video for 1 hour to 7 days. They can't change settings or control cameras, and the login stops working on its own.
+- **Guest and family logins**: on the Login page, give someone their own name and password. A guest can watch the cameras and live video for 1 hour to 7 days, can't change anything, and the login stops working on its own. A family login has full access, except changing the main login, until you remove it.
 - **Monitoring**: `/api/health` returns `ok` or `degraded` with a list of issues (offline, weak Wi-Fi, full SD card, relay, repeated failures). `/metrics.prom` serves Prometheus metrics per camera plus Wyze API call counts. Both accept the API key like other `/api` endpoints.
 - **Install as an app**: use "Add to Home Screen" on your phone. `f` opens the full-screen camera wall, `r` refreshes previews and `1`-`6` sets the number of columns.
 
