@@ -93,7 +93,8 @@
     <section data-step="done" class="mt-6 hidden space-y-5">
         <h1 class="text-3xl font-semibold">You're all set</h1>
         <p id="camText" class="text-zinc-300">Looking for your cameras...</p>
-        <ul id="camList" class="divide-y divide-zinc-800 rounded-lg border border-zinc-800"></ul>
+        <div id="camList" class="divide-y divide-zinc-800 rounded-lg border border-zinc-800"></div>
+        <p id="camStatus" class="text-sm text-zinc-400" role="status"></p>
         <div id="wbLogin" class="hidden rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
             <p class="font-medium text-amber-200">Save this login. You'll need it to open Wyze Tunnel, and it
                 won't be shown again.</p>
@@ -123,6 +124,7 @@
 {% endblock %}
 
 {% block javascript %}
+    <script src="static/cameras.js"></script>
     <script>
         const $ = (s) => document.querySelector(s);
         const order = ["welcome", "key", "account", "done"];
@@ -188,22 +190,10 @@
         async function listCams() {
             $("#here").textContent = new URL(".", location).href;
             for (let i = 0; i < 30; i++) {
-                const resp = await fetch("api", { headers: apiHeaders }).catch(() => null);
-                if (resp?.ok) {
-                    const data = await resp.json();
-                    const cams = Object.values(data.cameras || {});
-                    if (cams.length) {
-                        $("#camText").textContent = `Found ${cams.length} camera${cams.length > 1 ? "s" : ""}:`;
-                        $("#camList").replaceChildren(...cams.map(c => {
-                            const li = document.createElement("li");
-                            li.className = "px-4 py-3";
-                            li.textContent = c.nickname || c.name_uri;
-                            return li;
-                        }));
-                        return;
-                    }
-                } else if (resp?.status === 401) {
-                    break;
+                if (await renderCameraToggles($("#camList"), $("#camStatus"), apiHeaders)) {
+                    const count = $("#camList").children.length;
+                    $("#camText").textContent = `Found ${count} camera${count > 1 ? "s" : ""}. Uncheck any you don't want to show. You can change this later under Cameras.`;
+                    return;
                 }
                 await new Promise(r => setTimeout(r, 2000));
             }

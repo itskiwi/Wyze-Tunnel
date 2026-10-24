@@ -441,7 +441,27 @@ def valid_s3_url(url: Optional[str]) -> bool:
         return False
 
 
+HIDDEN_CAMS_FILE = TOKEN_PATH + "hidden_cams.json"
+
+
+def load_hidden_cams() -> set[str]:
+    """MACs of cameras hidden from the web UI. Hidden cameras don't stream at all."""
+    try:
+        with open(HIDDEN_CAMS_FILE) as f:
+            return set(json.load(f))
+    except (FileNotFoundError, ValueError, TypeError):
+        return set()
+
+
+def save_hidden_cams(macs: set[str]) -> None:
+    with open(HIDDEN_CAMS_FILE, "w") as f:
+        json.dump(sorted(macs), f)
+
+
 def filter_cams(cams: list[WyzeCamera]) -> list[WyzeCamera]:
+    if hidden := load_hidden_cams():
+        # Never hide everything: the bridge shuts down with zero streams.
+        cams = [cam for cam in cams if cam.mac not in hidden] or cams
     total = len(cams)
     if env_bool("FILTER_BLOCK"):
         if filtered := list(filter(lambda cam: not env_filter(cam), cams)):

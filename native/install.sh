@@ -86,7 +86,8 @@ echo "==> Installing app to $PREFIX"
 mkdir -p "$PREFIX"
 rm -rf "$PREFIX/app"
 cp -r "$SRC/app" "$PREFIX/app"
-cp "$PREFIX/app/lib/lib.$LIB_ARCH" "$PREFIX/libIOTCAPIs_ALL.so"
+# --remove-destination: the running service holds these open (cp would fail with "Text file busy").
+cp --remove-destination "$PREFIX/app/lib/lib.$LIB_ARCH" "$PREFIX/libIOTCAPIs_ALL.so"
 rm -rf "$PREFIX/app/lib"
 
 echo "==> Installing Python dependencies"
@@ -95,7 +96,7 @@ echo "==> Installing Python dependencies"
 "$PREFIX/venv/bin/python" -m compileall -q "$PREFIX/app"
 
 if [ -x "$SRC/mediamtx" ]; then
-    cp "$SRC/mediamtx" "$SRC/mediamtx.yml" "$PREFIX/"
+    cp --remove-destination "$SRC/mediamtx" "$SRC/mediamtx.yml" "$PREFIX/"
 else
     echo "==> Downloading MediaMTX v$MTX_TAG ($MTX_ARCH)"
     curl -fsSL "https://github.com/bluenviron/mediamtx/releases/download/v${MTX_TAG}/mediamtx_v${MTX_TAG}_linux_${MTX_ARCH}.tar.gz" \
@@ -162,7 +163,7 @@ import_docker() {
     DOCKER_BRIDGE=
     command -v docker >/dev/null || return 0
     local cid state=/var/lib/private/wyze-tunnel
-    cid=$(docker ps -a --format '{{.ID}} {{.Image}}' 2>/dev/null | awk '$2 ~ /wyze-bridge|wyze-tunnel/ {print $1; exit}')
+    cid=$(docker ps -a --format '{{.ID}} {{.Image}}' 2>/dev/null | awk '$2 ~ /wyze-bridge|wyze-tunnel/ {print $1; exit}' || true)
     [ -n "$cid" ] || return 0
     DOCKER_BRIDGE=$(docker inspect -f '{{.Name}}' "$cid" | sed 's|^/||')
     [ -z "$(ls -A "$state/tokens" 2>/dev/null)" ] || return 0
