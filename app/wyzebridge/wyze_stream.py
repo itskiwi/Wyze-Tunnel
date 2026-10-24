@@ -15,7 +15,9 @@ from typing import Optional
 
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.config import CHRONIC_FAILURES, COOLDOWN, COOLDOWN_MAX, MQTT_TOPIC, TOKEN_PATH
+from wyzebridge.auth import WbAuth
 from wyzebridge.ffmpeg import get_ffmpeg_cmd
+from wyzebridge.go2rtc import FALLBACK_AFTER, Go2rtcServer, lan_url, relay, source_chain, webrtc_url
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import publish_discovery, publish_messages, update_mqtt_state
 from wyzebridge.webhooks import send_webhook
@@ -59,6 +61,7 @@ QueueTuple = namedtuple("queue", ["cam_resp", "cam_cmd"])
 
 class StreamStatus(IntEnum):
     OFFLINE = -90
+    FAILED = -2
     STOPPING = -1
     DISABLED = 0
     STOPPED = 1
@@ -92,6 +95,7 @@ class WyzeStreamOptions:
 class WyzeStream:
     user: WyzeAccount
     api: WyzeApi
+    go2rtc: Go2rtcServer = Go2rtcServer()
     __slots__ = (
         "camera",
         "options",
@@ -106,6 +110,8 @@ class WyzeStream:
         "_motion",
         "motion_ts",
         "failures",
+        "sources",
+        "source_idx",
     )
 
     def __init__(self, camera: WyzeCamera, options: WyzeStreamOptions) -> None:
@@ -123,14 +129,25 @@ class WyzeStream:
         self._motion: bool = False
         self.motion_ts: float = 0
         self.failures: int = 0
+        self.sources: list[str] = []
+        self.source_idx: int = 0
         self.setup()
 
     def setup(self):
-        if self.camera.is_gwell or self.camera.product_model == "LD_CFP":
+        self.sources = source_chain(self.camera)
+        if self.options.substream:
+            self.sources = [s for s in self.sources if s != "webrtc"]
+        if "lan" in self.sources:
+            self.go2rtc.add(f"{self.uri}_lan", lan_url(self.camera, self.options.substream))
+        if "webrtc" in self.sources:
+            self.go2rtc.add(f"{self.uri}_webrtc", webrtc_url(self.camera.name_uri, WbAuth.api))
+        if not self.sources or self.camera.product_model == "LD_CFP":
             logger.info(
                 f"[{self.camera.product_model}] {self.camera.nickname} not supported"
             )
             self.state = StreamStatus.DISABLED
+        elif self.sources != ["tutk"]:
+            logger.info(f"{self.camera.nickname} will connect with: {', '.join(self.sources)}")
         if self.options.substream and not self.camera.can_substream:
             logger.error(f"{self.camera.nickname} may not support multiple streams!!")
             # self.state = StreamStatus.DISABLED
@@ -191,6 +208,15 @@ class WyzeStream:
         self.start_time = time()
         self.cam_resp = mp.Queue(1)
         self.cam_cmd = mp.Queue(1)
+        if self.source != "tutk":
+            logger.info(f"[{self.source.upper()}] {self.camera.nickname} via go2rtc")
+            self.process = mp.Process(
+                target=start_relay_stream,
+                args=(self.uri, f"{self.uri}_{self.source}", self._state),
+                name=self.uri,
+            )
+            self.process.start()
+            return True
         self.process = mp.Process(
             target=start_tutk_stream,
             args=(
@@ -237,6 +263,22 @@ class WyzeStream:
         self.state = StreamStatus.DISABLED
         return True
 
+    @property
+    def source(self) -> str:
+        return self.sources[self.source_idx] if self.sources else "tutk"
+
+    def _failed(self) -> None:
+        """Back off before the next try, and move to the next source after repeated failures."""
+        self.failures += 1
+        delay = backoff(self.failures)
+        if len(self.sources) > 1 and self.failures % FALLBACK_AFTER == 0:
+            old = self.source
+            self.source_idx = (self.source_idx + 1) % len(self.sources)
+            logger.warning(f"{self.camera.nickname}: {old} failed {self.failures}x, trying {self.source}")
+            delay = 0
+        self.start_time = time() + delay
+        logger.info(f"{self.camera.nickname} failed {self.failures}x, retrying in {delay}s.")
+
     def health_check(self, should_start: bool = True) -> int:
         self.motion
         if self.state == StreamStatus.OFFLINE:
@@ -251,12 +293,7 @@ class WyzeStream:
             state = self.state
             self.stop()
             if state < StreamStatus.STOPPING:
-                self.failures += 1
-                delay = backoff(self.failures)
-                self.start_time = time() + delay
-                logger.info(
-                    f"{self.camera.nickname} failed {self.failures}x, retrying in {delay}s."
-                )
+                self._failed()
         elif self.state == StreamStatus.CONNECTED:
             self.failures = 0
         elif (
@@ -268,6 +305,7 @@ class WyzeStream:
         elif self.state == StreamStatus.CONNECTING and is_timedout(self.start_time, 20):
             logger.warning(f"⏰ Timed out connecting to {self.camera.nickname}.")
             self.stop()
+            self._failed()
 
         if should_start and self.camera.is_battery and self.state == 1:
             return 0
@@ -316,6 +354,8 @@ class WyzeStream:
             "req_bitrate": self.options.bitrate,
             "failures": self.failures,
             "chronic": self.failures >= CHRONIC_FAILURES,
+            "source": self.source,
+            "sources": self.sources,
         }
         if self.connected and not self.camera.camera_info:
             self.update_cam_info()
@@ -479,6 +519,9 @@ class WyzeStream:
         if cmd not in GET_CMDS | SET_CMDS | PARAMS and cmd not in {"caminfo"}:
             return {"response": "invalid command"}
 
+        if self.source != "tutk":
+            return {"response": f"Controls need the direct connection, and {self.camera.nickname} is using {self.source}"}
+
         if on_demand := not self.connected:
             logger.info(f"[CONTROL] Connecting to {self.uri}")
             self.start()
@@ -527,6 +570,24 @@ class WyzeStream:
 def backoff(failures: int) -> int:
     """Seconds to wait before retry number `failures`: doubles, capped at COOLDOWN_MAX."""
     return min(COOLDOWN * 2 ** min(failures - 1, 16), COOLDOWN_MAX)
+
+
+def start_relay_stream(uri: str, src: str, state: c_int):
+    """Copy a go2rtc stream into MediaMTX. FAILED if no video ever arrived."""
+    state.value = StreamStatus.CONNECTING
+
+    def flowing():
+        if state.value == StreamStatus.CONNECTING:
+            state.value = StreamStatus.CONNECTED
+
+    try:
+        relay(src, uri, flowing, lambda: state.value < StreamStatus.CONNECTING)
+    except Exception as ex:
+        logger.warning(f"[{uri}] relay error: {ex}")
+    if state.value == StreamStatus.CONNECTING:
+        state.value = StreamStatus.FAILED
+    elif state.value == StreamStatus.CONNECTED:
+        state.value = StreamStatus.STOPPING
 
 
 def start_tutk_stream(

@@ -269,10 +269,10 @@ def kill_orphan(binary: str, port: int) -> None:
     if not port_in_use(port):
         return
     name = Path(binary).name
-    logger.warning(f"[MTX] Port {port} is busy. Stopping any leftover {name}...")
+    logger.warning(f"Port {port} is busy. Stopping any leftover {name}...")
     run(["pkill", "-x", name], stdout=DEVNULL, stderr=DEVNULL, check=False)
     for _ in range(20):
         if not port_in_use(port):
             return
         sleep(0.1)
-    logger.error(f"[MTX] Port {port} is still in use by another program.")
+    logger.error(f"Port {port} is still in use by another program.")
