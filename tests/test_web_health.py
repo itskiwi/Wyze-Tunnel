@@ -24,3 +24,15 @@ def test_health_gives_plain_english_fixes(client):
     assert "Weak Wi-Fi (30%)" in page and "50%" in page
     assert "isn&#39;t reachable" in page or "isn't reachable" in page
     assert "SD card is almost full" not in page
+
+
+def test_events_page_lists_recent_motion(client):
+    from wyzebridge.wyze_events import EVENT_LOG
+
+    assert "No motion events yet" in client.get("/events").get_data(as_text=True)
+    EVENT_LOG.appendleft({"uri": "front", "name": "Front Door", "ts": 1761300000, "img": "https://example.com/a.jpg"})
+    try:
+        page = client.get("/events").get_data(as_text=True)
+    finally:
+        EVENT_LOG.clear()
+    assert "Front Door" in page and "https://example.com/a.jpg" in page and 'datetime="1761300000"' in page
