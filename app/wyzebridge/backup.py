@@ -1,6 +1,12 @@
 """Export and import the settings people change in the web UI. Wyze logins and tokens are never included."""
+import base64
+import hashlib
 import json
+import os
 from datetime import time
+
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from wyzebridge import privacy, webhooks, wyze_api, wyze_stream
 from wyzebridge.config import VERSION
@@ -27,6 +33,36 @@ def export_settings() -> dict:
         except (FileNotFoundError, ValueError):
             pass
     return {"wyze_tunnel_backup": 1, "version": VERSION, "settings": settings}
+
+
+def _key(passphrase: str, salt: bytes) -> bytes:
+    return hashlib.scrypt(passphrase.encode(), salt=salt, n=2**15, r=8, p=1, maxmem=64 * 1024 * 1024, dklen=32)
+
+
+def encrypt(backup: dict, passphrase: str) -> dict:
+    """Lock a backup with a passphrase so it can be kept anywhere, even off-site."""
+    if len(passphrase) < 8:
+        raise ValueError("Use a passphrase of at least 8 characters.")
+    salt, nonce = os.urandom(16), os.urandom(12)
+    data = AESGCM(_key(passphrase, salt)).encrypt(nonce, json.dumps(backup).encode(), None)
+    b64 = lambda b: base64.b64encode(b).decode()
+    return {"wyze_tunnel_backup": 1, "encrypted": {"kdf": "scrypt", "salt": b64(salt), "nonce": b64(nonce), "data": b64(data)}}
+
+
+def unlock(backup):
+    """Return a plain backup. A locked one carries the typed passphrase beside it; plain ones pass through."""
+    if not isinstance(backup, dict) or "encrypted" not in backup:
+        return backup
+    if not isinstance(passphrase := backup.get("passphrase"), str) or not passphrase:
+        raise ValueError("This backup is locked. Type its passphrase, then choose the file again.")
+    try:
+        box = backup["encrypted"]
+        salt, nonce, data = (base64.b64decode(box[k]) for k in ("salt", "nonce", "data"))
+        return json.loads(AESGCM(_key(passphrase, salt)).decrypt(nonce, data, None))
+    except InvalidTag:
+        raise ValueError("That passphrase doesn't open this backup.") from None
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("Part of the backup is damaged, so nothing was restored.") from None
 
 
 def _str_map(value, allowed: set | None = None) -> dict[str, str]:
