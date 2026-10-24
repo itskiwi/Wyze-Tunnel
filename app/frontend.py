@@ -48,6 +48,11 @@ def create_app():
         print("Please ensure your host is up to date.")
         exit()
 
+    @app.context_processor
+    def page_version():
+        # Every page's footer, update check and cache-busting asset links need it.
+        return {"version": config.VERSION}
+
     def auth_required(view):
         @wraps(view)
         def wrapped_view(*args, **kwargs):
