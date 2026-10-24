@@ -47,7 +47,7 @@
     </defs></svg>
     {% if not hide_nav %}
     {% set page = request.endpoint %}
-    {% set pages = [("index", "./", "Cameras", "fa-table-cells-large"), ("recordings_page", "recordings", "Recordings", "fa-clock-rotate-left"), ("alerts", "alerts", "Alerts", "fa-bell"), ("health", "health", "Health", "fa-heart-pulse")] %}
+    {% set pages = [("index", "./", "Cameras", "fa-table-cells-large"), ("recordings_page", "recordings", "Recordings", "fa-clock-rotate-left"), ("events", "events", "Events", "fa-list"), ("alerts", "alerts", "Alerts", "fa-bell"), ("health", "health", "Health", "fa-heart-pulse")] %}
     <header id="topbar" class="fs-display-none safe-x mx-auto flex w-full max-w-screen-2xl items-center gap-3 pb-1 pt-3">
         <a href="./" class="flex items-center gap-2.5 font-display text-[19px] font-extrabold text-zinc-50">
             <svg class="h-9 w-9" aria-hidden="true"><use href="#mark" /></svg>Wyze Tunnel</a>

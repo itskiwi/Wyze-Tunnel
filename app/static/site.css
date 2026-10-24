@@ -113,7 +113,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 }
 
 /* Phone tab bar */
-.tabbar { position: fixed; inset: auto 0 0; z-index: 40; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+.tabbar { position: fixed; inset: auto 0 0; z-index: 40; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
   padding: 8px max(10px, env(safe-area-inset-left, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-right, 0px));
   background: rgb(var(--zinc-900)); border-top: 1px solid rgb(var(--zinc-700)); border-radius: 22px 22px 0 0; }
 .tabbar a { display: grid; place-items: center; gap: 3px; padding: 6px 0; font-size: 11px; font-weight: 600; color: rgb(var(--zinc-400)); }
