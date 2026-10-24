@@ -14,11 +14,13 @@ from flask import (
     request,
     send_from_directory,
 )
+import requests
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
 from wyzebridge import config, web_ui
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
+from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED
 from wyzebridge.web_ui import url_for
 
 
@@ -299,6 +301,55 @@ def create_app():
         else:
             return {"result": "error"}
         return {"result": "ok", "restart": restart_cmd.split(",")}
+
+    @app.route("/recordings")
+    @auth_required
+    def recordings_page():
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return render_template(
+            "recordings.html",
+            cameras={uri: cam for uri, cam in cams.items() if cam.get("record")},
+            selected=request.args.get("cam"),
+            playback=PLAYBACK_ENABLED,
+            api=WbAuth.api,
+            version=config.VERSION,
+        )
+
+    @app.route("/recordings/<string:cam_name>")
+    @auth_required
+    def recordings(cam_name: str):
+        """List recorded segments: [{"start": RFC3339, "duration": seconds}]."""
+        resp = mtx_playback("list", path=cam_name)
+        if not resp.ok:  # MediaMTX answers 404 when a camera has no recordings yet
+            return [], 200 if resp.status_code == 404 else resp.status_code
+        return [{"start": r["start"], "duration": r["duration"]} for r in resp.json()]
+
+    @app.route("/recordings/<string:cam_name>/play")
+    @auth_required
+    def play_recording(cam_name: str):
+        """Stream an MP4 of a recording. Needs ?start=<RFC3339>&duration=<seconds>."""
+        args = {"start": request.args.get("start"), "duration": request.args.get("duration")}
+        if not all(args.values()):
+            return {"error": "start and duration are required"}, 400
+        resp = mtx_playback("get", stream=True, path=cam_name, format="mp4", **args)
+        if not resp.ok:
+            return {"error": resp.text.strip()}, resp.status_code
+        name = f"{cam_name}_{args['start']}.mp4".replace(":", "-")
+        return Response(
+            resp.iter_content(64 * 1024),
+            mimetype="video/mp4",
+            headers={"Content-Disposition": f'inline; filename="{name}"'},
+        )
+
+    def mtx_playback(endpoint: str, stream: bool = False, **params) -> requests.Response:
+        try:
+            return requests.get(
+                f"http://{PLAYBACK_ADDR}/{endpoint}", params=params, stream=stream, timeout=10
+            )
+        except requests.RequestException as ex:
+            resp = requests.Response()
+            resp.status_code, resp._content = 503, str(ex).encode()
+            return resp
 
     @app.route("/cams.m3u8")
     @auth_required

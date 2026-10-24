@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<header class="mb-6 flex flex-wrap items-center gap-3">
+    <a href="./" class="mr-2 flex items-center gap-2 text-lg font-semibold tracking-tight">
+        <span class="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500 text-zinc-950"><i
+                class="fas fa-video text-sm"></i></span>
+        Wyze Tunnel
+    </a>
+    <h1 class="text-lg text-zinc-400">Recordings</h1>
+    {% if cameras %}
+    <label class="ml-auto w-full sm:w-64">
+        <span class="sr-only">Camera</span>
+        <select id="cam" class="field">
+            {% for uri, cam in cameras.items() %}
+            <option value="{{ uri }}" {{ 'selected' if uri == selected }}>{{ cam.nickname }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    {% endif %}
+</header>
+
+{% if cameras and not playback %}
+<div class="mx-auto mt-16 max-w-md text-center text-zinc-400">
+    <i class="fas fa-clock-rotate-left text-3xl"></i>
+    <p class="mt-3">Your recordings are saved, but they can't be played here because of a custom file name.</p>
+    <p class="mt-1 text-sm"><code>RECORD_PATH</code> needs <code>%Y %m %d %H %M %S %f</code> in it,
+        like the default <code>record/%path/%Y-%m-%d_%H-%M-%S-%f</code>.</p>
+</div>
+{% elif cameras %}
+<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+    <div class="overflow-hidden rounded-2xl bg-black ring-1 ring-white/5">
+        <video id="player" class="aspect-video w-full" controls playsinline></video>
+        <div class="flex items-center gap-3 bg-zinc-900 px-4 py-3 text-sm">
+            <span id="now-playing" class="text-zinc-400">Pick a clip to play it.</span>
+            <a id="download" class="btn ml-auto hidden" download><i class="fas fa-download"></i>Download</a>
+        </div>
+    </div>
+    <div id="clips" class="max-h-[70vh] overflow-auto rounded-2xl bg-zinc-900 p-2 ring-1 ring-white/5">
+        <p class="p-3 text-sm text-zinc-500">Loading…</p>
+    </div>
+</div>
+{% else %}
+<div class="mx-auto mt-16 max-w-md text-center text-zinc-400">
+    <i class="fas fa-clock-rotate-left text-3xl"></i>
+    <p class="mt-3">No cameras are recording yet.</p>
+    <p class="mt-1 text-sm">Turn on recording for a camera with <code>RECORD_ALL=true</code> or
+        <code>RECORD_&lt;CAMERA_NAME&gt;=true</code>, then come back here.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block javascript %}
+<script>
+    // shortcut: long recordings are cut into 10-minute clips because the proxied MP4 can't seek; add Range support if people want one long timeline.
+    const CLIP_SECONDS = 600;
+    const clips = document.getElementById("clips");
+    const player = document.getElementById("player");
+    const select = document.getElementById("cam");
+
+    function splitClips(segments) {
+        const out = [];
+        for (const seg of segments) {
+            const start = new Date(seg.start).getTime();
+            for (let t = 0; t < seg.duration; t += CLIP_SECONDS) {
+                // The first clip keeps MediaMTX's exact microsecond start; rounding it down to milliseconds lands before the recording and 404s.
+                const iso = t ? new Date(start + t * 1000).toISOString() : seg.start;
+                out.push({ start: new Date(start + t * 1000), iso, duration: Math.min(CLIP_SECONDS, seg.duration - t) });
+            }
+        }
+        return out.reverse();
+    }
+
+    function play(cam, clip, button) {
+        const url = `recordings/${encodeURIComponent(cam)}/play?start=${encodeURIComponent(clip.iso)}&duration=${clip.duration.toFixed(3)}`;
+        player.src = url;
+        player.play().catch(() => { });
+        document.getElementById("now-playing").textContent = clip.start.toLocaleString();
+        const download = document.getElementById("download");
+        download.href = url;
+        download.classList.remove("hidden");
+        clips.querySelectorAll(".bg-white\\/10").forEach((b) => b.classList.remove("bg-white/10"));
+        button.classList.add("bg-white/10");
+    }
+
+    function load(cam) {
+        history.replaceState(null, "", `?cam=${encodeURIComponent(cam)}`);
+        clips.innerHTML = '<p class="p-3 text-sm text-zinc-500">Loading…</p>';
+        fetch(`recordings/${encodeURIComponent(cam)}`)
+            .then((resp) => resp.ok ? resp.json() : Promise.reject(new Error(`The bridge answered ${resp.status}`)))
+            .then((segments) => {
+                const list = splitClips(segments);
+                clips.replaceChildren();
+                if (!list.length) {
+                    clips.innerHTML = '<p class="p-3 text-sm text-zinc-500">Nothing recorded yet. Clips show up here a minute or so after recording starts.</p>';
+                    return;
+                }
+                let day = "";
+                for (const clip of list) {
+                    const label = clip.start.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+                    if (label !== day) {
+                        day = label;
+                        const heading = document.createElement("p");
+                        heading.className = "menu-label";
+                        heading.textContent = day;
+                        clips.append(heading);
+                    }
+                    const button = document.createElement("button");
+                    button.className = "menu-item";
+                    const mins = Math.max(1, Math.round(clip.duration / 60));
+                    button.innerHTML = '<i class="fas fa-play w-4 text-zinc-500"></i>';
+                    button.append(`${clip.start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
+                    const length = document.createElement("span");
+                    length.className = "ml-auto text-xs text-zinc-500";
+                    length.textContent = `${mins} min`;
+                    button.append(length);
+                    button.addEventListener("click", () => play(cam, clip, button));
+                    clips.append(button);
+                }
+            })
+            .catch((err) => {
+                clips.innerHTML = '<p class="p-3 text-sm text-rose-300"></p>';
+                clips.firstChild.textContent = `Couldn't load recordings. ${err.message}. Try Restart → Stream server on the main page.`;
+            });
+    }
+
+    if (select && clips) {
+        select.addEventListener("change", () => load(select.value));
+        load(select.value);
+    }
+</script>
+{% endblock %}

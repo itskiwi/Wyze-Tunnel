@@ -15,8 +15,11 @@ MTX_CONFIG = getenv("MEDIAMTX_CONFIG", "/app/mediamtx.yml")
 RECORD_LENGTH = env_bool("RECORD_LENGTH", "60s")
 RECORD_KEEP = env_bool("RECORD_KEEP", "0s")
 rec_file = env_bool("RECORD_FILE_NAME", style="original").strip("/")
-rec_path = env_bool("RECORD_PATH", "record/%path/%Y-%m-%d_%H-%M-%S", style="original")
+rec_path = env_bool("RECORD_PATH", "record/%path/%Y-%m-%d_%H-%M-%S-%f", style="original")
+PLAYBACK_ADDR = "127.0.0.1:9996"
 RECORD_PATH = f"{Path('/') / Path(rec_path) / Path(rec_file)}".removesuffix(".mp4")
+# MediaMTX refuses to start with playback on unless the file name has every one of these.
+PLAYBACK_ENABLED = all(f in RECORD_PATH for f in ("%Y", "%m", "%d", "%H", "%M", "%S", "%f"))
 
 
 class MtxInterface:
@@ -92,12 +95,19 @@ class MtxServer:
             mtx.set("pathDefaults.recordPath", record_path)
             mtx.set("pathDefaults.recordSegmentDuration", RECORD_LENGTH)
             mtx.set("pathDefaults.recordDeleteAfter", RECORD_KEEP)
+            # Local-only playback server; the web UI proxies it behind its own login.
+            mtx.set("playback", PLAYBACK_ENABLED)
+            mtx.set("playbackAddress", PLAYBACK_ADDR)
 
     def setup_auth(self, api: Optional[str], stream: Optional[str]):
         publisher = [
             {
                 "ips": ["127.0.0.1"],
-                "permissions": [{"action": "read"}, {"action": "publish"}],
+                "permissions": [
+                    {"action": "read"},
+                    {"action": "publish"},
+                    {"action": "playback"},
+                ],
             }
         ]
         with MtxInterface() as mtx:

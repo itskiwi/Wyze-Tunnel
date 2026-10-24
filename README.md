@@ -152,7 +152,7 @@ Recoding streams has been updated to use MediaMTX with the option to delete olde
 
 Use `RECORD_ALL` or `RECORD_CAM_NAME` to enable recording.
 
-- `RECORD_PATH` Available variables are `%path` or `{cam_name}`, `%Y` `%m` `%d` `%H` `%M` `%S` `%f` `%s` (time in strftime format).
+- `RECORD_PATH` Available variables are `%path` or `{cam_name}`, `%Y` `%m` `%d` `%H` `%M` `%S` `%f` `%s` (time in strftime format). Keep all of `%Y %m %d %H %M %S %f` in it so the web UI's Recordings page can play clips.
 - `RECORD_LENGTH` Length of each clip. Use `s` for seconds , `h` for hours. Defaults to `60s`
 - `RECORD_KEEP` Delete older clips. Use `s` for seconds , `h` for hours. Set to 0s to disable automatic deletion. Defaults to `0s`
 

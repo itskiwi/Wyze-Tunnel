@@ -582,13 +582,58 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".fs-display-none").forEach((e) => {
       if (fs) { e.classList.add("fs-mode") } else { e.classList.remove("fs-mode") }
     })
+    // Camera wall: fit every visible camera on screen, e.g. 4 cams in 2x2, 9 in 3x3.
+    const visible = document.querySelectorAll(".camera:not(.is-hidden)").length;
+    const cols = fs ? Math.max(1, Math.ceil(Math.sqrt(visible))) : getCookie("number_of_columns", 2);
+    document.querySelector(".cameras")?.style.setProperty("--cols", cols);
     if (fs) { autoplay(); }
   }
 
-  document.querySelector(".fullscreen button")?.addEventListener("click", () => {
-    let fs = getCookie("fullscreen", false) ? "" : "1";
+  function setFullscreen(fs) {
     setCookie("fullscreen", fs)
     toggleFullscreen(fs)
+    if (fs && !document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => { });
+    } else if (!fs && document.fullscreenElement) {
+      document.exitFullscreen();
+    }
+  }
+  document.querySelector(".fullscreen button")?.addEventListener("click", () => {
+    setFullscreen(getCookie("fullscreen", false) ? "" : "1")
+  })
+  // Leaving browser fullscreen with Esc also leaves the camera wall.
+  document.addEventListener("fullscreenchange", () => {
+    if (!document.fullscreenElement && getCookie("fullscreen")) { setFullscreen("") }
+  })
+
+  // Keyboard shortcuts: f = camera wall, r = refresh previews, 1-6 = columns.
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, textarea, select")) { return }
+    if (e.key === "f" && document.querySelector(".fullscreen")) {
+      setFullscreen(getCookie("fullscreen", false) ? "" : "1")
+    } else if (e.key === "r") {
+      document.querySelectorAll(".camera:not(.is-hidden) .update-preview").forEach((b) => b.click())
+    } else if (/^[1-6]$/.test(e.key) && !getCookie("fullscreen")) {
+      const input = document.getElementById("select_number_of_columns")
+      if (input) { input.value = e.key; input.dispatchEvent(new Event("change")) }
+    }
+  })
+
+  document.querySelectorAll(".copy-rtsp").forEach((button) => {
+    button.addEventListener("click", () => {
+      // Read the link after addApiKey() has added the login to it.
+      const url = button.closest(".menu").querySelector('a.stream-link[href^="rtsp"]').getAttribute("href");
+      const copied = () => showToast("Copied", "RTSP link is on your clipboard.", "success");
+      // Clipboard API needs HTTPS; most installs are plain http on the LAN, so fall back to execCommand.
+      const fallback = () => {
+        const area = Object.assign(document.createElement("textarea"), { value: url });
+        document.body.append(area);
+        area.select();
+        document.execCommand("copy") ? copied() : showToast("Couldn't copy, here's the link", url, "warning");
+        area.remove();
+      };
+      navigator.clipboard?.writeText(url).then(copied, fallback) ?? fallback();
+    })
   })
   toggleFullscreen()
 

@@ -262,6 +262,8 @@ class WyzeStream:
             "rtsp_fw": self.camera.rtsp_fw,
             "rtsp_fw_enabled": self.rtsp_fw_enabled,
             "is_battery": self.camera.is_battery,
+            "is_pan_cam": self.camera.is_pan_cam,
+            "is_floodlight": self.camera.is_floodlight,
             "webrtc": self.camera.webrtc_support,
             "start_time": self.start_time,
             "req_frame_size": self.options.frame_size,
