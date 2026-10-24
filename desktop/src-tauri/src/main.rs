@@ -9,11 +9,12 @@ use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_notification::NotificationExt;
 
 #[cfg(target_os = "macos")]
 const PORT: u16 = 5050; // macOS AirPlay holds 5000; mac/wyze-tunnel.yaml forwards to 5050
@@ -23,6 +24,7 @@ const RELEASES: &str = "https://github.com/itskiwi/Wyze-Tunnel/releases";
 
 static STOPPED: AtomicBool = AtomicBool::new(false);
 static BUSY: AtomicBool = AtomicBool::new(false); // an install/update is running; don't supervise
+static UPDATE_NOW: AtomicBool = AtomicBool::new(false); // the tray's update item was clicked
 
 fn cmd(program: impl AsRef<std::ffi::OsStr>) -> Command {
     let mut c = Command::new(program);
@@ -80,7 +82,13 @@ mod vm {
         false // the VM's systemd path unit handles the web UI's update button
     }
     pub fn password() -> String {
-        super::linux_password(as_root(&["sh", "-c", super::LINUX_PASSWORD]))
+        super::stdout_of(as_root(&["sh", "-c", super::LINUX_PASSWORD]))
+    }
+    pub fn version() -> String {
+        super::stdout_of(as_root(super::LINUX_VERSION))
+    }
+    pub fn watching() -> bool {
+        false // the VM's own updater waits for viewers
     }
     pub fn quit() {}
     pub fn open_url(url: &str) {
@@ -208,12 +216,25 @@ mod vm {
     }
     pub fn password() -> String {
         if wsl() {
-            return super::linux_password(as_root(&["sh", "-c", super::LINUX_PASSWORD]));
+            return super::stdout_of(as_root(&["sh", "-c", super::LINUX_PASSWORD]));
         }
         if data().join(r"tokens\wb_login").exists() {
             return String::new(); // a login chosen in the web UI replaces the generated one
         }
         settings().into_iter().find(|(k, _)| k == "WB_PASSWORD").map(|(_, v)| v).unwrap_or_default()
+    }
+    pub fn version() -> String {
+        if wsl() {
+            return super::stdout_of(as_root(super::LINUX_VERSION));
+        }
+        let env = fs::read_to_string(native().join(r"app\.env")).unwrap_or_default();
+        env.lines().find_map(|l| l.strip_prefix("VERSION=")).unwrap_or_default().trim().to_string()
+    }
+    /// Someone is watching a stream (the bridge counts them next to WT_UPDATE_FILE); the daily update waits.
+    /// In WSL mode the Linux updater does this itself.
+    pub fn watching() -> bool {
+        let n = fs::read_to_string(data().join("viewers")).unwrap_or_default();
+        !wsl() && n.trim().parse::<u32>().is_ok_and(|n| n > 0)
     }
     pub fn open_url(url: &str) {
         let _ = cmd("explorer.exe").arg(url).spawn();
@@ -234,6 +255,13 @@ fn newer_release() -> Option<String> {
     (tag != concat!("desktop-v", env!("CARGO_PKG_VERSION"))).then(|| tag.to_string())
 }
 
+/// Newest bridge release, like "2.13.0".
+fn latest_bridge() -> Option<String> {
+    let out = cmd("curl").args(["-fsSL", "https://api.github.com/repos/itskiwi/Wyze-Tunnel/releases/latest"]).output().ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    Some(json["tag_name"].as_str()?.trim_start_matches('v').to_string())
+}
+
 fn url() -> String {
     format!("http://localhost:{PORT}")
 }
@@ -247,7 +275,9 @@ fn info() -> serde_json::Value {
 const LINUX_PASSWORD: &str =
     "[ -f /var/lib/wyze-tunnel/tokens/wb_login ] || sed -n 's/^WB_PASSWORD=//p' /etc/wyze-tunnel/wyze-tunnel.env";
 
-fn linux_password(mut c: Command) -> String {
+const LINUX_VERSION: &[&str] = &["sed", "-n", "s/^VERSION=//p", "/opt/wyze-tunnel/app/.env"];
+
+fn stdout_of(mut c: Command) -> String {
     c.output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
 }
 
@@ -319,6 +349,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| open_window(app)))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![info, install, password, open_ui])
         .setup(|app| {
             let item = |id: &str, text: &str| MenuItem::with_id(app, id, text, true, None::<&str>);
@@ -350,13 +381,11 @@ fn main() {
                         std::thread::spawn(vm::stop);
                     }
                     "update" => {
-                        // A newer app goes to the releases page. A VM or distro updates itself
-                        // (wyze-tunnel-update runs daily), this just runs it now; a native bridge reinstalls.
+                        // A newer app goes to the releases page; the bridge update runs in the supervisor loop.
                         if let Some(tag) = newer_release() {
                             vm::open_url(&format!("{RELEASES}/tag/{tag}"));
                         } else {
-                            let app = app.clone();
-                            std::thread::spawn(move || vm::self_update() || reinstall(&app, false));
+                            UPDATE_NOW.store(true, Ordering::SeqCst);
                         }
                     }
                     "full" => {
@@ -375,20 +404,53 @@ fn main() {
                 open_window(app.handle());
             }
 
-            let update_item = update.clone();
-            std::thread::spawn(move || {
-                if let Some(tag) = newer_release() {
-                    let _ = update_item.set_text(format!("Update available ({tag})"));
-                }
-            });
             let handle = app.handle().clone();
-            let mut last_update = std::time::Instant::now();
+            let mut last_update = Instant::now();
+            // Update states, like the web UI's: available, updating, then a notification once the version changes.
+            let (mut version, mut latest, mut desktop) = (String::new(), None::<String>, None::<String>);
+            let mut updating: Option<Instant> = None;
+            let mut shown = String::new();
+            let mut tick = 0u32;
             std::thread::spawn(move || loop {
-                if vm::update_requested() || last_update.elapsed() > Duration::from_secs(24 * 3600) {
-                    last_update = std::time::Instant::now();
-                    if vm::installed() && !vm::self_update() {
-                        reinstall(&handle, false);
+                let daily = last_update.elapsed() > Duration::from_secs(24 * 3600) && !vm::watching();
+                if (UPDATE_NOW.swap(false, Ordering::SeqCst) || vm::update_requested() || daily) && vm::installed() {
+                    last_update = Instant::now();
+                    updating = Some(Instant::now());
+                    let _ = update.set_text("Updating…");
+                    let _ = update.set_enabled(false);
+                    if !vm::self_update() {
+                        reinstall(&handle, false); // native Windows: a no-op when nothing is newer
                     }
+                }
+                if tick.is_multiple_of(4) || updating.is_some() {
+                    let v = vm::version();
+                    if !v.is_empty() && v != version {
+                        if !version.is_empty() {
+                            let n = handle.notification().builder().title("Wyze Tunnel updated").body(format!("Now running v{v}."));
+                            let _ = n.show();
+                        }
+                        version = v;
+                        updating = None;
+                    }
+                    // A Linux update that found nothing newer (or rolled back) never changes the version.
+                    if updating.is_some_and(|t| t.elapsed() > Duration::from_secs(300)) {
+                        updating = None;
+                    }
+                }
+                if tick.is_multiple_of(4 * 60 * 6) {
+                    (latest, desktop) = (latest_bridge(), newer_release()); // every 6 hours
+                }
+                tick = tick.wrapping_add(1);
+                let text = match (&updating, &desktop, &latest) {
+                    (Some(_), ..) => "Updating…".to_string(),
+                    (_, Some(tag), _) => format!("Update available ({tag})"),
+                    (_, _, Some(l)) if !version.is_empty() && *l != version => format!("Update available (v{l})"),
+                    _ => "Check for updates".to_string(),
+                };
+                if text != shown {
+                    let _ = update.set_text(&text);
+                    let _ = update.set_enabled(updating.is_none());
+                    shown = text;
                 }
                 let busy = BUSY.load(Ordering::SeqCst);
                 let stopped = STOPPED.load(Ordering::SeqCst);
