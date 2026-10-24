@@ -46,12 +46,26 @@ main() {
     MAC_IP=$(ipconfig getifaddr en0 || ipconfig getifaddr en1 || echo 127.0.0.1)
 
     say "Installing Wyze Tunnel inside the VM"
-    WB_PASSWORD=$(limactl shell --workdir / "$VM" sudo bash -euo pipefail -c "
+    # The latest release bundle for the VM's CPU, or the source of WT_REF.
+    # provision.sh prints only the web password, so stdout is captured.
+    WB_PASSWORD=$(limactl shell --workdir / "$VM" sudo bash -euo pipefail -s "$MAC_IP" "${WT_REF:-}" <<'VM'
+    # Wrapped in a function so bash reads the whole script before anything can touch stdin.
+    vm() {
         command -v curl >/dev/null || { apt-get update -qq && apt-get install -y -qq curl >/dev/null; }
-        rm -rf /tmp/wt && mkdir /tmp/wt
-        curl -fsSL https://github.com/itskiwi/Wyze-Tunnel/archive/$REF.tar.gz | tar xzf - -C /tmp/wt --strip-components=1
-        /tmp/wt/mac/provision.sh $MAC_IP
-    " </dev/null)
+        rm -rf /tmp/wt && mkdir /tmp/wt && cd /tmp/wt
+        BUNDLE=wyze-tunnel-linux-$(uname -m).tar.gz
+        RELEASE=https://github.com/itskiwi/Wyze-Tunnel/releases/latest/download
+        if [ -z "$2" ] && curl -fsSL "$RELEASE/$BUNDLE" -o "$BUNDLE" 2>/dev/null; then
+            curl -fsSL "$RELEASE/SHA256SUMS" | grep " $BUNDLE\$" | sha256sum -c --quiet
+            tar xzf "$BUNDLE" --strip-components=1
+        else
+            curl -fsSL "https://github.com/itskiwi/Wyze-Tunnel/archive/${2:-main}.tar.gz" | tar xzf - --strip-components=1
+        fi
+        /tmp/wt/mac/provision.sh "$1"
+    }
+    vm "$@" </dev/null
+VM
+)
 
     say "Done! Wyze Tunnel is running."
     echo "  Open:  http://localhost:5050  (from other devices: http://$MAC_IP:5050)"

@@ -6,6 +6,8 @@ After=network-online.target
 [Service]
 WorkingDirectory=/opt/wyze-tunnel/app
 Environment=PYTHONUNBUFFERED=1 FLASK_APP=frontend
+# Bundled ffmpeg (release installs) comes first.
+Environment=PATH=/opt/wyze-tunnel/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=TOKEN_PATH=/var/lib/wyze-tunnel/tokens IMG_DIR=/var/lib/wyze-tunnel/img
 Environment="RECORD_PATH=/var/lib/wyze-tunnel/record/%%path/%%Y-%%m-%%d_%%H-%%M-%%S"
 Environment=MEDIAMTX_BIN=/opt/wyze-tunnel/mediamtx MEDIAMTX_CONFIG=/var/lib/wyze-tunnel/mediamtx.yml

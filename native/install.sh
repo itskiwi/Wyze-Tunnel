@@ -5,7 +5,8 @@
 #   curl -fsSL https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/main/native/install.sh | sudo bash
 # Or from a checkout:
 #   sudo ./native/install.sh
-# Re-run either one to update. Set WT_REF=<branch or tag> to install something other than main.
+# Re-run either one to update. The one-liner installs the latest release; set WT_REF=<branch or tag>
+# to install that source instead.
 set -euo pipefail
 
 # Everything runs inside main so a `curl | bash` pipe is fully read before anything executes.
@@ -18,29 +19,43 @@ REPO=itskiwi/Wyze-Tunnel
 [ "$(id -u)" -eq 0 ] || { echo "Please run as root, e.g. with sudo." >&2; exit 1; }
 command -v systemctl >/dev/null || { echo "This installer needs a Linux system with systemd." >&2; exit 1; }
 
-has_deps() {
-    command -v ffmpeg >/dev/null && command -v curl >/dev/null && command -v tar >/dev/null &&
-        python3 -c 'import sys, ensurepip, venv; sys.exit(sys.version_info < (3, 10))' 2>/dev/null
-}
-if ! has_deps; then
-    echo "==> Installing system packages (python3, ffmpeg, curl)"
-    if command -v apt-get >/dev/null; then
-        apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-venv ffmpeg curl tar </dev/null
-    elif command -v dnf >/dev/null; then
-        dnf install -y -q python3 ffmpeg-free curl tar
-    elif command -v pacman >/dev/null; then
-        pacman -Sy --noconfirm --needed python ffmpeg curl tar
-    fi
-    has_deps || { echo "Please install Python 3.10+ (with venv), ffmpeg and curl, then run this again." >&2; exit 1; }
-fi
-
-# Use the checkout this script sits in, or download the source when piped from curl.
+# Use the checkout or bundle this script sits in. When piped from curl, download the latest
+# release bundle for this CPU (or the source of WT_REF, or main if there is no release yet).
 SRC=$(cd "$(dirname "${BASH_SOURCE[0]:-.}")/.." 2>/dev/null && pwd)
 if [ ! -f "$SRC/app/.env" ] || [ ! -f "$SRC/native/wyze-tunnel.service" ]; then
     SRC=$(mktemp -d)
     trap 'rm -rf "$SRC"' EXIT
-    echo "==> Downloading Wyze Tunnel (${WT_REF:-main})"
-    curl -fsSL "https://github.com/$REPO/archive/${WT_REF:-main}.tar.gz" | tar xzf - -C "$SRC" --strip-components=1
+    BUNDLE=wyze-tunnel-linux-$(uname -m).tar.gz
+    RELEASE=https://github.com/$REPO/releases/latest/download
+    if [ -z "${WT_REF:-}" ] && curl -fsSL "$RELEASE/$BUNDLE" -o "$SRC/$BUNDLE" 2>/dev/null; then
+        echo "==> Downloaded the latest Wyze Tunnel release ($(uname -m))"
+        curl -fsSL "$RELEASE/SHA256SUMS" -o "$SRC/SHA256SUMS"
+        (cd "$SRC" && grep " $BUNDLE\$" SHA256SUMS | sha256sum -c --quiet) ||
+            { echo "The download is corrupt (checksum mismatch). Please try again." >&2; exit 1; }
+        tar xzf "$SRC/$BUNDLE" -C "$SRC" --strip-components=1
+    else
+        echo "==> Downloading Wyze Tunnel (${WT_REF:-main})"
+        curl -fsSL "https://github.com/$REPO/archive/${WT_REF:-main}.tar.gz" | tar xzf - -C "$SRC" --strip-components=1
+    fi
+fi
+
+# Release bundles ship their own ffmpeg, so only a source install needs the system one.
+FFMPEG=ffmpeg
+[ -x "$SRC/bin/ffmpeg" ] && FFMPEG=
+has_deps() {
+    { [ -z "$FFMPEG" ] || command -v ffmpeg >/dev/null; } && command -v curl >/dev/null && command -v tar >/dev/null &&
+        python3 -c 'import sys, ensurepip, venv; sys.exit(sys.version_info < (3, 10))' 2>/dev/null
+}
+if ! has_deps; then
+    echo "==> Installing system packages (python3, ${FFMPEG:+ffmpeg, }curl)"
+    if command -v apt-get >/dev/null; then
+        apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-venv $FFMPEG curl tar </dev/null
+    elif command -v dnf >/dev/null; then
+        dnf install -y -q python3 ${FFMPEG:+ffmpeg-free} curl tar
+    elif command -v pacman >/dev/null; then
+        pacman -Sy --noconfirm --needed python $FFMPEG curl tar
+    fi
+    has_deps || { echo "Please install Python 3.10+ (with venv), ${FFMPEG:+ffmpeg and }curl, then run this again." >&2; exit 1; }
 fi
 
 case "$(uname -m)" in
@@ -63,9 +78,15 @@ echo "==> Installing Python dependencies"
 "$PREFIX/venv/bin/pip" install --quiet --disable-pip-version-check -r "$PREFIX/app/requirements.txt"
 "$PREFIX/venv/bin/python" -m compileall -q "$PREFIX/app"
 
-echo "==> Downloading MediaMTX v$MTX_TAG ($MTX_ARCH)"
-curl -fsSL "https://github.com/bluenviron/mediamtx/releases/download/v${MTX_TAG}/mediamtx_v${MTX_TAG}_linux_${MTX_ARCH}.tar.gz" \
-    | tar xzf - -C "$PREFIX" mediamtx mediamtx.yml
+if [ -x "$SRC/mediamtx" ]; then
+    cp "$SRC/mediamtx" "$SRC/mediamtx.yml" "$PREFIX/"
+else
+    echo "==> Downloading MediaMTX v$MTX_TAG ($MTX_ARCH)"
+    curl -fsSL "https://github.com/bluenviron/mediamtx/releases/download/v${MTX_TAG}/mediamtx_v${MTX_TAG}_linux_${MTX_ARCH}.tar.gz" \
+        | tar xzf - -C "$PREFIX" mediamtx mediamtx.yml
+fi
+rm -rf "$PREFIX/bin"
+[ -z "$FFMPEG" ] && install -D -m 755 "$SRC/bin/ffmpeg" "$PREFIX/bin/ffmpeg"
 
 IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)
 IP=${IP:-$(hostname -I 2>/dev/null | awk '{print $1}' || true)}
