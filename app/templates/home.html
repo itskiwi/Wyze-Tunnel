@@ -210,8 +210,13 @@
             if (m.img) {
                 const img = Object.assign(document.createElement("img"), { src: m.img, alt: `${m.name} at ${time(m.ts)}`, loading: "lazy" });
                 img.className = "h-full w-full rounded-xl object-cover";
-                img.onerror = () => img.replaceWith(Object.assign(document.createElement("span"), {
-                    className: "grid h-full place-items-center text-xs text-zinc-500", textContent: "Snapshot expired" }));
+                img.onerror = () => {
+                    // Wyze's thumbnail links expire; the bridge keeps a copy of the latest one on this computer.
+                    const local = `img/${encodeURIComponent(m.uri)}.jpg`;
+                    if (!img.src.endsWith(local)) { img.src = local; return; }
+                    img.replaceWith(Object.assign(document.createElement("span"), {
+                        className: "grid h-full place-items-center text-xs text-zinc-500", textContent: "Snapshot expired" }));
+                };
                 thumb.append(img);
             }
             list.append(row);
