@@ -35,7 +35,7 @@ if ($Distros -notcontains $Distro) {
 }
 
 Say 'Installing Wyze Tunnel inside WSL'
-Wsl -d $Distro -u root -- bash -euo pipefail -c "command -v curl >/dev/null || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl >/dev/null; }; curl -fsSL https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/$Ref/native/install.sh | WT_REF=$Ref bash >/dev/null"
+Wsl -d $Distro -u root -- bash -euo pipefail -c "command -v curl >/dev/null || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl >/dev/null; }; curl -fsSL https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/$Ref/native/install.sh | WT_REF=$env:WT_REF bash >/dev/null"
 
 $Password = wsl.exe -d $Distro -u root --exec sed -n 's/^WB_PASSWORD=//p' /etc/wyze-tunnel/wyze-tunnel.env
 Say 'Done! Wyze Tunnel is running.'

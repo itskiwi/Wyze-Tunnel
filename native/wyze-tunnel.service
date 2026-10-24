@@ -12,6 +12,8 @@ Environment=TOKEN_PATH=/var/lib/wyze-tunnel/tokens IMG_DIR=/var/lib/wyze-tunnel/
 Environment="RECORD_PATH=/var/lib/wyze-tunnel/record/%%path/%%Y-%%m-%%d_%%H-%%M-%%S"
 Environment=MEDIAMTX_BIN=/opt/wyze-tunnel/mediamtx MEDIAMTX_CONFIG=/var/lib/wyze-tunnel/mediamtx.yml
 Environment=TUTK_LIB=/opt/wyze-tunnel/libIOTCAPIs_ALL.so LOG_PATH=/var/lib/wyze-tunnel/logs
+# The web UI's update button creates this file; wyze-tunnel-update.path picks it up.
+Environment=WT_UPDATE_FILE=/var/lib/wyze-tunnel/update-now
 # Settings in this file override the defaults above.
 EnvironmentFile=/etc/wyze-tunnel/wyze-tunnel.env
 # Start from a clean MediaMTX config each time, like a fresh container; the bridge edits it on startup.

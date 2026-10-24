@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for Wyze Tunnel updates daily
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=4h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
