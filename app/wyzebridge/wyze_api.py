@@ -101,7 +101,7 @@ class WyzeCredentials:
 
 
 class WyzeApi:
-    __slots__ = "auth", "user", "creds", "cameras", "_last_pull"
+    __slots__ = "auth", "user", "creds", "cameras", "_last_pull", "mfa", "login_error"
 
     def __init__(self) -> None:
         self.auth: Optional[WyzeCredential] = None
@@ -109,6 +109,8 @@ class WyzeApi:
         self.creds: WyzeCredentials = WyzeCredentials()
         self.cameras: Optional[list[WyzeCamera]] = None
         self._last_pull: float = 0
+        self.mfa: Optional[dict] = None  # pending 2FA for the setup wizard
+        self.login_error: str = ""
         if env_bool("FRESH_DATA"):
             self.clear_cache()
 
@@ -140,28 +142,48 @@ class WyzeApi:
         while self.auth_locked:
             sleep(1)
         try:
-            self.auth = wyzecam.login(
-                email=self.creds.email,
-                password=self.creds.password,
-                api_key=self.creds.api_key,
-                key_id=self.creds.key_id,
-            )
+            auth = self._login()
+            if auth.mfa_options and not auth.access_token:
+                logger.info("[API] 🔐 Wyze asked for a 2FA code. Enter it in the WebUI.")
+                self.mfa = wyzecam.api.start_mfa(auth)
+                while "verification_code" not in self.mfa:
+                    sleep(0.5)
+                auth = self._login(auth.phone_id)
+            self.auth = auth if auth.access_token else None
+            self.login_error = "" if self.auth else "Wyze did not accept the login."
         except WyzeAPIError as ex:
             logger.error(f"[API] {ex}")
+            self.login_error = ex.msg
             if ex.code == "1000":
                 logger.error("[API] Clearing credentials. Please try again.")
                 self.creds.reset_creds()
         except HTTPError as ex:
+            self.login_error = str(ex)
             if hasattr(ex, "response") and ex.response.status_code == 403:
                 logger.error(f"[API] Your IP may be blocked from {ex.request.url}")
             if hasattr(ex, "response") and ex.response.text:
                 logger.error(f"[API] Response: {ex.response.text}")
         except (ValueError, RateLimitError, RequestException) as ex:
             logger.error(f"[API] {ex}")
+            self.login_error = str(ex)
         finally:
+            self.mfa = None
+            if web and self.login_error:
+                # Let the wizard show the error instead of retrying the same creds.
+                self.creds.reset_creds()
             if not web and not self.auth:
                 logger.info("[API] Cool down for 20s before trying again.")
                 sleep(20)
+
+    def _login(self, phone_id: Optional[str] = None) -> WyzeCredential:
+        return wyzecam.login(
+            email=self.creds.email,
+            password=self.creds.password,
+            api_key=self.creds.api_key,
+            key_id=self.creds.key_id,
+            phone_id=phone_id,
+            mfa=self.mfa if phone_id else None,
+        )
 
     def token_auth(
         self, tokens: Optional[str] = None, refresh: Optional[str] = None
