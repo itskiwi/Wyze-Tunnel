@@ -89,9 +89,12 @@
 <section class="surface mx-auto mt-6 max-w-xl p-5">
     <h2 class="font-semibold">Back up your settings</h2>
     <p class="mt-1 text-sm text-zinc-400">Saves alerts, hidden cameras, camera names, quality, connection choices and the privacy schedule
-        to a file. Your Wyze login isn't included.</p>
+        to a file. Your Wyze login isn't included. Add a passphrase to lock the file so you can keep it anywhere, even
+        in the cloud. Without the passphrase it can't be restored.</p>
+    <label class="mt-3 block text-sm">Passphrase (optional, 8 or more characters)
+        <input id="backupPass" type="password" autocomplete="new-password" class="field mt-1 w-full" /></label>
     <div class="mt-3 flex flex-wrap items-center gap-2">
-        <a class="btn" href="settings/backup" download><i class="fas fa-file-arrow-down"></i>Download backup</a>
+        <a id="backupLink" class="btn" href="settings/backup" download><i class="fas fa-file-arrow-down"></i>Download backup</a>
         <label class="btn cursor-pointer"><i class="fas fa-file-arrow-up"></i>Restore from file
             <input id="restore" type="file" accept="application/json,.json" class="sr-only" /></label>
     </div>
@@ -109,11 +112,28 @@
         status.textContent = text;
     }
 
+    const backupPass = document.getElementById("backupPass");
+    const restoreStatus = document.getElementById("restoreStatus");
+    const say = (ok, text) => { restoreStatus.className = `mt-2 text-sm ${ok ? "text-emerald-300" : "text-rose-300"}`; restoreStatus.textContent = text; };
+    document.getElementById("backupLink").addEventListener("click", (e) => {
+        if (!backupPass.value) return;  // plain download through the link
+        e.preventDefault();
+        fetch("settings/backup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passphrase: backupPass.value }) })
+            .then((resp) => resp.json().then((body) => resp.ok ? body : Promise.reject(new Error(body.error || resp.statusText))))
+            .then((body) => {
+                const a = Object.assign(document.createElement("a"), { download: "wyze-tunnel-settings-locked.json" });
+                a.href = URL.createObjectURL(new Blob([JSON.stringify(body)], { type: "application/json" }));
+                a.click();
+                URL.revokeObjectURL(a.href);
+                say(true, "Locked backup saved. Keep the passphrase somewhere safe.");
+            })
+            .catch((err) => say(false, err.message));
+    });
+
     document.getElementById("restore").addEventListener("change", async (e) => {
-        const out = document.getElementById("restoreStatus");
-        const say = (ok, text) => { out.className = `mt-2 text-sm ${ok ? "text-emerald-300" : "text-rose-300"}`; out.textContent = text; };
         let data;
         try { data = JSON.parse(await e.target.files[0].text()); } catch { return say(false, "That file isn't a Wyze Tunnel settings backup."); }
+        if (data && data.encrypted) data.passphrase = backupPass.value;
         fetch("settings/restore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })
             .then((resp) => resp.json().then((body) => resp.ok ? body : Promise.reject(new Error(body.error || resp.statusText))))
             .then(() => say(true, "Restored. Cameras reconnect in a few seconds."))
