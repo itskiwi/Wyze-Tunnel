@@ -48,3 +48,17 @@ def test_send_uses_saved_topic_and_respects_quiet_hours(monkeypatch):
     with mock.patch.object(webhooks.requests, "post") as post:
         assert webhooks.send_webhook("motion", "CAM", "motion!")  # env webhooks ignore UI quiet hours
     assert post.call_args.args[0] == "https://example.com/hook"
+
+
+def test_home_and_away_modes(monkeypatch):
+    webhooks.save_alerts({"topic": "t", "motion": "on", "offline": "on", "quiet_start": "00:00", "quiet_end": "23:59"})
+    with pytest.raises(ValueError):
+        webhooks.set_alert_mode("party")
+    with mock.patch.object(webhooks.requests, "post"):
+        webhooks.set_alert_mode("away")
+        assert webhooks.send_webhook("motion", "CAM", "motion!")  # away ignores quiet hours
+        webhooks.set_alert_mode("home")
+        assert not webhooks.send_webhook("motion", "CAM", "motion!")
+        assert webhooks.send_webhook("offline", "CAM", "offline!")  # home still reports offline cameras
+    webhooks.save_alerts({"topic": "t", "motion": "on"})
+    assert webhooks.load_alerts()["mode"] == "home"  # saving the form keeps the mode

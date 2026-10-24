@@ -416,6 +416,15 @@ def create_app():
             version=config.VERSION,
         )
 
+    @app.route("/alerts/mode", methods=["POST"])
+    @auth_required
+    def alerts_mode():
+        try:
+            webhooks.set_alert_mode(str((request.get_json(silent=True) or {}).get("mode")))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"status": "saved"}
+
     @app.route("/alerts/test", methods=["POST"])
     @auth_required
     def alerts_test():
