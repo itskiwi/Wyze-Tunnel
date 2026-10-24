@@ -64,30 +64,6 @@ def sse_generator(sse_status: Callable) -> Generator[str, str, str]:
         sleep(1)
 
 
-def mfa_generator(mfa_req: Callable) -> Generator[str, str, str]:
-    if mfa_req():
-        yield f"event: mfa\ndata: {mfa_req()}\n\n"
-        while mfa_req():
-            sleep(1)
-    while True:
-        yield "event: mfa\ndata: clear\n\n"
-        sleep(30)
-
-
-def set_mfa(mfa_code: str) -> bool:
-    """Set MFA code from WebUI."""
-    mfa_file = f"{config.TOKEN_PATH}mfa_token.txt"
-    try:
-        with open(mfa_file, "w") as f:
-            f.write(mfa_code)
-        while os.path.getsize(mfa_file) != 0:
-            sleep(1)
-        return True
-    except Exception as ex:
-        logger.error(ex)
-        return False
-
-
 def get_webrtc_signal(cam_name: str, api_key: str) -> dict:
     """Generate signaling for MediaMTX webrtc."""
     hostname = env_bool("DOMAIN", urlparse(request.root_url).hostname or "localhost")

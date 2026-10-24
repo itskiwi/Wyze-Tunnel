@@ -45,7 +45,13 @@ See the [supported cameras](#supported-cameras) section for additional informati
 
 ## Quick Start
 
-### Mac
+### Windows and Mac app
+
+Download **Wyze Tunnel** for Windows (`.exe`) or Mac (`.dmg`) from the [latest desktop release](https://github.com/itskiwi/Wyze-Tunnel/releases?q=desktop-v), open it and click **Set up**. The Wyze camera library only runs on Linux, so the app quietly sets up a small Linux system for you (WSL2 on Windows 10/11, a background VM on macOS 13+) and keeps it running from the tray or menu bar. On Windows, if WSL isn't turned on yet, it asks for permission once and you restart your PC.
+
+The app isn't code-signed yet: on Mac, right-click it and choose **Open** the first time; on Windows, click **More info**, then **Run anyway**.
+
+### Mac (Terminal)
 
 Open the Terminal app, paste this line and press Return:
 
@@ -68,7 +74,10 @@ Then open `http://<this-machine-ip>:5000` and sign in with your Wyze account. It
 - Settings: `/etc/wyze-tunnel/wyze-tunnel.env` (any option from this README, as `NAME=value`), then `sudo systemctl restart wyze-tunnel`
 - Logs: `journalctl -u wyze-tunnel -f`
 - Versions: it installs the latest [release](https://github.com/itskiwi/Wyze-Tunnel/releases) for your CPU (x86_64, arm64 or armv7, with ffmpeg and MediaMTX included). Add `WT_REF=main` (or a branch or tag) before `bash` to install that source instead.
-- Uninstall: `sudo systemctl disable --now wyze-tunnel && sudo rm -rf /opt/wyze-tunnel /etc/wyze-tunnel /etc/systemd/system/wyze-tunnel.service /var/lib/private/wyze-tunnel`
+- Logs rotate automatically (journald). With `LOG_FILE=true`, the debug log goes to `/var/lib/wyze-tunnel/logs/debug.log` and rotates at 5 MB.
+- Coming from Docker? The installer finds your `wyze-bridge` container and copies its sign-in and snapshots over, then tells you how to stop the container.
+- Reporting a bug? Use **Download diagnostics** at the bottom of the web page. It has versions, camera models and recent logs, with emails, IPs, MACs, passwords and tokens removed.
+- Uninstall: `sudo /opt/wyze-tunnel/uninstall.sh` (add `--purge` to also delete settings and sign-in data)
 
 ### Docker
 

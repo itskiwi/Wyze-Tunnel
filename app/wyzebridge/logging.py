@@ -1,7 +1,8 @@
 import logging
 import multiprocessing
 import warnings
-from os import makedirs
+from logging.handlers import RotatingFileHandler
+from os import getenv, makedirs
 from sys import stdout
 
 from wyzebridge.bridge_utils import env_bool
@@ -47,10 +48,19 @@ def format_logging(handler: logging.Handler, level: int, date_format: str = ""):
 
 format_logging(logging.StreamHandler(stdout), log_level, log_time)
 
+# Recent lines for the diagnostics download; same loggers the console shows.
+from wyzebridge.diagnostics import log_buffer  # noqa: E402
+
+log_buffer.setLevel(log_level)
+for name in ("WyzeBridge", "werkzeug", "wyzecam.iotc", "py.warnings"):
+    logging.getLogger(name).addHandler(log_buffer)
+
 
 if env_bool("LOG_FILE"):
-    log_path = "/logs/"
+    log_path = getenv("LOG_PATH", "/logs/").rstrip("/") + "/"
     log_file = f"{log_path}debug.log"
     logger.info(f"Logging to file: {log_file}")
     makedirs(log_path, exist_ok=True)
-    format_logging(logging.FileHandler(log_file), logging.DEBUG, "%Y/%m/%d %X")
+    # Rotate so a debug log can't fill the disk: 3 x 5 MB backups.
+    handler = RotatingFileHandler(log_file, maxBytes=5_000_000, backupCount=3)
+    format_logging(handler, logging.DEBUG, "%Y/%m/%d %X")

@@ -82,7 +82,12 @@ class WyzeAPIError(Exception):
 
 
 def login(
-    email: str, password: str, api_key: str, key_id: str, phone_id: Optional[str] = None
+    email: str,
+    password: str,
+    api_key: str,
+    key_id: str,
+    phone_id: Optional[str] = None,
+    mfa: Optional[dict] = None,
 ) -> WyzeCredential:
     """Authenticate with Wyze.
 
@@ -96,6 +101,7 @@ def login(
     :param phone_id: the ID of the device to emulate when talking to wyze.  This is
                      safe to leave as None (in which case a random phone id will be
                      generated)
+    :param mfa: mfa_type, verification_id and verification_code from [start_mfa()][wyzecam.api.start_mfa]
 
     :returns: a [WyzeCredential][wyzecam.api.WyzeCredential] with the access information, suitable
               for passing to [get_user_info()][wyzecam.api.get_user_info], or
@@ -103,13 +109,34 @@ def login(
     """
     phone_id = phone_id or str(uuid.uuid4())
     headers = _headers(phone_id, key_id=key_id, api_key=api_key)
-    payload = {"email": email.strip(), "password": hash_password(password)}
+    payload = {"email": email.strip(), "password": hash_password(password)} | (mfa or {})
 
     resp = post(f"{AUTH_API}/api/user/login", json=payload, headers=headers)
     resp_json = validate_resp(resp)
     resp_json["phone_id"] = phone_id
 
     return WyzeCredential.model_validate(resp_json)
+
+
+def start_mfa(auth_info: WyzeCredential) -> dict:
+    """Pick a 2FA method from a login response and send the code if needed."""
+    options = auth_info.mfa_options or []
+    if "TotpVerificationCode" in options:
+        app_id = auth_info.mfa_details["totp_apps"][0]["app_id"]
+        return {"mfa_type": "TotpVerificationCode", "verification_id": app_id}
+
+    if "PrimaryPhone" in options:
+        url = f"{AUTH_API}/user/login/sendSmsCode"
+        params = {"mfaPhoneType": "Primary", "sessionId": auth_info.sms_session_id}
+        mfa_type = "PrimaryPhone"
+    else:
+        url = f"{AUTH_API}/v2/user/login/sendEmailCode"
+        params = {"sessionId": auth_info.email_session_id}
+        mfa_type = "Email"
+    params["userId"] = auth_info.user_id
+    resp = post(url, json={}, params=params, headers=_headers(auth_info.phone_id))
+    resp.raise_for_status()
+    return {"mfa_type": mfa_type, "verification_id": resp.json()["session_id"]}
 
 
 def refresh_token(auth_info: WyzeCredential) -> WyzeCredential:

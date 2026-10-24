@@ -1,4 +1,5 @@
 import os
+import secrets
 import time
 from functools import wraps
 from pathlib import Path
@@ -18,6 +19,7 @@ from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
 from wyzebridge import config, web_ui
 from wyzebridge.auth import WbAuth
+from wyzebridge.diagnostics import build_report
 from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED
 from wyzebridge.web_ui import url_for
 
@@ -41,6 +43,9 @@ def create_app():
 
         return wrapped_view
 
+    # One-time token so only the browser that ran the setup wizard sees the web password.
+    setup = {"token": ""}
+
     @app.before_request
     def block_cross_site():
         # Images and links to the UI stay embeddable; everything else (commands, restarts, login) is same-site only.
@@ -62,12 +67,19 @@ def create_app():
                 version=config.VERSION,
             )
 
+        if code := request.form.get("mfaCode"):
+            if not wb.api.mfa:
+                return {"status": "no 2FA code was requested"}
+            wb.api.mfa["verification_code"] = code.strip()
+            return {"status": "success"}
+
         tokens = request.form.get("tokens")
         refresh = request.form.get("refresh")
 
         if tokens or refresh:
             wb.api.token_auth(tokens=tokens, refresh=refresh)
-            return {"status": "success"}
+            setup["token"] = secrets.token_urlsafe()
+            return {"status": "success", "setup": setup["token"]}
 
         credentials = {
             "email": request.form.get("email"),
@@ -77,10 +89,29 @@ def create_app():
         }
 
         if all(credentials.values()):
+            wb.api.login_error = ""
             wb.api.creds.update(**credentials)
-            return {"status": "success"}
+            setup["token"] = secrets.token_urlsafe()
+            return {"status": "success", "setup": setup["token"]}
 
         return {"status": "missing credentials"}
+
+    @app.route("/login/status")
+    def wyze_login_status():
+        """Poll target for the setup wizard. Exposes no account or camera data."""
+        if wb.api.auth and (WbAuth.api or not WbAuth.enabled):
+            token = request.args.get("setup", "")
+            if not (WbAuth.enabled and token and secrets.compare_digest(token, setup["token"])):
+                return {"state": "done"}
+            setup["token"] = ""
+            return {"state": "done", "username": WbAuth.username, "password": WbAuth._pass}
+        if wb.api.auth:
+            return {"state": "signing_in"}
+        if wb.api.mfa and "verification_code" not in wb.api.mfa:
+            return {"state": "mfa", "mfa_type": wb.api.mfa["mfa_type"]}
+        if wb.api.login_error:
+            return {"state": "error", "error": wb.api.login_error}
+        return {"state": "signing_in" if wb.api.creds.is_set else "idle"}
 
     @app.route("/")
     @auth_required
@@ -228,6 +259,23 @@ def create_app():
         if photo := web_ui.boa_snapshot(cam):
             return send_from_directory(config.IMG_PATH, f"{uri}_{photo[0]}")
         return redirect(f"/img/{img_file}", code=307)
+
+    @app.route("/diagnostics")
+    @auth_required
+    def diagnostics():
+        """Download a redacted report to attach to bug reports."""
+        report = build_report(
+            config.VERSION,
+            config.BUILD_STR,
+            wb.streams.get_all_cam_info(),
+            (WbAuth.api, WbAuth._pass, wb.api.auth and wb.api.auth.access_token or ""),
+        )
+        resp = make_response(report)
+        resp.headers["Content-Type"] = "text/plain; charset=utf-8"
+        resp.headers["Content-Disposition"] = (
+            f"attachment; filename=wyze-tunnel-diagnostics-{time.strftime('%Y%m%d-%H%M%S')}.txt"
+        )
+        return resp
 
     @app.route("/restart/<string:restart_cmd>")
     @auth_required

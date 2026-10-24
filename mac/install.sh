@@ -81,7 +81,7 @@ VM
     echo "  Then log in as \"wbadmin\" with the password: ${WB_PASSWORD:-the one you already use}"
     echo "  RTSP:  rtsp://$MAC_IP:8554/<camera-name>"
     echo "  It starts automatically when you log in. Run this command again any time to update."
-    sleep 3 && open http://localhost:5050 || true
+    [ -n "${WT_NO_OPEN:-}" ] || { sleep 3 && open http://localhost:5050 || true; }
 }
 
 main "$@"
