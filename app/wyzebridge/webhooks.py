@@ -6,6 +6,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import requests
+from wyzebridge import integrations
 from wyzebridge.bridge_utils import env_cam
 from wyzebridge.config import TOKEN_PATH, VERSION
 from wyzebridge.logging import logger
@@ -86,7 +87,7 @@ def chat_payload(service: str, title: str, msg: str, img: Optional[str]) -> dict
 
 
 def alert_url(event: str) -> str:
-    if ALERTS.get("topic") and (ALERTS.get(event) or event in ("test", "update")):
+    if ALERTS.get("topic") and (ALERTS.get(event) or event in ("test", "update", "street")):
         return f"{ALERTS['server']}/{ALERTS['topic']}"
     return ""
 
@@ -101,16 +102,18 @@ def in_quiet_hours(settings: dict, now: Optional[time] = None) -> bool:
 
 
 def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None) -> bool:
+    if event != "test":
+        integrations.dispatch(event, camera, msg, img)
     url = env_url = env_cam(f"{event}_webhooks", camera, style="original")
     if not url:
         mode = ALERTS.get("mode", "schedule")
         if event in ("motion", "person") and (mode == "home" or (mode == "schedule" and in_quiet_hours(ALERTS))):
             return False
         url = alert_url(event)
-    chat = ALERTS.get("chat_url") if not env_url and (ALERTS.get(event) or event in ("test", "update")) else ""
+    chat = ALERTS.get("chat_url") if not env_url and (ALERTS.get(event) or event in ("test", "update", "street")) else ""
     if not url and not chat:
         return False
-    title = "Wyze Tunnel updated" if event == "update" else f"{event} event".title()
+    title = {"update": "Wyze Tunnel updated", "street": "Street Watch request"}.get(event) or f"{event} event".title()
     sent = bool(url) and _post(url, event, camera, msg, img, title)
     if chat:
         logger.debug(f"[WEBHOOKS] Sending {event.upper()} event for {camera} to {chat_service(chat)}")

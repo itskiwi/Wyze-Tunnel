@@ -1,0 +1,12 @@
+[Unit]
+Description=Tunnel Box: note this box's address and show the setup QR code
+Wants=network-online.target
+After=network-online.target
+Before=wyze-tunnel.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/wyze-tunnel-box
+
+[Install]
+WantedBy=multi-user.target

@@ -1,11 +1,12 @@
 import os
 import secrets
+import subprocess
 import time
 from datetime import datetime, timezone
 from threading import Thread
 from functools import wraps
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 
 from flask import (
     Flask,
@@ -20,7 +21,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import backup, config, detect, guests, privacy, shares, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, detect, guests, integrations, pocket, privacy, shares, street_watch, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
@@ -60,7 +61,8 @@ def create_app():
         # Images and links to the UI stay embeddable; everything else (commands, restarts, login) is same-site only.
         if request.path.startswith(("/static/", "/img/", "/snapshot/", "/thumb/", "/photo/", "/share/")):
             return
-        if request.method == "GET" and request.path in ("/", "/login", "/cams.m3u8"):
+        # A neighbor opens their Street Watch link from a chat app; sending the form is still same-site only.
+        if request.method == "GET" and (request.path in ("/", "/login", "/cams.m3u8") or request.path.startswith("/street/")):
             return
         if web_ui.cross_site_request():
             return {"error": "Cross-site request blocked"}, 403
@@ -461,6 +463,7 @@ def create_app():
         return render_template(
             "account.html",
             guests=guests.list_guests(),
+            auto_folder=backup.load_auto().get("folder", ""),
             member=web_ui.current_guest(),
             guest_hours=guests.GUEST_HOURS,
             username=WbAuth.username,
@@ -486,18 +489,63 @@ def create_app():
         guests.remove_guest(name)
         return {"status": "removed"}
 
-    @app.route("/settings/backup")
+    @app.route("/pair", methods=["POST"])
+    @auth_required
+    def pair_start():
+        if not WbAuth.enabled:
+            return {"error": "Login is turned off (WB_AUTH=False), so any phone on your network can already open it."}, 400
+        if web_ui.current_guest():
+            return {"error": "Only the owner can pair a phone."}, 403
+        path = url_for("pair_phone", code=pocket.new_code())
+        host, _, port = request.host.rpartition(":") if request.host.count(":") == 1 else (request.host, "", "")
+        port = f":{port}" if port else ""
+        if host in ("localhost", "127.0.0.1", "[::1]"):
+            host = pocket.lan_ip()
+        codes = {"home": f"{request.scheme}://{host}{port}{path}"}
+        if (ts_host := pocket.tailscale_host()) and ts_host != host:
+            codes["anywhere"] = f"http://{ts_host}{port}{path}"
+        return {k: {"url": url, "qr": pocket.qr_svg(url)} for k, url in codes.items()}
+
+    @app.route("/pair/<string:code>")
+    def pair_phone(code: str):
+        if not WbAuth.enabled:
+            return redirect(url_for("index"))
+        if not (cookie := pocket.claim(code, request.user_agent.string, WbAuth.username)):
+            return render_template("pair.html", version=config.VERSION), 410
+        resp = redirect(url_for("index", pocket=1))
+        resp.set_cookie(pocket.COOKIE, cookie, max_age=pocket.COOKIE_SECONDS, httponly=True, samesite="Lax", secure=request.is_secure)
+        return resp
+
+    @app.route("/settings/backup", methods=["GET", "POST"])
     @auth_required
     def settings_backup():
-        resp = make_response(backup.export_settings())
+        data = backup.export_settings()
+        if request.method == "POST":
+            try:
+                data = backup.encrypt(data, str((request.get_json(silent=True) or {}).get("passphrase") or ""))
+            except ValueError as ex:
+                return {"error": str(ex)}, 400
+        resp = make_response(data)
         resp.headers["Content-Disposition"] = "attachment; filename=wyze-tunnel-settings.json"
         return resp
+
+    @app.route("/settings/auto-backup", methods=["POST"])
+    @auth_required
+    def settings_auto_backup():
+        if web_ui.current_guest():
+            return {"error": "Only the owner can choose where backups are saved."}, 403
+        try:
+            settings = backup.save_auto(request.get_json(silent=True) or {})
+            path = settings and backup.auto_backup(force=True)
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"status": "saved", "path": path or None}
 
     @app.route("/settings/restore", methods=["POST"])
     @auth_required
     def settings_restore():
         try:
-            restored = backup.import_settings(request.get_json(silent=True))
+            restored = backup.import_settings(backup.unlock(request.get_json(silent=True)))
         except ValueError as ex:
             return {"error": str(ex)}, 400
         # Hidden cameras, names, quality and connection choices apply when streams restart.
@@ -570,7 +618,10 @@ def create_app():
     def shared_recording(token: str):
         if not (share := shares.get_share(token)):
             return "This link has ended or doesn't exist.", 404
-        return recording_mp4(share["cam"], {"start": share["start"], "duration": share["duration"]})
+        if request.headers.get("Range", "bytes=0-").startswith("bytes=0-"):  # players fetch more ranges of one view
+            shares.count_view(token)
+        args = {"start": share["start"], "duration": share["duration"]}
+        return recording_mp4(share["cam"], args, sound=share.get("sound", True))
 
     @app.route("/search")
     @auth_required
@@ -617,16 +668,156 @@ def create_app():
             return {"error": "Frigate doesn't have this clip any more"}, resp.status_code
         return Response(resp.iter_content(64 * 1024), mimetype=resp.headers.get("content-type", f"image/{ext}"))
 
-    def recording_mp4(cam_name: str, args: dict):
+    def recording_mp4(cam_name: str, args: dict, sound: bool = True):
+        name = f"{cam_name}_{args['start']}.mp4".replace(":", "-")
+        headers = {"Content-Disposition": f'inline; filename="{name}"'}
+        if not sound:
+            url = f"http://{PLAYBACK_ADDR}/get?" + urlencode({"path": cam_name, "format": "mp4", **args})
+            return Response(silent_mp4(url), mimetype="video/mp4", headers=headers)
         resp = mtx_playback("get", stream=True, path=cam_name, format="mp4", **args)
         if not resp.ok:
             return {"error": resp.text.strip()}, resp.status_code
-        name = f"{cam_name}_{args['start']}.mp4".replace(":", "-")
-        return Response(
-            resp.iter_content(64 * 1024),
-            mimetype="video/mp4",
-            headers={"Content-Disposition": f'inline; filename="{name}"'},
+        return Response(resp.iter_content(64 * 1024), mimetype="video/mp4", headers=headers)
+
+    def silent_mp4(url: str):
+        """The clip with its sound track dropped, remuxed as it streams."""
+        cmd = ["ffmpeg", "-loglevel", "error", "-i", url, "-an", "-c", "copy"]
+        cmd += ["-movflags", "frag_keyframe+empty_moov", "-f", "mp4", "pipe:1"]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            while chunk := proc.stdout.read(64 * 1024):
+                yield chunk
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def owner_only(view):
+        @wraps(view)
+        def wrapped_view(*args, **kwargs):
+            if web_ui.current_guest():
+                return {"error": "Only the owner can do this."}, 403
+            return view(*args, **kwargs)
+
+        return auth_required(wrapped_view)
+
+    app.register_blueprint(api_v1.blueprint(wb, auth_required))
+
+    @app.route("/apps")
+    @owner_only
+    def apps_page():
+        return render_template(
+            "apps.html",
+            tokens=integrations.list_tokens(),
+            hooks=integrations.list_hooks(),
+            hook_events=integrations.HOOK_EVENTS,
+            api=WbAuth.api,
+            version=config.VERSION,
         )
+
+    @app.route("/apps/tokens", methods=["POST"])
+    @owner_only
+    def add_app_token():
+        data = request.get_json(silent=True) or {}
+        try:
+            return {"token": integrations.add_token(data.get("name"), data.get("scope"))}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
+    @app.route("/apps/tokens/<string:token_id>", methods=["DELETE"])
+    @owner_only
+    def remove_app_token(token_id: str):
+        integrations.remove_token(token_id)
+        return {"status": "removed"}
+
+    @app.route("/apps/hooks", methods=["POST"])
+    @owner_only
+    def add_app_hook():
+        data = request.get_json(silent=True) or {}
+        try:
+            return {"secret": integrations.add_hook(data.get("url"), data.get("events"))}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
+    @app.route("/apps/hooks/<string:hook_id>", methods=["DELETE"])
+    @owner_only
+    def remove_app_hook(hook_id: str):
+        integrations.remove_hook(hook_id)
+        return {"status": "removed"}
+
+    @app.route("/apps/hooks/<string:hook_id>/test", methods=["POST"])
+    @owner_only
+    def test_app_hook(hook_id: str):
+        try:
+            return integrations.test_hook(hook_id)
+        except ValueError as ex:
+            return {"error": str(ex)}, 404
+
+    @app.route("/street-watch", methods=["GET", "POST"])
+    @owner_only
+    def street_watch_page():
+        if request.method == "POST":
+            street_watch.set_enabled(bool((request.get_json(silent=True) or {}).get("enabled")))
+            return {"status": "saved"}
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return render_template(
+            "street_watch.html",
+            street=street_watch.state(),
+            cameras={uri: cam for uri, cam in cams.items() if cam.get("record")},
+            api=WbAuth.api,
+            version=config.VERSION,
+        )
+
+    @app.route("/street-watch/links", methods=["POST"])
+    @owner_only
+    def street_watch_link():
+        try:
+            token = street_watch.add_link((request.get_json(silent=True) or {}).get("name"))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"url": f"street/{token}"}
+
+    @app.route("/street-watch/links/<string:token>", methods=["DELETE"])
+    @owner_only
+    def street_watch_end_link(token: str):
+        street_watch.end_link(token)
+        return {"status": "ended"}
+
+    @app.route("/street-watch/requests/<string:req_id>/<string:action>", methods=["POST"])
+    @owner_only
+    def street_watch_answer(req_id: str, action: str):
+        data = request.get_json(silent=True) or {}
+        try:
+            if action == "approve":
+                if not (stream := wb.streams.get(cam := str(data.get("cam")))):
+                    return {"error": "Pick a camera."}, 400
+                token = street_watch.approve(
+                    req_id, cam, stream.camera.mac, data.get("start"), data.get("duration"), data.get("sound") is True
+                )
+                return {"url": f"share/{token}", "hours": shares.SHARE_HOURS}
+            if action not in ("decline", "revoke"):
+                return {"error": "Unknown action"}, 404
+            getattr(street_watch, action)(req_id)
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"status": "saved"}
+
+    @app.route("/street/<string:token>", methods=["GET", "POST"])
+    def street_request(token: str):
+        """A neighbor's request form. Shows nothing about the cameras, and the same reply whether or not there's footage."""
+        if request.method == "POST":
+            try:
+                name = street_watch.submit(token, request.get_json(silent=True) or {}, request.remote_addr or "")
+            except LookupError:
+                return {"error": "This link has ended or doesn't exist."}, 404
+            except ValueError as ex:
+                return {"error": str(ex)}, 400
+            Thread(target=webhooks.send_webhook, args=("street", "Street Watch", f"{name} sent a footage request."), daemon=True).start()
+            return {"status": "sent"}
+        name = street_watch.link_name(token)
+        resp = make_response(render_template("street_request.html", name=name, hide_nav=True), 200 if name else 404)
+        resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+        resp.headers["Referrer-Policy"] = "no-referrer"
+        return resp
 
     def mtx_playback(endpoint: str, stream: bool = False, **params) -> requests.Response:
         try:

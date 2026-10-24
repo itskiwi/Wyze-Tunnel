@@ -1,3 +1,4 @@
+cryptography==50.0.*
 Flask==3.0.*
 Flask-HTTPAuth==4.8.*
 paho-mqtt== 2.1.*
@@ -6,5 +7,6 @@ python-dotenv==1.0.*
 requests==2.32.*
 PyYAML==6.0.*
 xxtea==3.3.*
+segno==1.6.*
 # Built-in people/car/animal spotting; there are no wheels for 32-bit ARM, so it is off there.
 opencv-python-headless==4.10.*; platform_machine != "armv7l"

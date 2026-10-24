@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Runs on a Tunnel Box at every boot, before Wyze Tunnel starts: notes the box's address for WebRTC and
+# puts a setup QR code on the screen (if one is attached). On the first boot it also grows the disk.
+set -u
+
+# DHCP can take a little while after the link comes up.
+IP=
+for _ in $(seq 30); do
+    IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')
+    [ -z "$IP" ] || break
+    sleep 2
+done
+[ -z "$IP" ] || sed -i "s/^WB_IP=.*/WB_IP=$IP/" /etc/wyze-tunnel/wyze-tunnel.env
+
+# Raspberry Pi OS fills the card by itself; the PC image starts at a few GB, so fill whatever disk it's on.
+if command -v growpart >/dev/null && [ ! -e /var/lib/wyze-tunnel-box/grown ]; then
+    ROOT=$(findmnt -no SOURCE /)
+    growpart "/dev/$(lsblk -no PKNAME "$ROOT")" "$(cat "/sys/class/block/${ROOT##*/}/partition")" && resize2fs "$ROOT"
+    mkdir -p /var/lib/wyze-tunnel-box && touch /var/lib/wyze-tunnel-box/grown
+fi
+
+# Phones don't all find .local names, so the QR code uses the address.
+mkdir -p /etc/issue.d
+{
+    echo
+    echo "  Wyze Tunnel is ready. Scan this with your phone, or open http://wyze-tunnel.local"
+    [ -z "$IP" ] || { echo "  (or http://$IP) on any device on this network."; qrencode -t UTF8 -m 2 "http://$IP"; }
+    [ -n "$IP" ] || echo "  Not connected yet: plug in a network cable."
+    echo
+} > /etc/issue.d/wyze-tunnel.issue
+agetty --reload 2>/dev/null || true
