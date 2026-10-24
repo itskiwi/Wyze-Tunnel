@@ -40,16 +40,17 @@ mod vm {
     use std::path::{Path, PathBuf};
     use std::process::Command;
 
-    fn dir() -> PathBuf {
-        PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Library/Application Support/Wyze Tunnel")
+    // Same paths as mac/install.sh. LIMA_HOME is short because macOS caps socket paths at 104 bytes.
+    fn home() -> PathBuf {
+        PathBuf::from(std::env::var("HOME").unwrap_or_default())
     }
     fn limactl(args: &[&str]) -> Command {
-        let mut c = cmd(dir().join("lima/bin/limactl"));
-        c.env("LIMA_HOME", dir().join("vm")).args(args);
+        let mut c = cmd(home().join("Library/Application Support/Wyze Tunnel/lima/bin/limactl"));
+        c.env("LIMA_HOME", home().join(".wyze-tunnel")).args(args);
         c
     }
     pub fn installed() -> bool {
-        dir().join("vm/wyze-tunnel").exists()
+        home().join(".wyze-tunnel/wyze-tunnel").exists()
     }
     pub fn install_cmd(res: &Path) -> Command {
         let mut c = cmd("/bin/bash");
