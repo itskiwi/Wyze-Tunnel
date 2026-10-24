@@ -6,9 +6,25 @@ import contextlib
 import errno
 import os
 import select
+import socket
+import sys
+from pathlib import Path
 
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import update_mqtt_state
+
+
+WINDOWS = sys.platform == "win32"
+# Windows has no named pipes a shell hook can write to, so mtx_hook.py reports events over UDP instead.
+EVENT_PORT = 58554
+
+
+def event_cmd(event: str) -> str:
+    """MediaMTX hook command that reports `<path>,<event>!` to RtspEvent."""
+    if WINDOWS:
+        # shortcut: single quotes for MediaMTX's shell-style split; breaks if a path holds a ', use 8.3 short paths if that bites.
+        return f"'{sys.executable}' '{Path(__file__).with_name('mtx_hook.py')}' {event} {EVENT_PORT}"
+    return f"bash -c 'echo $MTX_PATH,{event}! > /tmp/mtx_event'"
 
 
 class RtspEvent:
@@ -28,6 +44,10 @@ class RtspEvent:
     def open_pipe(self):
         if self.pipe:
             return
+        if WINDOWS:
+            self.pipe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.pipe.bind(("127.0.0.1", EVENT_PORT))
+            return
         with contextlib.suppress(FileExistsError):
             os.mkfifo(self.FIFO)
         self.pipe = os.open(self.FIFO, os.O_RDWR | os.O_NONBLOCK)
@@ -36,7 +56,7 @@ class RtspEvent:
         self.open_pipe()
         try:
             if select.select([self.pipe], [], [], timeout)[0]:
-                if data := os.read(self.pipe, 128):
+                if data := self.pipe.recv(128) if WINDOWS else os.read(self.pipe, 128):
                     self.process_data(data.decode())
         except OSError as ex:
             self.pipe = 0

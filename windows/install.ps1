@@ -48,6 +48,13 @@ if ($p.ExitCode -notin 0, 3010) { exit $p.ExitCode }
 # Older inbox wsl.exe ignores WSL_UTF8 and prints UTF-16, hence the NUL stripping.
 $Distros = wsl.exe -l -q | ForEach-Object { ($_ -replace "`0", '').Trim() }
 if ($Distros -notcontains $Distro) {
+    # WSL2 needs CPU virtualization; Windows reports it off in firmware unless a hypervisor already runs.
+    $Cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+    if (-not $Cpu.VirtualizationFirmwareEnabled -and -not (Get-CimInstance Win32_ComputerSystem).HypervisorPresent) {
+        Write-Output 'Virtualization is turned off in this PC''s BIOS/UEFI settings.'
+        Write-Output 'Restart, open the BIOS (usually Del or F2 while starting), enable "SVM Mode" (AMD) or "Intel Virtualization Technology / VT-x", save, then open Wyze Tunnel again.'
+        exit 4
+    }
     Say 'Updating WSL'
     wsl.exe --update  # --name and --location need WSL 2.4.4+
     Say 'Creating the Wyze Tunnel Linux system (one time, takes a few minutes)'
