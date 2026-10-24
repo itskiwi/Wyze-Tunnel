@@ -67,6 +67,7 @@ Then open `http://<this-machine-ip>:5000` and sign in with your Wyze account. It
 
 - Settings: `/etc/wyze-tunnel/wyze-tunnel.env` (any option from this README, as `NAME=value`), then `sudo systemctl restart wyze-tunnel`
 - Logs: `journalctl -u wyze-tunnel -f`
+- Versions: it installs the latest [release](https://github.com/itskiwi/Wyze-Tunnel/releases) for your CPU (x86_64, arm64 or armv7, with ffmpeg and MediaMTX included). Add `WT_REF=main` (or a branch or tag) before `bash` to install that source instead.
 - Uninstall: `sudo systemctl disable --now wyze-tunnel && sudo rm -rf /opt/wyze-tunnel /etc/wyze-tunnel /etc/systemd/system/wyze-tunnel.service /var/lib/private/wyze-tunnel`
 
 ### Docker
