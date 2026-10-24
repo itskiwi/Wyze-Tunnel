@@ -1,55 +1,86 @@
 @tailwind base;
 @tailwind components;
 
-/* Dark is the default; light swaps the neutral scale. data-theme is set by the theme toggle. */
+/* Studio Soft: warm neutrals and one green accent. Dark is the default; light swaps the scale.
+   data-theme is set by the theme toggle. */
 @layer base {
+  @font-face { font-family: "Geist"; font-weight: 100 900; font-display: swap; src: url(fonts/geist-latin-wght-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Geist Mono"; font-weight: 100 900; font-display: swap; src: url(fonts/geist-mono-latin-wght-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Nunito"; font-weight: 800; font-display: swap; src: url(fonts/nunito-latin-800-normal.woff2) format("woff2"); }
   :root {
     color-scheme: dark;
     --white: 255 255 255;
-    --zinc-50: 250 250 250; --zinc-100: 244 244 245; --zinc-200: 228 228 231; --zinc-300: 212 212 216;
-    --zinc-400: 161 161 170; --zinc-500: 113 113 122; --zinc-600: 82 82 91; --zinc-700: 63 63 70;
-    --zinc-800: 39 39 42; --zinc-900: 24 24 27; --zinc-950: 9 9 11;
+    --zinc-50: 248 249 246; --zinc-100: 238 240 236; --zinc-200: 220 224 216; --zinc-300: 194 199 190;
+    --zinc-400: 160 166 156; --zinc-500: 120 126 116; --zinc-600: 74 80 72; --zinc-700: 42 47 42;
+    --zinc-800: 31 35 31; --zinc-900: 23 26 23; --zinc-950: 14 16 14;
+    --accent: 61 207 142; --accent-deep: 34 154 101; --on-accent: 5 32 20;
+    --shadow: inset 0 0 0 1px rgb(255 255 255 / .05);
   }
   @media (prefers-color-scheme: light) {
     :root:not([data-theme="dark"]) { @apply theme-light; }
   }
   :root[data-theme="light"] { @apply theme-light; }
+  body { font-feature-settings: "ss01"; }
 }
 @tailwind utilities;
 
 .theme-light {
   color-scheme: light;
-  --white: 9 9 11;
-  --zinc-50: 9 9 11; --zinc-100: 24 24 27; --zinc-200: 39 39 42; --zinc-300: 63 63 70;
-  --zinc-400: 82 82 91; --zinc-500: 113 113 122; --zinc-600: 161 161 170; --zinc-700: 228 228 231;
-  --zinc-800: 244 244 245; --zinc-900: 255 255 255; --zinc-950: 244 244 245;
+  --white: 26 28 25;
+  --zinc-50: 15 16 14; --zinc-100: 26 28 25; --zinc-200: 44 47 42; --zinc-300: 64 67 60;
+  --zinc-400: 93 96 88; --zinc-500: 125 128 118; --zinc-600: 170 172 162; --zinc-700: 222 220 211;
+  --zinc-800: 236 235 229; --zinc-900: 255 255 255; --zinc-950: 245 244 240;
+  --accent: 21 137 90; --accent-deep: 14 107 69; --on-accent: 255 255 255;
+  --shadow: 0 1px 2px rgb(0 0 0 / .06), 0 10px 26px rgb(40 44 36 / .08);
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium transition
       bg-zinc-800 text-zinc-100 ring-1 ring-inset ring-white/10 hover:bg-zinc-700 disabled:opacity-50;
   }
   .btn-primary {
-    @apply bg-emerald-500 text-black ring-0 hover:bg-emerald-400;
+    @apply bg-accent font-display text-base font-extrabold text-on-accent ring-0 hover:bg-accent
+      active:translate-y-1 active:shadow-[0_1px_0_rgb(var(--accent-deep))];
+    box-shadow: 0 4px 0 rgb(var(--accent-deep));
   }
   .field {
-    @apply w-full rounded-lg bg-zinc-800 px-3 py-2 text-sm text-zinc-100 ring-1 ring-inset ring-white/10
-      placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500;
+    @apply w-full rounded-2xl bg-zinc-900 px-3.5 py-2.5 text-sm text-zinc-100 ring-1 ring-inset ring-zinc-700
+      placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-accent;
   }
   .menu {
-    @apply absolute z-30 mt-2 min-w-[13rem] rounded-xl bg-zinc-900/95 p-2 shadow-2xl ring-1 ring-white/10 backdrop-blur;
+    @apply absolute z-30 mt-2 min-w-[13rem] rounded-3xl bg-zinc-900 p-2 shadow-2xl ring-1 ring-zinc-700;
   }
   .menu-item {
-    @apply flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-zinc-200 hover:bg-white/5;
+    @apply flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-left text-sm text-zinc-200 hover:bg-white/5;
   }
   .menu-label {
     @apply px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500;
   }
   .tab {
-    @apply inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-100;
+    @apply inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-zinc-400 transition hover:text-zinc-100;
   }
-  .tab.is-active {
-    @apply bg-white/10 text-zinc-100;
+  .tab.is-active, .tab[aria-current] {
+    @apply bg-accent text-on-accent;
+  }
+  .seg {
+    @apply inline-flex items-center gap-0.5 rounded-full bg-zinc-900 p-1 shadow-[var(--shadow)];
+  }
+  .seg .tab.is-active { @apply bg-zinc-100 text-zinc-950; }
+  .surface {
+    @apply rounded-3xl bg-zinc-900 shadow-[var(--shadow)];
+  }
+  .round-btn {
+    @apply grid h-10 w-10 place-items-center rounded-full bg-zinc-900 text-zinc-200 shadow-[var(--shadow)] transition hover:text-zinc-50;
+  }
+  .page-title {
+    @apply font-display text-[28px] font-extrabold leading-tight text-zinc-50;
+  }
+  .chip {
+    @apply rounded-full px-3 py-1 text-[13px] font-semibold;
+  }
+  /* Round white buttons that sit on top of a camera picture */
+  .cam-action {
+    @apply grid h-10 w-10 cursor-pointer list-none place-items-center rounded-full bg-[#fff]/90 text-[#1a1c19] shadow-[0_1px_4px_rgb(0_0_0/.3)] transition hover:scale-105;
   }
 }

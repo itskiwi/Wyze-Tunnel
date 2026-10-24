@@ -1,19 +1,14 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<header class="mb-6 flex flex-wrap items-center gap-3">
-    <a href="./" class="mr-2 flex items-center gap-2 text-lg font-semibold tracking-tight">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500 text-zinc-950"><i
-                class="fas fa-video text-sm"></i></span>
-        Wyze Tunnel
-    </a>
-    <h1 class="text-lg text-zinc-400">Events</h1>
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Events</h1>
 </header>
 
 {% if events %}
 <ul class="mx-auto grid max-w-5xl gap-4 sm:grid-cols-2 lg:grid-cols-3">
     {% for event in events %}
-    <li class="overflow-hidden rounded-2xl bg-zinc-900 ring-1 ring-white/5">
+    <li class="surface overflow-hidden">
         <div class="aspect-video bg-black">
             {% if event.img %}
             <img src="{{ event.img }}" alt="Motion on {{ event.name }}" loading="lazy" class="h-full w-full object-cover"

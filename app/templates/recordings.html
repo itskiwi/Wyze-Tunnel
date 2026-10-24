@@ -1,13 +1,8 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<header class="mb-6 flex flex-wrap items-center gap-3">
-    <a href="./" class="mr-2 flex items-center gap-2 text-lg font-semibold tracking-tight">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500 text-zinc-950"><i
-                class="fas fa-video text-sm"></i></span>
-        Wyze Tunnel
-    </a>
-    <h1 class="text-lg text-zinc-400">Recordings</h1>
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Recordings</h1>
     {% if cameras %}
     <label class="ml-auto w-full sm:w-64">
         <span class="sr-only">Camera</span>
@@ -29,14 +24,14 @@
 </div>
 {% elif cameras %}
 <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-    <div class="overflow-hidden rounded-2xl bg-black ring-1 ring-white/5">
+    <div class="overflow-hidden rounded-3xl bg-black">
         <video id="player" class="aspect-video w-full" controls playsinline></video>
         <div class="flex items-center gap-3 bg-zinc-900 px-4 py-3 text-sm">
             <span id="now-playing" class="text-zinc-400">Pick a clip to play it.</span>
             <a id="download" class="btn ml-auto hidden" download><i class="fas fa-download"></i>Download</a>
         </div>
     </div>
-    <div id="clips" class="max-h-[70vh] overflow-auto rounded-2xl bg-zinc-900 p-2 ring-1 ring-white/5">
+    <div id="clips" class="max-h-[70vh] overflow-auto surface p-2">
         <p class="p-3 text-sm text-zinc-500">Loading…</p>
     </div>
 </div>

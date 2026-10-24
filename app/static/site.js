@@ -403,8 +403,20 @@ document.addEventListener("DOMContentLoaded", () => {
       icon.classList.add("fa-plug-circle-exclamation");
     })
   });
+  // Summary chips: how many shown cameras are live, connecting, or offline.
+  function updateSummary() {
+    const labels = { connected: "live", connecting: "connecting", offline: "offline" };
+    for (const chip of document.querySelectorAll(".summary [data-count]")) {
+      const want = chip.dataset.count;
+      const n = [...document.querySelectorAll(".camera:not(.is-hidden) .status-label")]
+        .filter((l) => (l.dataset.status === "error" ? "offline" : l.dataset.status) === want).length;
+      chip.textContent = `${n} ${labels[want]}`;
+      chip.classList.toggle("is-hidden", !n);
+    }
+  }
   sse.addEventListener("message", (event) => {
     const data = JSON.parse(event.data);
+    setTimeout(updateSummary);
 
     for (const [cam, messageData] of Object.entries(data)) {
       const card = document.getElementById(cam);
@@ -506,7 +518,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function toggleDetails() {
     const cam = this.getAttribute("data-cam")
     const card = document.getElementById(cam);
-    const img = card.getElementsByClassName("card-image")[0]
     const content = card.getElementsByClassName("content")[0]
     let icon = this.getElementsByClassName("fas")[0].classList
     if (icon.contains("fa-circle-info")) {
@@ -547,7 +558,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }).catch(error => { console.error(error); });
     }
-    img.classList.toggle("is-hidden");
     content.classList.toggle("is-hidden");
   }
   document.querySelectorAll(".toggle-details").forEach((btn) => {

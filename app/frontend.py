@@ -21,6 +21,7 @@ from wyze_bridge import WyzeBridge
 from wyzebridge import config, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
+from wyzebridge.ffmpeg import probe_stream, stream_warnings
 from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED
 from wyzebridge.web_ui import url_for
 from wyzebridge.wyze_events import EVENT_LOG
@@ -199,6 +200,15 @@ def create_app():
         if cam := wb.streams.get_info(cam_name):
             return cam | web_ui.format_stream(cam_name)
         return {"error": f"Could not find camera [{cam_name}]"}
+
+    @app.route("/api/<string:cam_name>/stream-test")
+    @auth_required
+    def api_stream_test(cam_name: str):
+        """Watch the stream for a few seconds and report size, fps, bitrate and problems."""
+        if not (info := wb.streams.get_info(cam_name)):
+            return {"error": f"Could not find camera [{cam_name}]"}, 404
+        probe = probe_stream(cam_name)
+        return probe | {"warnings": stream_warnings(probe, wb.streams.get_info(cam_name) or info)}
 
     @app.route("/api/<cam_name>/<cam_cmd>", methods=["GET", "PUT", "POST"])
     @app.route("/api/<cam_name>/<cam_cmd>/<path:payload>")

@@ -1,101 +1,107 @@
 {% extends 'base.html' %}
+{% set hide_nav = true %}
 
 {% block content %}
-<div class="mx-auto mt-6 w-full max-w-lg">
-    <p class="text-sm font-medium text-emerald-400">Wyze Tunnel setup</p>
-    <ol id="dots" class="mt-3 flex gap-2" aria-hidden="true">
-        <li class="h-1.5 flex-1 rounded-full bg-zinc-700"></li>
-        <li class="h-1.5 flex-1 rounded-full bg-zinc-700"></li>
-        <li class="h-1.5 flex-1 rounded-full bg-zinc-700"></li>
-        <li class="h-1.5 flex-1 rounded-full bg-zinc-700"></li>
-    </ol>
+<div class="mx-auto mt-4 w-full max-w-[440px]">
+    <div class="flex items-center gap-3">
+        <svg class="mascot h-12 w-12 flex-none" aria-hidden="true"><use href="#mark" /></svg>
+        <div class="flex-1">
+            <p id="stepText" class="mb-1.5 text-[13px] font-medium text-zinc-400">Wyze Tunnel setup</p>
+            <div class="h-2 overflow-hidden rounded-full bg-zinc-800" aria-hidden="true"><i id="stepBar" class="block h-full w-1/4 rounded-full bg-accent transition-[width] duration-500"></i></div>
+        </div>
+    </div>
 
     <div id="error" role="alert"
-        class="mt-6 hidden rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200"></div>
+        class="mt-5 hidden rounded-2xl bg-rose-500/10 p-4 text-sm text-rose-200"></div>
 
     <!-- 1. Welcome -->
-    <section data-step="welcome" class="mt-6 space-y-5">
-        <h1 class="text-3xl font-semibold">Let's connect your Wyze cameras</h1>
-        <p class="text-zinc-300">This takes about two minutes. You'll need your Wyze email and password, and
+    <section data-step="welcome" class="step-view mt-5 space-y-5">
+        <h1 class="page-title text-[30px]">Let's connect your Wyze cameras</h1>
+        <p class="text-zinc-400">This takes about two minutes. You'll need your Wyze email and password, and
             you'll make a free "API key" on Wyze's website so Wyze Tunnel can sign in for you.</p>
         <button data-go="key"
-            class="btn btn-primary w-full py-3 text-base">Get
+            class="btn btn-primary h-[52px] w-full">Get
             started</button>
     </section>
 
     <!-- 2. API key -->
-    <form data-step="key" class="mt-6 hidden space-y-5">
-        <h1 class="text-2xl font-semibold">Make your Wyze API key</h1>
-        <ol class="list-decimal space-y-2 pl-5 text-zinc-300">
-            <li>Open the <a href="https://developer-api-console.wyze.com/#/apikey/view" target="_blank"
-                    rel="noopener" class="font-medium text-emerald-400 underline">Wyze developer console</a> (it
-                opens in a new tab).</li>
-            <li>Sign in with the same Wyze account you use in the Wyze app.</li>
-            <li>Click <b>Create an API key</b>. Any name works, like "Wyze Tunnel".</li>
-            <li>Copy the <b>Key ID</b> and the <b>API Key</b> it shows you, and paste them below.</li>
+    <form data-step="key" class="step-view mt-5 hidden space-y-5">
+        <h1 class="page-title text-[26px]">Make your Wyze API key</h1>
+        <ol class="surface grid gap-3 p-5 text-zinc-400 [&_b]:font-semibold [&_b]:text-zinc-100">
+            <li class="num-step"><span>Open the <a href="https://developer-api-console.wyze.com/#/apikey/view" target="_blank"
+                    rel="noopener" class="font-medium text-accent underline underline-offset-2">Wyze developer console</a>. It
+                opens in a new tab.</span></li>
+            <li class="num-step"><span>Sign in with the same Wyze account you use in the Wyze app.</span></li>
+            <li class="num-step"><span>Click <b>Create an API key</b>. Any name works, like "Wyze Tunnel".</span></li>
+            <li class="num-step"><span>Copy the <b>Key ID</b> and the <b>API Key</b> it shows you, and paste them below.</span></li>
         </ol>
         <label class="block">
             <span class="text-sm font-medium">Key ID</span>
             <input name="keyId" required pattern="\s*.{36}\s*" autocomplete="off" spellcheck="false"
                 title="The Key ID is 36 characters, like 1a2b3c4d-..."
-                class="field mt-1 font-mono">
+                class="field mt-1.5 h-12 font-mono">
         </label>
         <label class="block">
             <span class="text-sm font-medium">API Key</span>
             <input name="apiKey" required pattern="\s*.{60}\s*" autocomplete="off" spellcheck="false"
                 title="The API Key is 60 characters"
-                class="field mt-1 font-mono">
+                class="field mt-1.5 h-12 font-mono">
         </label>
-        <button class="btn btn-primary w-full py-3 text-base">
+        <button class="btn btn-primary h-[52px] w-full">
             Next</button>
     </form>
 
     <!-- 3. Account -->
-    <form data-step="account" class="mt-6 hidden space-y-5">
-        <h1 class="text-2xl font-semibold">Sign in to Wyze</h1>
-        <p class="text-zinc-300">Use the email and password from the Wyze app. They stay on this device.</p>
+    <form data-step="account" class="step-view mt-5 hidden space-y-5">
+        <h1 class="page-title text-[26px]">Sign in to Wyze</h1>
+        <p class="text-zinc-400">Use the email and password from the Wyze app. They stay on this device.</p>
         <label class="block">
             <span class="text-sm font-medium">Email</span>
             <input name="email" type="email" required autocomplete="username"
-                class="field mt-1">
+                class="field mt-1.5 h-12">
         </label>
         <label class="block">
             <span class="text-sm font-medium">Password</span>
             <input name="password" type="password" required autocomplete="current-password"
-                class="field mt-1">
+                class="field mt-1.5 h-12">
         </label>
         <div class="flex gap-3">
             <button type="button" data-go="key"
-                class="btn px-4 py-3">Back</button>
+                class="btn h-[52px] px-5">Back</button>
             <button
-                class="btn btn-primary flex-1 py-3 text-base">Sign
+                class="btn btn-primary h-[52px] flex-1">Sign
                 in</button>
         </div>
     </form>
 
     <!-- Waiting on Wyze -->
-    <section data-step="wait" class="mt-6 hidden space-y-4 text-center">
-        <div class="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-zinc-700 border-t-emerald-400"></div>
-        <p id="waitText" class="text-zinc-300">Signing in to Wyze...</p>
+    <section data-step="wait" class="step-view mt-5 hidden space-y-4 text-center">
+        <div class="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-zinc-700 border-t-accent"></div>
+        <p id="waitText" class="text-zinc-400">Signing in to Wyze...</p>
     </section>
 
     <!-- 2FA -->
-    <form data-step="mfa" class="mt-6 hidden space-y-5">
-        <h1 class="text-2xl font-semibold">Enter your verification code</h1>
-        <p id="mfaText" class="text-zinc-300"></p>
+    <form data-step="mfa" class="step-view mt-5 hidden space-y-5">
+        <h1 class="page-title text-[26px]">Enter your verification code</h1>
+        <p id="mfaText" class="text-zinc-400"></p>
         <input name="mfaCode" required inputmode="numeric" autocomplete="one-time-code"
             class="field py-3 text-center font-mono text-2xl tracking-widest">
-        <button class="btn btn-primary w-full py-3 text-base">
+        <button class="btn btn-primary h-[52px] w-full">
             Verify</button>
     </form>
 
     <!-- 4. Done -->
-    <section data-step="done" class="mt-6 hidden space-y-5">
-        <h1 class="text-3xl font-semibold">You're all set</h1>
-        <p id="camText" class="text-zinc-300">Looking for your cameras...</p>
-        <div id="camList" class="divide-y divide-zinc-800 rounded-lg border border-zinc-800"></div>
+    <section data-step="done" class="step-view mt-5 hidden space-y-5">
+        <h1 class="page-title text-[30px]">You're all set</h1>
+        <p id="camText" class="text-zinc-400">Looking for your cameras...</p>
+        <div id="camList" class="surface divide-y divide-zinc-800"></div>
         <p id="camStatus" class="text-sm text-zinc-400" role="status"></p>
-        <div id="wbLogin" class="hidden rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+        <div id="streamTest" class="hidden space-y-3">
+            <button type="button" id="runTest" class="btn h-11 w-full"><i class="fas fa-stethoscope"></i>Test my cameras</button>
+            <p class="text-sm text-zinc-500">Watches each camera for a few seconds and checks the picture size, smoothness and connection.</p>
+            <div id="testResults" class="grid gap-3"></div>
+        </div>
+        <div id="wbLogin" class="hidden rounded-3xl bg-amber-500/10 p-5 text-sm">
             <p class="font-medium text-amber-200">Save this login. You'll need it to open Wyze Tunnel, and it
                 won't be shown again.</p>
             <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono">
@@ -114,15 +120,15 @@
             </details>
         </div>
         <a href="."
-            class="btn btn-primary w-full py-3 text-base">Open
+            class="btn btn-primary h-[52px] w-full">Open
             my cameras</a>
         <p class="text-sm text-zinc-400">Bookmark this page's address to come back. Your streams are at
             <span class="font-mono" id="here"></span>.</p>
     </section>
 
-    <details id="advanced" class="mt-10 text-sm text-zinc-400">
-        <summary class="cursor-pointer">Advanced: sign in with tokens instead</summary>
-        <form id="tokenLogin" class="mt-3 space-y-3">
+    <details id="advanced" class="mt-8 text-center text-sm text-zinc-400">
+        <summary class="cursor-pointer text-accent">Advanced: sign in with tokens instead</summary>
+        <form id="tokenLogin" class="mt-3 space-y-3 text-left">
             <input name="tokens" placeholder="Access token"
                 class="field font-mono">
             <input name="refresh" placeholder="Refresh token"
@@ -146,7 +152,8 @@
         function show(step) {
             document.querySelectorAll("[data-step]").forEach(el => el.classList.toggle("hidden", el.dataset.step !== step));
             const n = { wait: 2, mfa: 2 }[step] ?? order.indexOf(step);
-            document.querySelectorAll("#dots li").forEach((d, i) => { d.classList.toggle("bg-emerald-400", i <= n); d.classList.toggle("bg-zinc-700", i > n); });
+            $("#stepText").textContent = step === "done" ? "All done" : `Step ${n + 1} of ${order.length}`;
+            $("#stepBar").style.width = `${(n + 1) / order.length * 100}%`;
             $("#advanced").classList.toggle("hidden", step === "done");
             if (step === "done") listCams();
         }
@@ -213,12 +220,53 @@
                 if (await renderCameraToggles($("#camList"), $("#camStatus"), apiHeaders)) {
                     const count = $("#camList").children.length;
                     $("#camText").textContent = `Found ${count} camera${count > 1 ? "s" : ""}. Uncheck any you don't want to show. You can change this later under Cameras.`;
+                    $("#streamTest").classList.remove("hidden");
                     return;
                 }
                 await new Promise(r => setTimeout(r, 2000));
             }
             $("#camText").textContent = "Signed in. Open your cameras to see them.";
         }
+
+        // Stream test: one card per shown camera with a snapshot, what arrived, and any problems.
+        async function testCameras() {
+            const btn = $("#runTest"), out = $("#testResults");
+            btn.disabled = true;
+            out.replaceChildren();
+            const data = await fetch("api", { headers: apiHeaders }).then(r => r.json()).catch(() => ({}));
+            const cams = Object.entries(data.cameras || {}).filter(([, c]) => c.enabled && !c.substream);
+            if (!cams.length) out.textContent = "No cameras are ready yet. Give them a few seconds, then try again.";
+            for (const [uri, cam] of cams) {
+                const card = document.createElement("article");
+                card.className = "surface flex gap-3 p-3";
+                const pic = Object.assign(document.createElement("div"), { className: "grid aspect-video w-28 flex-none place-items-center overflow-hidden rounded-2xl bg-zinc-800 text-zinc-500" });
+                pic.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i>';
+                const body = Object.assign(document.createElement("div"), { className: "min-w-0 flex-1 text-sm" });
+                const name = Object.assign(document.createElement("p"), { className: "font-semibold text-zinc-100", textContent: cam.nickname });
+                const line = Object.assign(document.createElement("p"), { className: "text-zinc-400", textContent: "Connecting…" });
+                body.append(name, line);
+                card.append(pic, body);
+                out.append(card);
+                const r = await fetch(`api/${uri}/stream-test`, { headers: apiHeaders }).then(r => r.json()).catch(() => ({ error: "no reply", warnings: ["Wyze Tunnel didn't answer. Try again."] }));
+                if (r.error) {
+                    pic.innerHTML = '<i class="fas fa-video-slash"></i>';
+                    line.textContent = "No video";
+                } else {
+                    const img = Object.assign(document.createElement("img"), { className: "h-full w-full object-cover", alt: "", src: `snapshot/${uri}.jpg?${Date.now()}` });
+                    img.onerror = () => { pic.innerHTML = '<i class="fas fa-image"></i>'; };
+                    pic.replaceChildren(img);
+                    const codecs = [r.video, r.audio].filter(Boolean).join(" + ").toUpperCase();
+                    line.textContent = `${r.width}×${r.height} · ${r.fps} fps · ${(r.kbps / 1000).toFixed(1)} Mbps · ${codecs}`;
+                }
+                const tips = r.warnings || [];
+                const note = Object.assign(document.createElement("p"), { className: tips.length ? "mt-1 text-amber-300/80" : "mt-1 text-emerald-400" });
+                note.textContent = tips.length ? tips.join(" ") : "Looks good.";
+                body.append(note);
+            }
+            btn.disabled = false;
+            btn.lastChild.textContent = "Test again";
+        }
+        $("#runTest").addEventListener("click", testCameras);
 
         document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { fail(""); show(b.dataset.go); }));
 

@@ -1,28 +1,23 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<header class="mb-6 flex flex-wrap items-center gap-3">
-    <a href="./" class="mr-2 flex items-center gap-2 text-lg font-semibold tracking-tight">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500 text-zinc-950"><i
-                class="fas fa-video text-sm"></i></span>
-        Wyze Tunnel
-    </a>
-    <h1 class="text-lg text-zinc-400">Phone alerts</h1>
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Phone alerts</h1>
 </header>
 
 <form id="alerts" class="mx-auto max-w-xl space-y-6">
-    <section class="rounded-2xl bg-zinc-900 p-5 ring-1 ring-white/5">
+    <section class="surface p-5">
         <h2 class="font-semibold">Who's home?</h2>
-        <div id="mode" class="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-zinc-800 p-1" role="radiogroup" aria-label="Alert mode">
+        <div id="mode" class="mt-3 grid grid-cols-3 gap-1 rounded-full bg-zinc-800 p-1" role="radiogroup" aria-label="Alert mode">
             {% for value, label in [("home", "Home"), ("schedule", "Normal"), ("away", "Away")] %}
             <button type="button" role="radio" data-mode="{{ value }}" aria-checked="{{ 'true' if (settings.mode or 'schedule') == value else 'false' }}"
-                class="rounded-md px-3 py-1.5 text-sm text-zinc-300 aria-checked:bg-zinc-950 aria-checked:text-emerald-300">{{ label }}</button>
+                class="rounded-full px-3 py-1.5 text-sm text-zinc-300 aria-checked:bg-zinc-950 aria-checked:text-accent">{{ label }}</button>
             {% endfor %}
         </div>
         <p id="modeHint" class="mt-2 text-sm text-zinc-400"></p>
     </section>
 
-    <section class="rounded-2xl bg-zinc-900 p-5 ring-1 ring-white/5">
+    <section class="surface p-5">
         <h2 class="font-semibold">1. Get the free ntfy app</h2>
         <p class="mt-1 text-sm text-zinc-400">Alerts go to your phone through ntfy, a free notification app. No account needed.</p>
         <div class="mt-3 flex flex-wrap gap-2">
@@ -31,7 +26,7 @@
         </div>
     </section>
 
-    <section class="rounded-2xl bg-zinc-900 p-5 ring-1 ring-white/5">
+    <section class="surface p-5">
         <h2 class="font-semibold">2. Subscribe to your topic</h2>
         <p class="mt-1 text-sm text-zinc-400">In the app, tap <strong>+</strong> and type this topic. Keep it private: anyone who knows it can see your alerts.</p>
         <label class="mt-3 block text-sm">
@@ -45,15 +40,15 @@
         </details>
     </section>
 
-    <section class="rounded-2xl bg-zinc-900 p-5 ring-1 ring-white/5">
+    <section class="surface p-5">
         <h2 class="font-semibold">3. Pick what to hear about</h2>
         <label class="mt-3 flex items-start gap-3">
-            <input type="checkbox" name="motion" class="mt-1 h-4 w-4 accent-emerald-500" {{ 'checked' if settings.motion }} />
+            <input type="checkbox" name="motion" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.motion }} />
             <span><span class="block">Motion, with a snapshot</span>
                 <span class="text-sm text-zinc-400">Uses Wyze's motion events, so keep Event Recording on for the camera in the Wyze app.</span></span>
         </label>
         <label class="mt-3 flex items-start gap-3">
-            <input type="checkbox" name="offline" class="mt-1 h-4 w-4 accent-emerald-500" {{ 'checked' if settings.offline }} />
+            <input type="checkbox" name="offline" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.offline }} />
             <span><span class="block">A camera goes offline</span>
                 <span class="text-sm text-zinc-400">For example when it loses power or Wi-Fi.</span></span>
         </label>

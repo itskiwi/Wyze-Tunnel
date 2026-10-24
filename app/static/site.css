@@ -22,7 +22,8 @@ code {
   color: #fda4af; font-size: .85em; user-select: all; word-break: break-all;
 }
 
-/* Live status pill */
+/* Live status pill. On a camera picture "connected" is shown by the icon, so the word is hidden. */
+.card-header-title .status-label[data-status="connected"] { display: none; }
 .status-label[data-status="connected"] { background: rgb(16 185 129 / .15); color: #6ee7b7; }
 .status-label[data-status="connecting"] { background: rgb(245 158 11 / .15); color: #fcd34d; }
 /* Remote connections stand out; local is the normal case. */
@@ -36,11 +37,11 @@ code {
 .toast-info, .toast-primary { box-shadow: inset 3px 0 0 #38bdf8; }
 
 /* Light theme: darker accents so status colors stay readable on white */
-:root[data-theme="light"] :is(.has-text-success, .status-label[data-status="connected"], .text-emerald-400) { color: #047857; }
+:root[data-theme="light"] :is(.has-text-success, .status-label[data-status="connected"], .text-emerald-400, .text-emerald-300) { color: #047857; }
 :root[data-theme="light"] :is(.has-text-warning, .status-label[data-status="connecting"], .text-amber-200, .text-amber-300\/80, .text-amber-400) { color: #b45309; }
 :root[data-theme="light"] :is(.has-text-danger, .status-label[data-status="offline"], .status-label[data-status="error"], code, .text-rose-200, .text-rose-300, .text-red-200, .hover\:text-rose-200:hover) { color: #be123c; }
 @media (prefers-color-scheme: light) {
-:root:not([data-theme="dark"]) :is(.has-text-success, .status-label[data-status="connected"], .text-emerald-400) { color: #047857; }
+:root:not([data-theme="dark"]) :is(.has-text-success, .status-label[data-status="connected"], .text-emerald-400, .text-emerald-300) { color: #047857; }
 :root:not([data-theme="dark"]) :is(.has-text-warning, .status-label[data-status="connecting"], .text-amber-200, .text-amber-300\/80, .text-amber-400) { color: #b45309; }
 :root:not([data-theme="dark"]) :is(.has-text-danger, .status-label[data-status="offline"], .status-label[data-status="error"], code, .text-rose-200, .text-rose-300, .text-red-200, .hover\:text-rose-200:hover) { color: #be123c; }
 }
@@ -63,18 +64,82 @@ video.lost, video.lost + i { cursor: default; }
 
 /* Drag to reorder */
 .drag_handle { cursor: move; }
-.drag_hover { box-shadow: 0 0 0 2px rgb(52 211 153 / .6); }
-.ghost { outline: 2px dashed rgb(255 255 255 / .2); border-radius: 1rem; }
+.drag_hover { box-shadow: 0 0 0 2px rgb(var(--accent) / .6); border-radius: 22px; }
+.ghost { outline: 2px dashed rgb(var(--white) / .2); border-radius: 22px; }
 .ghost * { visibility: hidden; }
 
 /* Fullscreen mode */
 .fullscreen button { position: fixed; bottom: 24px; right: 24px; z-index: 40; opacity: .35; transition: .3s; }
 .fullscreen button:hover { opacity: 1; }
 .fs-mode { visibility: hidden; height: 0; padding: 0 !important; overflow: hidden; }
-.fs-mode .card-header-title { visibility: visible; position: absolute; z-index: 10; padding: .75rem 1rem; text-shadow: 0 0 4px #000; }
-#topbar.fs-mode, .preview-toggle.fs-mode { display: none; }
+#topbar.fs-mode, .summary.fs-mode, .tabbar.fs-mode { display: none; }
 
 /* Fix for jittery video in Firefox #1025 */
 @-moz-document url-prefix() {
   body::after { width: 1px; height: 1px; position: fixed; backdrop-filter: blur(0.01rem); content: ""; }
 }
+
+/* Studio Soft layout */
+.safe-x { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+@media (min-width: 640px) { .safe-x { padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px)); } }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 45; background: rgb(var(--zinc-950)); }
+
+.chip-ok { background: rgb(61 207 142 / .16); color: #8ff0bf; }
+.chip-warn { background: rgb(245 179 60 / .16); color: #fbd78a; }
+.chip-bad { background: rgb(255 107 125 / .16); color: #ffbcc4; }
+:root[data-theme="light"] .chip-ok { background: #dcf2e4; color: #146c43; }
+:root[data-theme="light"] .chip-warn { background: #fbefcd; color: #8a4d00; }
+:root[data-theme="light"] .chip-bad { background: #fbe1e3; color: #a8202f; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .chip-ok { background: #dcf2e4; color: #146c43; }
+  :root:not([data-theme="dark"]) .chip-warn { background: #fbefcd; color: #8a4d00; }
+  :root:not([data-theme="dark"]) .chip-bad { background: #fbe1e3; color: #a8202f; }
+}
+
+/* Camera tiles: picture first, with a gentle pop in and a slow zoom on hover */
+.camera { animation: pop .5s cubic-bezier(.3, 1.3, .5, 1) backwards; }
+.camera:nth-child(2) { animation-delay: 60ms; } .camera:nth-child(3) { animation-delay: 120ms; }
+.camera:nth-child(4) { animation-delay: 180ms; } .camera:nth-child(5) { animation-delay: 240ms; }
+.camera:nth-child(n+6) { animation-delay: 300ms; }
+.card-image img, .card-image video { transition: transform 5s ease-out; }
+.card:hover .card-image img { transform: scale(1.04); }
+.card:has(details[open]) { z-index: 30; }
+.card-header-title .status .fas { font-size: 11px; }
+.cam-menu { position: absolute; right: 0; bottom: calc(100% + 8px); width: 18rem; max-height: min(70vh, 32rem); overflow: auto; }
+.cam-menu .btn { border-radius: 14px; }
+/* Phones: camera menus open as a sheet above the tab bar */
+@media (max-width: 767px) {
+  .cam-menu { position: fixed; left: 12px; right: 12px; width: auto; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); max-height: 65vh; animation: rise .25s ease both; }
+}
+
+/* Phone tab bar */
+.tabbar { position: fixed; inset: auto 0 0; z-index: 40; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  padding: 8px max(10px, env(safe-area-inset-left, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-right, 0px));
+  background: rgb(var(--zinc-900)); border-top: 1px solid rgb(var(--zinc-700)); border-radius: 22px 22px 0 0; }
+.tabbar a { display: grid; place-items: center; gap: 3px; padding: 6px 0; font-size: 11px; font-weight: 600; color: rgb(var(--zinc-400)); }
+.tabbar a i { font-size: 19px; }
+.tabbar a[aria-current] { color: rgb(var(--accent)); }
+@media (min-width: 768px) { .tabbar { display: none; } }
+
+/* Setup wizard */
+.num-step { display: flex; gap: 12px; align-items: flex-start; counter-increment: step; }
+.num-step::before { content: counter(step); flex: none; width: 26px; height: 26px; border-radius: 99px; display: grid; place-items: center;
+  background: rgb(var(--accent) / .16); color: rgb(var(--accent)); font: 800 13px Nunito, ui-rounded, system-ui, sans-serif; }
+ol:has(> .num-step) { counter-reset: step; }
+.mascot { animation: nod 3s ease-in-out infinite; transform-origin: 50% 90%; }
+.step-view:not(.hidden) { animation: fade .3s ease both; }
+.dropdown > .menu { animation: rise .18s ease both; }
+
+@keyframes pop { from { transform: scale(.96); opacity: .3; } }
+@keyframes fade { from { opacity: .2; transform: translateY(4px); } }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+@keyframes nod { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-6deg); } 60% { transform: rotate(5deg); } }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
+
+/* Text on camera pictures always sits on a dark pill, so it keeps the dark-theme colors */
+.card-header-title .status-label[data-status="connecting"] { color: #fcd34d !important; }
+.card-header-title .status-label:is([data-status="offline"], [data-status="error"]) { color: #fda4af !important; }
+.card-header-title .has-text-success { color: #3dcf8e !important; }
+.card-header-title .has-text-warning { color: #f5b33c !important; }
+.card-header-title .has-text-danger { color: #ff6b7d !important; }
+@media (max-width: 767px) { .fullscreen button { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); } #toasts { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); } }

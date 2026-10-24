@@ -1,5 +1,7 @@
+import json
 import os
 import shutil
+import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -238,3 +240,60 @@ def rtsp_snap_cmd(cam_name: str, interval: bool = False):
         + rotation
         + ["-f", "image2", "-frames:v", "1", "-y", img]
     )
+
+
+def probe_stream(uri: str, seconds: int = 4) -> dict:
+    """Watch a stream for a few seconds; return its codecs, size, real fps and bitrate.
+
+    Opening the RTSP path also starts an on-demand camera, so allow time to connect.
+    """
+    cmd = (
+        ["ffprobe", "-v", "error", "-rtsp_transport", "tcp", "-timeout", "35000000"]
+        + ["-read_intervals", f"%+{seconds}", "-of", "json", "-show_entries"]
+        + ["stream=index,codec_type,codec_name,width,height:packet=stream_index,size,pts_time"]
+        + [f"rtsp://127.0.0.1:8554/{uri}"]
+    )
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=seconds + 45)
+        data = json.loads(out.stdout or "{}")
+    except (subprocess.TimeoutExpired, ValueError) as ex:
+        return {"error": f"No video: {ex}"}
+    return summarize_probe(data)
+
+
+def summarize_probe(data: dict) -> dict:
+    streams = {s["index"]: s for s in data.get("streams", [])}
+    video = next((s for s in streams.values() if s.get("codec_type") == "video"), None)
+    if not video:
+        return {"error": "No video arrived from the camera"}
+    audio = next((s for s in streams.values() if s.get("codec_type") == "audio"), None)
+    packets = [p for p in data.get("packets", []) if p.get("pts_time") not in (None, "N/A")]
+    vpts = sorted(float(p["pts_time"]) for p in packets if p["stream_index"] == video["index"])
+    span = vpts[-1] - vpts[0] if len(vpts) > 1 else 0
+    size = sum(int(p.get("size", 0)) for p in packets)
+    return {
+        "video": video.get("codec_name"),
+        "audio": audio.get("codec_name") if audio else None,
+        "width": video.get("width"),
+        "height": video.get("height"),
+        "fps": round((len(vpts) - 1) / span, 1) if span else 0,
+        "kbps": round(size * 8 / span / 1000) if span else 0,
+    }
+
+
+def stream_warnings(probe: dict, info: dict) -> list[str]:
+    """Plain-English problems with a probed stream, for the setup stream test."""
+    if "error" in probe:
+        return ["Couldn't get video. Check that the camera is online in the Wyze app, then try again."]
+    tips = []
+    if (probe.get("height") or 0) < 720 and not info.get("substream"):
+        tips.append("The picture is SD. Set the quality to HD if you want more detail.")
+    if 0 < probe.get("fps", 0) < 10:
+        tips.append(f"Only {probe['fps']} frames a second. The camera may have weak Wi-Fi, or it's dark and night mode slowed it down.")
+    if 0 < probe.get("kbps", 0) < 250:
+        tips.append("Very low bitrate, so the picture may look blocky. Weak Wi-Fi is the usual cause.")
+    if info.get("net_mode") == "relay":
+        tips.append("Video goes through Wyze's relay servers, which adds delay. Put Wyze Tunnel on the same network as the camera if you can.")
+    if info.get("audio") and not probe.get("audio"):
+        tips.append("Audio is turned on but no sound arrived.")
+    return tips
