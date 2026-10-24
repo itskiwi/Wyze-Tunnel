@@ -19,7 +19,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import backup, config, guests, privacy, web_ui, webhooks, wyze_api
+from wyzebridge import backup, config, guests, privacy, shares, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
@@ -55,7 +55,7 @@ def create_app():
     @app.before_request
     def block_cross_site():
         # Images and links to the UI stay embeddable; everything else (commands, restarts, login) is same-site only.
-        if request.path.startswith(("/static/", "/img/", "/snapshot/", "/thumb/", "/photo/")):
+        if request.path.startswith(("/static/", "/img/", "/snapshot/", "/thumb/", "/photo/", "/share/")):
             return
         if request.method == "GET" and request.path in ("/", "/login", "/cams.m3u8"):
             return
@@ -546,6 +546,28 @@ def create_app():
         args = {"start": request.args.get("start"), "duration": request.args.get("duration")}
         if not all(args.values()):
             return {"error": "start and duration are required"}, 400
+        return recording_mp4(cam_name, args)
+
+    @app.route("/recordings/<string:cam_name>/share", methods=["POST"])
+    @auth_required
+    def share_recording(cam_name: str):
+        """A link anyone can open for 24 hours to watch one clip."""
+        if not wb.streams.get(cam_name):
+            return {"error": "Camera not found"}, 404
+        data = request.get_json(silent=True) or {}
+        try:
+            token = shares.create_share(cam_name, data.get("start"), data.get("duration"))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"url": f"share/{token}", "hours": shares.SHARE_HOURS}
+
+    @app.route("/share/<string:token>")
+    def shared_recording(token: str):
+        if not (share := shares.get_share(token)):
+            return "This link has ended or doesn't exist.", 404
+        return recording_mp4(share["cam"], {"start": share["start"], "duration": share["duration"]})
+
+    def recording_mp4(cam_name: str, args: dict):
         resp = mtx_playback("get", stream=True, path=cam_name, format="mp4", **args)
         if not resp.ok:
             return {"error": resp.text.strip()}, resp.status_code

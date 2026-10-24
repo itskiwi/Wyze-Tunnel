@@ -26,10 +26,12 @@
 <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
     <div class="overflow-hidden rounded-3xl bg-black">
         <video id="player" class="aspect-video w-full" controls playsinline></video>
-        <div class="flex items-center gap-3 bg-zinc-900 px-4 py-3 text-sm">
+        <div class="flex flex-wrap items-center gap-3 bg-zinc-900 px-4 py-3 text-sm">
             <span id="now-playing" class="text-zinc-400">Pick a clip to play it.</span>
-            <a id="download" class="btn ml-auto hidden" download><i class="fas fa-download"></i>Download</a>
+            <button id="share" class="btn ml-auto hidden" type="button" title="A link anyone can open for 24 hours"><i class="fas fa-share-nodes"></i>Share</button>
+            <a id="download" class="btn hidden" download><i class="fas fa-download"></i>Download</a>
         </div>
+        <p id="shareOut" class="hidden bg-zinc-900 px-4 pb-3 text-sm text-zinc-300" role="status"></p>
     </div>
     <div id="clips" class="max-h-[70vh] overflow-auto surface p-2">
         <p class="p-3 text-sm text-zinc-500">Loading…</p>
@@ -74,8 +76,28 @@
         const download = document.getElementById("download");
         download.href = url;
         download.classList.remove("hidden");
+        const share = document.getElementById("share");
+        share.classList.remove("hidden");
+        share.onclick = () => shareClip(cam, clip);
         clips.querySelectorAll(".bg-white\\/10").forEach((b) => b.classList.remove("bg-white/10"));
         button.classList.add("bg-white/10");
+    }
+
+    function shareClip(cam, clip) {
+        const out = document.getElementById("shareOut");
+        fetch(`recordings/${encodeURIComponent(cam)}/share`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ start: clip.iso, duration: clip.duration }),
+        })
+            .then((resp) => resp.json().then((body) => resp.ok ? body : Promise.reject(new Error(body.error || resp.statusText))))
+            .then((body) => {
+                const link = new URL(body.url, location.href).href;
+                out.innerHTML = `<span class="text-zinc-400">Anyone with this link can watch the clip for ${body.hours} hours:</span> <code class="select-all break-all"></code>`;
+                out.querySelector("code").textContent = link;
+                navigator.clipboard?.writeText(link).then(() => out.firstChild.textContent = `Copied. Anyone with this link can watch the clip for ${body.hours} hours:`, () => { });
+            })
+            .catch((err) => { out.textContent = err.message; })
+            .finally(() => out.classList.remove("hidden"));
     }
 
     function load(cam) {
