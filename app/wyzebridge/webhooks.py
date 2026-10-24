@@ -42,6 +42,7 @@ def save_alerts(form: dict) -> dict:
         raise ValueError("Set both a start and an end for quiet hours, or neither")
     settings = {"server": server, "topic": topic, **quiet}
     settings |= {event: bool(form.get(event)) for event in ALERT_EVENTS}
+    settings["siren_away"] = bool(form.get("siren_away"))
     if "mode" in ALERTS:
         settings["mode"] = ALERTS["mode"]
     _write_alerts(settings)

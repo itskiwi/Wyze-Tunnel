@@ -1,18 +1,40 @@
 import time
 from collections import deque
+from threading import Thread
 from datetime import datetime
 from typing import Any
 
 from wyzebridge.config import MOTION_INT, MOTION_START
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import update_preview
-from wyzebridge.webhooks import send_webhook
+from wyzebridge.webhooks import ALERTS, send_webhook
 from wyzebridge.wyze_api import display_name
 from wyzebridge.wyze_stream import WyzeStream
 
 
 # shortcut: kept in memory, so the history clears on restart; persist it if people want older events.
 EVENT_LOG: deque[dict] = deque(maxlen=100)
+
+
+SIREN_SECONDS = 30
+SIREN_COOLDOWN = 120
+_last_siren: dict[str, float] = {}
+
+
+def sound_siren(stream) -> bool:
+    """Sound the camera's siren for a short burst. Runs in a thread: camera commands block for seconds."""
+    if time.time() - _last_siren.get(stream.uri, 0) < SIREN_COOLDOWN:
+        return False
+    _last_siren[stream.uri] = time.time()
+
+    def burst():
+        logger.info(f"[MOTION] Sounding the siren on {stream.uri}")
+        stream.send_cmd("alarm", "on")
+        time.sleep(SIREN_SECONDS)
+        stream.send_cmd("alarm", "off")
+
+    Thread(target=burst, daemon=True).start()
+    return True
 
 
 class WyzeEvents:
@@ -51,6 +73,8 @@ class WyzeEvents:
                     {"uri": stream.uri, "name": name, "ts": self.last_ts, "img": img}
                 )
                 send_webhook("motion", stream.uri, msg, img)
+                if ALERTS.get("siren_away") and ALERTS.get("mode") == "away":
+                    sound_siren(stream)
                 if MOTION_START:
                     stream.start()
                 if img and self.api.save_thumbnail(stream.camera.name_uri, img):
