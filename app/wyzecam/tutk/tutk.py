@@ -1,3 +1,4 @@
+import os
 import pathlib
 from ctypes import (
     CDLL,
@@ -1070,5 +1071,5 @@ def load_library(shared_lib_path: Optional[str] = None) -> CDLL:
     :return: the tutk_platform_lib, suitable for passing to other functions in this module
     """
     if not shared_lib_path:
-        shared_lib_path = "/usr/local/lib/libIOTCAPIs_ALL.so"
+        shared_lib_path = os.getenv("TUTK_LIB", "/usr/local/lib/libIOTCAPIs_ALL.so")
     return cdll.LoadLibrary(shared_lib_path)

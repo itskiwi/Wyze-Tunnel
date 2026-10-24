@@ -55,6 +55,9 @@ main() {
 
     say "Done! Wyze Tunnel is running."
     echo "  Open:  http://localhost:5050  (from other devices: http://$MAC_IP:5050)"
+    echo "  Sign in with your Wyze email, password, API ID and API key"
+    echo "  (get the API ID and key at https://developer-api-console.wyze.com/#/apikey/view)."
+    echo "  Next time, log in as \"wbadmin\" with the part of your Wyze email before the @ as the password."
     echo "  RTSP:  rtsp://$MAC_IP:8554/<camera-name>"
     echo "  It starts automatically when you log in. Run this command again any time to update."
     sleep 3 && open http://localhost:5050 || true
