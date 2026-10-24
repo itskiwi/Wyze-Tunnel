@@ -66,7 +66,21 @@
   .seg {
     @apply inline-flex items-center gap-0.5 rounded-full bg-zinc-900 p-1 shadow-[var(--shadow)];
   }
-  .seg .tab.is-active { @apply bg-zinc-100 text-zinc-950; }
+  .seg .tab.is-active, .seg .tab[aria-checked="true"] { @apply bg-zinc-100 text-zinc-950; }
+  /* Numbered step bubble in a how-to list */
+  .step {
+    @apply grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent font-display font-extrabold text-on-accent;
+  }
+  .choice {
+    @apply flex cursor-pointer items-start gap-3 rounded-2xl p-3 ring-1 ring-inset ring-zinc-700 has-[:checked]:ring-2 has-[:checked]:ring-accent;
+  }
+  /* A key or snippet with its copy button */
+  .secret {
+    @apply flex items-start gap-2 rounded-2xl bg-zinc-950 p-2 pl-3 ring-1 ring-inset ring-zinc-700;
+  }
+  .snippet {
+    @apply min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap break-all py-1.5 font-mono text-[13px] text-zinc-100;
+  }
   .surface {
     @apply rounded-3xl bg-zinc-900 shadow-[var(--shadow)];
   }
