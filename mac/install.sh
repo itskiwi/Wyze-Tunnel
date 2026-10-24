@@ -23,7 +23,7 @@ main() {
     esac
     mkdir -p "$DIR"
 
-    if ! command -v limactl >/dev/null; then
+    if [ ! -x "$DIR/lima/bin/limactl" ]; then
         say "Downloading the VM tool (Lima)"
         TAG=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/lima-vm/lima/releases/latest)
         TAG=${TAG##*/}
@@ -34,17 +34,8 @@ main() {
 
     if ! limactl list -q 2>/dev/null | grep -qx "$VM"; then
         say "Creating the Wyze Tunnel VM (one time, takes a few minutes)"
-        # Web UI goes to Mac port 5050 because macOS AirPlay already uses 5000.
-        limactl create --name="$VM" --tty=false \
-            --set '.cpus=2 | .memory="2GiB" | .disk="10GiB" | .mounts=[]' \
-            --set '.portForwards=[
-                {"guestPort":5000,"hostPort":5050,"hostIP":"0.0.0.0"},
-                {"guestPort":8554,"hostIP":"0.0.0.0"},
-                {"guestPort":8888,"hostIP":"0.0.0.0"},
-                {"guestPort":8889,"hostIP":"0.0.0.0"},
-                {"guestPort":1935,"hostIP":"0.0.0.0"},
-                {"guestPort":8189,"hostIP":"0.0.0.0","proto":"udp"}]' \
-            template://debian-12 </dev/null
+        curl -fsSL "https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/$REF/mac/wyze-tunnel.yaml" -o "$DIR/wyze-tunnel.yaml"
+        limactl create --name="$VM" --tty=false "$DIR/wyze-tunnel.yaml" </dev/null
     fi
 
     say "Starting the VM"
@@ -56,14 +47,10 @@ main() {
 
     say "Installing Wyze Tunnel inside the VM"
     limactl shell --workdir / "$VM" sudo bash -euo pipefail -c "
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update -qq && apt-get install -y -qq python3-venv ffmpeg curl >/dev/null
+        command -v curl >/dev/null || { apt-get update -qq && apt-get install -y -qq curl >/dev/null; }
         rm -rf /tmp/wt && mkdir /tmp/wt
         curl -fsSL https://github.com/itskiwi/Wyze-Tunnel/archive/$REF.tar.gz | tar xzf - -C /tmp/wt --strip-components=1
-        /tmp/wt/native/install.sh >/dev/null
-        ENV=/etc/wyze-tunnel/wyze-tunnel.env
-        sed -i '/^WB_IP=/d' \$ENV && echo WB_IP=$MAC_IP >> \$ENV
-        systemctl restart wyze-tunnel
+        /tmp/wt/mac/provision.sh $MAC_IP
     " </dev/null
 
     say "Done! Wyze Tunnel is running."
