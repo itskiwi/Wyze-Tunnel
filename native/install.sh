@@ -118,7 +118,8 @@ WB_PASSWORD=$(sed -n 's/^WB_PASSWORD=//p' "$CONF_DIR/wyze-tunnel.env")
 
 install -m 755 "$SRC/native/uninstall.sh" "$PREFIX/uninstall.sh"
 install -m 755 "$SRC/native/install.sh" "$PREFIX/install.sh"
-install -D -m 755 "$SRC/native/wyze-tunnel" /usr/local/bin/wyze-tunnel
+# --update runs this script against a downloaded release, which may predate the command.
+[ ! -f "$SRC/native/wyze-tunnel" ] || install -D -m 755 "$SRC/native/wyze-tunnel" /usr/local/bin/wyze-tunnel
 import_docker
 
 # Turn on daily updates for new installs only, so a `systemctl disable` sticks across re-runs.
