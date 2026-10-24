@@ -4,7 +4,7 @@ import sys
 from dataclasses import replace
 from threading import Thread
 
-from wyzebridge import config, detect, guests, integrations, webhooks
+from wyzebridge import config, detect, guests, integrations, recording, webhooks
 from wyzebridge.auth import STREAM_AUTH, WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream
 from wyzebridge.logging import logger
@@ -81,7 +81,7 @@ class WyzeBridge(Thread):
                 quality=env_cam("quality", cam.name_uri),
                 audio=bool(env_cam("enable_audio", cam.name_uri)),
                 # Spotting needs a recording to play hits from, so switching it on records the camera too.
-                record=bool(env_cam("record", cam.name_uri)) or detect.wanted(cam.name_uri),
+                record=bool(env_cam("record", cam.name_uri)) or recording.wanted(cam.name_uri) or detect.wanted(cam.name_uri),
                 reconnect=is_livestream(cam.name_uri) or not config.ON_DEMAND,
             )
             self.add_substream(cam, options)
@@ -90,7 +90,10 @@ class WyzeBridge(Thread):
 
             self.mtx.add_path(stream.uri, not options.reconnect)
             if options.record:
-                keep = None if env_cam("record", cam.name_uri) else detect.AUTO_RECORD_KEEP
+                if env_cam("record", cam.name_uri):
+                    keep = None  # RECORD_KEEP, as before
+                else:
+                    keep = recording.keep() if recording.wanted(cam.name_uri) else detect.AUTO_RECORD_KEEP
                 self.mtx.record(stream.uri, keep)
             if detect.wanted(cam.name_uri):
                 detect.watch(stream.uri, display_name(cam), on_detect)
