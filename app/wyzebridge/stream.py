@@ -194,6 +194,12 @@ class StreamManager:
             self.snap_all(force=True)
             return resp | {"status": "success"}
 
+        if cam_name == "all" and cmd == "quality":
+            # Data saver: one tap switches every camera between HD and SD.
+            results = [s.send_cmd(cmd, payload) for s in self.streams.values() if not s.options.substream]
+            ok = all(r.get("status") == "success" for r in results)
+            return resp | {"status": "success" if ok else "error"}
+
         if not (stream := self.get(cam_name)):
             return resp | {"response": "Camera not found"}
 

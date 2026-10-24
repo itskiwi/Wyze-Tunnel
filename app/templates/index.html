@@ -12,6 +12,11 @@
         <input class="field mt-1 py-2" id="select_refresh_period" type="number" min="0" max="1200"
             value="{{refresh_period}}" /></label>
 </div>
+<p class="menu-label">All cameras</p>
+<div class="cam-control flex gap-2 px-2 pb-2" data-cam="all">
+    <button class="button btn flex-1" data-cmd="quality" data-payload="sd" title="Lower resolution on every camera, uses less data">Data saver</button>
+    <button class="button btn flex-1" data-cmd="quality" data-payload="hd" title="Full resolution on every camera">Full HD</button>
+</div>
 <p class="menu-label">Restart</p>
 <div id="restart-menu">
     <a data-restart="cameras" class="menu-item cursor-pointer"><i class="fas fa-video w-4"></i>Camera connections</a>

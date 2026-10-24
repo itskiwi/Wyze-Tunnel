@@ -19,3 +19,17 @@ def test_hd_sd_choice_is_saved_and_reconnects(tmp_path, monkeypatch):
     control(stream, "hd")
     assert (stream.options.frame_size, stream.options.bitrate) == (3, 180)
     assert control(stream, "4k")["status"] == "error"
+
+
+def test_data_saver_switches_every_main_stream():
+    from unittest import mock
+    from wyzebridge.stream import StreamManager
+
+    manager = StreamManager()
+    main, sub = mock.Mock(), mock.Mock()
+    main.options.substream, sub.options.substream = False, True
+    main.send_cmd.return_value = {"status": "success"}
+    manager.streams = {"front": main, "front-sub": sub}
+    assert manager.send_cmd("all", "quality", "sd")["status"] == "success"
+    main.send_cmd.assert_called_once_with("quality", "sd")
+    sub.send_cmd.assert_not_called()
