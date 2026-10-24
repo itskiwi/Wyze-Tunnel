@@ -323,6 +323,7 @@ def create_app():
             api=WbAuth.api,
             version=config.VERSION,
         )
+
     @app.route("/cameras")
     @auth_required
     def cameras_page():
