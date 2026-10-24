@@ -31,7 +31,7 @@
 {% endblock %}
 
 {% block javascript %}
-<script src="static/cameras.js"></script>
+<script src="static/cameras.js?v={{ version }}"></script>
 <script>
     renderCameraToggles(document.getElementById("camList"), document.getElementById("camStatus"))
         .then((ok) => ok || (document.getElementById("camList").innerHTML = '<p class="px-4 py-3 text-sm text-zinc-500">No cameras found on this Wyze account.</p>'));
