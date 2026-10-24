@@ -197,11 +197,32 @@
                             <button class="button btn" data-cmd="floodlight" data-payload="off">Off</button>
                         </div>
                         {% endif %}
+                        {% if camera.is_spotlight %}
+                        <p class="menu-label"><i class="fas fa-sun"></i> Spotlight</p>
+                        <div class="grid grid-cols-2 gap-1 p-1">
+                            <button class="button btn" data-cmd="spotlight" data-payload="on">On</button>
+                            <button class="button btn" data-cmd="spotlight" data-payload="off">Off</button>
+                        </div>
+                        {% endif %}
                         <p class="menu-label"><i class="fas fa-bell"></i> Siren</p>
                         <div class="grid grid-cols-2 gap-1 p-1">
                             <button class="button btn text-rose-300" data-cmd="alarm" data-payload="on">Sound</button>
                             <button class="button btn" data-cmd="alarm" data-payload="off">Stop</button>
                         </div>
+                        <details class="mt-1">
+                            <summary class="menu-label cursor-pointer list-none"><i class="fas fa-gear"></i> Camera settings <i class="fas fa-angle-down ml-auto"></i></summary>
+                            {% set settings = [("status_light", "Status light"), ("osd_timestamp", "Timestamp"), ("motion_tagging", "Motion box"),
+                                ("motion_detection", "Wyze motion detection"), ("notifications", "Wyze app alerts"),
+                                ("hor_flip", "Mirror image"), ("ver_flip", "Upside down")] %}
+                            {% if camera.is_pan_cam %}{% set settings = settings + [("motion_tracking", "Follow motion"), ("pan_cruise", "Patrol")] %}{% endif %}
+                            {% for cmd, label in settings %}
+                            <div class="grid grid-cols-[1fr_auto_auto] items-center gap-1 px-1 py-0.5">
+                                <span class="truncate pl-1 text-zinc-300">{{ label }}</span>
+                                <button class="button btn px-2.5 py-1" data-cmd="{{ cmd }}" data-payload="on" aria-label="{{ label }} on">On</button>
+                                <button class="button btn px-2.5 py-1" data-cmd="{{ cmd }}" data-payload="off" aria-label="{{ label }} off">Off</button>
+                            </div>
+                            {% endfor %}
+                        </details>
                     </div>
                 </details>
                 <details class="dropdown">
