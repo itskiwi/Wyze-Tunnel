@@ -5,6 +5,10 @@ on:
     - cron: '0 0 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   update-media-mtx:
     runs-on: ubuntu-latest
@@ -54,18 +58,24 @@ jobs:
           fi
           current_tag=$(cat ./app/.env | grep APP_VERSION | cut -d'=' -f2)
           sed -i "s/APP_VERSION=.*/APP_VERSION=${release_tag}/" ./app/.env
+          # Keep the iOS version in the user agent current too; skip it if the lookup fails.
+          ios=$(curl -s https://endoflife.date/api/ios.json | jq -r '.[0].latest' || true)
+          if [[ $ios =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            sed -i "s/IOS_VERSION=.*/IOS_VERSION=${ios}/" ./app/.env
+          fi
           echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
           echo "current_tag=$current_tag" >> $GITHUB_OUTPUT
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
-        if: steps.wyze_ios.outputs.current_tag != '' && steps.wyze_ios.outputs.current_tag != steps.wyze_ios.outputs.release_tag
+        # No-op when neither APP_VERSION nor IOS_VERSION changed.
+        if: steps.wyze_ios.outputs.current_tag != ''
         with:
           title: 'Bump Wyze App version to v${{ steps.wyze_ios.outputs.release_tag }}'
-          commit-message: 'Update Wyze iOS App version from v${{ steps.wyze_ios.outputs.current_tag }} to v${{ steps.wyze_ios.outputs.release_tag }}'
+          commit-message: 'Update Wyze iOS App and iOS versions (app v${{ steps.wyze_ios.outputs.release_tag }})'
           branch: wyze-version
           body: |
-            This pull request updates the Wyze iOS App version to the latest version: [v${{ steps.wyze_ios.outputs.release_tag }}](https://apps.apple.com/us/app/wyze-make-your-home-smarter/id1288415553)
+            This pull request updates the Wyze iOS App version to the latest version: [v${{ steps.wyze_ios.outputs.release_tag }}](https://apps.apple.com/us/app/wyze-make-your-home-smarter/id1288415553), and IOS_VERSION to the latest iOS release.
           add-paths: app/.env
           base: main
           delete-branch: true
