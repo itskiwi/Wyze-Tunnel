@@ -25,7 +25,9 @@ def test_auto_chain(both, monkeypatch):
     assert go2rtc.source_chain(cam(model="GW_GC1")) == ["webrtc"]  # Gwell (OG): cloud WebRTC only
     assert go2rtc.source_chain(cam(model="GW_BE1")) == []  # Doorbell Pro: no WebRTC
     monkeypatch.setattr(go2rtc, "tutk_available", lambda: False)
+    monkeypatch.setattr(go2rtc, "local_ipv4s", lambda: {"192.168.1.5"})
     assert go2rtc.source_chain(cam()) == ["lan", "webrtc"]
+    assert go2rtc.source_chain(cam(ip="192.168.86.21")) == ["webrtc"]  # another site: LAN discovery can't reach it
     monkeypatch.setattr(go2rtc, "go2rtc_available", lambda: False)
     assert go2rtc.source_chain(cam()) == []
 
