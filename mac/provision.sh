@@ -7,4 +7,4 @@ SRC=$(cd "$(dirname "$0")/.." && pwd)
 ENV=/etc/wyze-tunnel/wyze-tunnel.env
 sed -i '/^WB_IP=/d' "$ENV" && echo "WB_IP=$1" >> "$ENV"
 systemctl restart wyze-tunnel
-sed -n 's/^WB_PASSWORD=//p' "$ENV"
+[ -f /var/lib/wyze-tunnel/tokens/wb_login ] || sed -n 's/^WB_PASSWORD=//p' "$ENV"
