@@ -25,6 +25,9 @@ code {
 /* Live status pill */
 .status-label[data-status="connected"] { background: rgb(16 185 129 / .15); color: #6ee7b7; }
 .status-label[data-status="connecting"] { background: rgb(245 158 11 / .15); color: #fcd34d; }
+/* Remote connections stand out; local is the normal case. */
+.net-mode[data-mode="internet"] { background: rgb(56 189 248 / .15); color: #7dd3fc; }
+.net-mode[data-mode="relay"] { background: rgb(245 158 11 / .15); color: #fcd34d; }
 .status-label[data-status="offline"], .status-label[data-status="error"] { background: rgb(244 63 94 / .15); color: #fda4af; }
 
 .toast-success { box-shadow: inset 3px 0 0 #34d399; }

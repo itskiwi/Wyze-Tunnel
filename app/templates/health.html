@@ -24,6 +24,8 @@
     {% if not cam.enabled %}{% set _ = tips.append("This camera is turned off in Wyze Tunnel. Use Controls, then Enable, on the main page.") %}{% endif %}
     {% if 0 <= wifi < 40 %}{% set _ = tips.append("Weak Wi-Fi (" ~ wifi ~ "%). Move the camera or router closer, or add a mesh point.") %}{% endif %}
     {% if 0 <= sd_free < 10 %}{% set _ = tips.append("The SD card is almost full. Old clips get overwritten, so check Wyze app settings if you need them.") %}{% endif %}
+    {% if cam.net_mode == "relay" %}{% set _ = tips.append("Streaming through Wyze's relay servers, which adds delay and can drop. If the camera is on your home Wi-Fi, check that Wyze Tunnel is on the same network.") %}{% endif %}
+    {% if cam.net_mode == "internet" %}{% set _ = tips.append("Connected over the internet, not your home network. It works, but uses the camera's internet upload while you watch.") %}{% endif %}
     {% if cam.is_battery %}{% set _ = tips.append("Battery camera: it sleeps between events, so it shows as idle most of the time.") %}{% endif %}
     <article class="rounded-2xl bg-zinc-900 p-5 ring-1 ring-white/5">
         <div class="flex items-center gap-2">
@@ -35,6 +37,7 @@
             <dt>Model</dt><dd>{{ cam.model_name }}</dd>
             <dt>Firmware</dt><dd>{{ cam.firmware_ver or "unknown" }}</dd>
             {% if cam.ip %}<dt>IP address</dt><dd class="font-mono">{{ cam.ip }}</dd>{% endif %}
+            {% if cam.net_mode %}<dt>Connection</dt><dd>{{ {"local": "Local network", "internet": "Over the internet (direct)", "relay": "Through Wyze's relay"}[cam.net_mode] }}</dd>{% endif %}
             {% if wifi >= 0 %}<dt>Wi-Fi signal</dt><dd>{{ wifi }}%</dd>{% endif %}
             {% if sd_free >= 0 %}<dt>SD card free</dt><dd>{{ sd_free }}%</dd>{% endif %}
             {% if cam.status == 3 and cam.start_time %}<dt>Streaming for</dt><dd>{{ ((now - cam.start_time) / 60)|int }} min</dd>{% endif %}
