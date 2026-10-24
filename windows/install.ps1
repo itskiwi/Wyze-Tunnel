@@ -14,9 +14,33 @@ function Wsl { & wsl.exe @args; if ($LASTEXITCODE) { throw "wsl $args failed ($L
 # Through cmd: PowerShell 5.1 turns redirected native stderr into a terminating error under 'Stop'.
 cmd.exe /c 'wsl.exe --status >nul 2>&1'
 if ($LASTEXITCODE) {
-    Say 'Turning on WSL (Windows will ask for permission)'
-    wsl.exe --install --no-distribution
-    if ($LASTEXITCODE) { throw "Turning on WSL didn't finish ($LASTEXITCODE). Approve the Windows permission prompt and try again." }
+    Say 'Turning on WSL (click Yes on the Windows permission prompt)'
+    # The built-in wsl.exe stub on some Windows builds rejects --install options, so install WSL ourselves:
+    # the two Windows features, then Microsoft's WSL package (winget, or the MSI from its GitHub releases).
+    $Enable = @'
+$ErrorActionPreference = 'Stop'
+foreach ($f in 'Microsoft-Windows-Subsystem-Linux', 'VirtualMachinePlatform') {
+    dism.exe /online /enable-feature /featurename:$f /all /norestart | Out-Null
+    if ($LASTEXITCODE -notin 0, 3010) { exit $LASTEXITCODE }
+}
+if (Get-Command winget.exe -ErrorAction SilentlyContinue) {
+    winget.exe install --id Microsoft.WSL -e --silent --accept-package-agreements --accept-source-agreements | Out-Null
+    if ($LASTEXITCODE -eq 0) { exit 0 }
+}
+$arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
+$rel = Invoke-RestMethod https://api.github.com/repos/microsoft/WSL/releases/latest
+$msi = ($rel.assets | Where-Object name -like "*.$arch.msi")[0].browser_download_url
+$file = Join-Path $env:TEMP 'wsl.msi'
+Invoke-WebRequest $msi -OutFile $file -UseBasicParsing
+$p = Start-Process msiexec.exe -ArgumentList '/i', "`"$file`"", '/qn', '/norestart' -Wait -PassThru
+if ($p.ExitCode -notin 0, 3010) { exit $p.ExitCode }
+'@
+    $Script = Join-Path $env:TEMP 'wyze-tunnel-enable-wsl.ps1'
+    Set-Content -Path $Script -Value $Enable
+    try {
+        $p = Start-Process powershell.exe -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$Script`"" -Verb RunAs -WindowStyle Hidden -Wait -PassThru
+    } catch { throw "Turning on WSL needs the Windows permission prompt. Click Set up again and choose Yes." }
+    if ($p.ExitCode) { throw "Turning on WSL didn't finish (error $($p.ExitCode))." }
     Write-Output 'Restart your PC, then open Wyze Tunnel again.'
     exit 3
 }
