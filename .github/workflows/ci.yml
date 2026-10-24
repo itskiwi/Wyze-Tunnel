@@ -124,8 +124,8 @@ jobs:
       - name: Start the bridge, web UI answers
         shell: pwsh
         run: |
-          Expand-Archive wyze-tunnel-windows-x86_64.zip native
-          $n = "$PWD\native\wyze-tunnel"; $d = "$PWD\data"
+          Expand-Archive wyze-tunnel-windows-x86_64.zip bundle  # not native\: the checkout has one
+          $n = "$PWD\bundle\wyze-tunnel"; $d = "$PWD\data"
           'tokens', 'img', 'record', 'logs' | ForEach-Object { New-Item -ItemType Directory -Force "$d\$_" | Out-Null }
           Copy-Item "$n\mediamtx.yml" $d
           $env:FLASK_APP = 'frontend'; $env:PYTHONUNBUFFERED = '1'; $env:PYTHONUTF8 = '1'; $env:PATH = "$n\bin;$env:PATH"
