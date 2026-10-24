@@ -1,73 +1,245 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="mx-auto mt-6 w-full max-w-md">
-    <div class="mb-6 flex items-center gap-3">
-        <span class="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500 text-zinc-950"><i class="fas fa-video"></i></span>
-        <div>
-            <h1 class="text-xl font-semibold tracking-tight">Connect your Wyze account</h1>
-            <p class="text-sm text-zinc-400">Your cameras will show up as soon as you sign in.</p>
+<div class="mx-auto mt-6 w-full max-w-lg">
+    <p class="text-sm font-medium text-emerald-400">Wyze Tunnel setup</p>
+    <ol id="dots" class="mt-3 flex gap-2" aria-hidden="true">
+        <li class="h-1.5 flex-1 rounded-full bg-zinc-700"></li>
+        <li class="h-1.5 flex-1 rounded-full bg-zinc-700"></li>
+        <li class="h-1.5 flex-1 rounded-full bg-zinc-700"></li>
+        <li class="h-1.5 flex-1 rounded-full bg-zinc-700"></li>
+    </ol>
+
+    <div id="error" role="alert"
+        class="mt-6 hidden rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200"></div>
+
+    <!-- 1. Welcome -->
+    <section data-step="welcome" class="mt-6 space-y-5">
+        <h1 class="text-3xl font-semibold">Let's connect your Wyze cameras</h1>
+        <p class="text-zinc-300">This takes about two minutes. You'll need your Wyze email and password, and
+            you'll make a free "API key" on Wyze's website so Wyze Tunnel can sign in for you.</p>
+        <button data-go="key"
+            class="btn btn-primary w-full py-3 text-base">Get
+            started</button>
+    </section>
+
+    <!-- 2. API key -->
+    <form data-step="key" class="mt-6 hidden space-y-5">
+        <h1 class="text-2xl font-semibold">Make your Wyze API key</h1>
+        <ol class="list-decimal space-y-2 pl-5 text-zinc-300">
+            <li>Open the <a href="https://developer-api-console.wyze.com/#/apikey/view" target="_blank"
+                    rel="noopener" class="font-medium text-emerald-400 underline">Wyze developer console</a> (it
+                opens in a new tab).</li>
+            <li>Sign in with the same Wyze account you use in the Wyze app.</li>
+            <li>Click <b>Create an API key</b>. Any name works, like "Wyze Tunnel".</li>
+            <li>Copy the <b>Key ID</b> and the <b>API Key</b> it shows you, and paste them below.</li>
+        </ol>
+        <label class="block">
+            <span class="text-sm font-medium">Key ID</span>
+            <input name="keyId" required pattern="\s*.{36}\s*" autocomplete="off" spellcheck="false"
+                title="The Key ID is 36 characters, like 1a2b3c4d-..."
+                class="field mt-1 font-mono">
+        </label>
+        <label class="block">
+            <span class="text-sm font-medium">API Key</span>
+            <input name="apiKey" required pattern="\s*.{60}\s*" autocomplete="off" spellcheck="false"
+                title="The API Key is 60 characters"
+                class="field mt-1 font-mono">
+        </label>
+        <button class="btn btn-primary w-full py-3 text-base">
+            Next</button>
+    </form>
+
+    <!-- 3. Account -->
+    <form data-step="account" class="mt-6 hidden space-y-5">
+        <h1 class="text-2xl font-semibold">Sign in to Wyze</h1>
+        <p class="text-zinc-300">Use the email and password from the Wyze app. They stay on this device.</p>
+        <label class="block">
+            <span class="text-sm font-medium">Email</span>
+            <input name="email" type="email" required autocomplete="username"
+                class="field mt-1">
+        </label>
+        <label class="block">
+            <span class="text-sm font-medium">Password</span>
+            <input name="password" type="password" required autocomplete="current-password"
+                class="field mt-1">
+        </label>
+        <div class="flex gap-3">
+            <button type="button" data-go="key"
+                class="btn px-4 py-3">Back</button>
+            <button
+                class="btn btn-primary flex-1 py-3 text-base">Sign
+                in</button>
         </div>
-    </div>
-    <nav class="mb-4 flex gap-1 rounded-xl bg-zinc-900 p-1 ring-1 ring-white/5">
-        <a data-target="apiLogin" class="tab login-tab is-active flex-1 cursor-pointer justify-center"><i class="fas fa-key"></i>API key</a>
-        <a data-target="tokenLogin" class="tab login-tab flex-1 cursor-pointer justify-center"><i class="fas fa-address-card"></i>Token</a>
-    </nav>
-    <form id="apiLogin" class="space-y-4 rounded-2xl bg-zinc-900 p-6 ring-1 ring-white/5">
-        <div class="error empty:hidden"></div>
-        <p class="rounded-xl bg-sky-500/10 px-4 py-3 text-sm text-sky-200 ring-1 ring-sky-500/20">
-            <i class="fas fa-circle-info"></i> Wyze now requires an API ID and key. Create them for free in the
-            <a class="font-medium underline underline-offset-2" href="https://developer-api-console.wyze.com/#/apikey/view" target="_blank">Wyze Developer Portal</a>.
-        </p>
-        <label class="block"><span class="mb-1 block text-sm text-zinc-300">Email</span>
-            <input name="email" type="email" placeholder="me@mail.com" class="field" autocomplete="username" required></label>
-        <label class="block"><span class="mb-1 block text-sm text-zinc-300">Password</span>
-            <input name="password" type="password" placeholder="••••••••" class="field" autocomplete="current-password" required></label>
-        <label class="block"><span class="mb-1 block text-sm text-zinc-300">API ID</span>
-            <input name="keyId" type="text" placeholder="36 characters" class="field font-mono" pattern=".{36}" title="Key ID is 36 characters" required></label>
-        <label class="block"><span class="mb-1 block text-sm text-zinc-300">API key</span>
-            <input name="apiKey" type="text" placeholder="60 characters" class="field font-mono" pattern=".{60}" title="API Key is 60 characters" required></label>
-        <button id="submitLogin" class="button btn btn-primary w-full py-2.5 text-base">Sign in</button>
     </form>
-    <form id="tokenLogin" class="is-hidden space-y-4 rounded-2xl bg-zinc-900 p-6 ring-1 ring-white/5">
-        <div class="error empty:hidden"></div>
-        <label class="block"><span class="mb-1 block text-sm text-zinc-300">Access token</span>
-            <input name="tokens" type="text" placeholder="access token" class="field font-mono"></label>
-        <label class="block"><span class="mb-1 block text-sm text-zinc-300">Refresh token</span>
-            <input name="refresh" type="text" placeholder="refresh token" class="field font-mono"></label>
-        <button class="button btn btn-primary w-full py-2.5 text-base">Sign in</button>
+
+    <!-- Waiting on Wyze -->
+    <section data-step="wait" class="mt-6 hidden space-y-4 text-center">
+        <div class="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-zinc-700 border-t-emerald-400"></div>
+        <p id="waitText" class="text-zinc-300">Signing in to Wyze...</p>
+    </section>
+
+    <!-- 2FA -->
+    <form data-step="mfa" class="mt-6 hidden space-y-5">
+        <h1 class="text-2xl font-semibold">Enter your verification code</h1>
+        <p id="mfaText" class="text-zinc-300"></p>
+        <input name="mfaCode" required inputmode="numeric" autocomplete="one-time-code"
+            class="field py-3 text-center font-mono text-2xl tracking-widest">
+        <button class="btn btn-primary w-full py-3 text-base">
+            Verify</button>
     </form>
+
+    <!-- 4. Done -->
+    <section data-step="done" class="mt-6 hidden space-y-5">
+        <h1 class="text-3xl font-semibold">You're all set</h1>
+        <p id="camText" class="text-zinc-300">Looking for your cameras...</p>
+        <ul id="camList" class="divide-y divide-zinc-800 rounded-lg border border-zinc-800"></ul>
+        <div id="wbLogin" class="hidden rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+            <p class="font-medium text-amber-200">Save this login. You'll need it to open Wyze Tunnel, and it
+                won't be shown again.</p>
+            <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono">
+                <dt class="text-zinc-400">Username</dt><dd id="wbUser" class="select-all"></dd>
+                <dt class="text-zinc-400">Password</dt><dd id="wbPass" class="select-all break-all"></dd>
+            </dl>
+        </div>
+        <a href="."
+            class="btn btn-primary w-full py-3 text-base">Open
+            my cameras</a>
+        <p class="text-sm text-zinc-400">Bookmark this page's address to come back. Your streams are at
+            <span class="font-mono" id="here"></span>.</p>
+    </section>
+
+    <details id="advanced" class="mt-10 text-sm text-zinc-400">
+        <summary class="cursor-pointer">Advanced: sign in with tokens instead</summary>
+        <form id="tokenLogin" class="mt-3 space-y-3">
+            <input name="tokens" placeholder="Access token"
+                class="field font-mono">
+            <input name="refresh" placeholder="Refresh token"
+                class="field font-mono">
+            <button class="btn px-4 py-2">Use tokens</button>
+        </form>
+    </details>
 </div>
 {% endblock %}
 
 {% block javascript %}
-<script>
-    const notice = (cls, icon, text) => `<p class="rounded-xl px-4 py-3 text-sm ring-1 ${cls}"><i class="fas ${icon}"></i> ${text}</p>`;
-    document.querySelectorAll('form').forEach(form => {
-        const button = form.querySelector('button.button').classList;
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            button.add("is-loading");
-            fetch("login", { method: 'POST', body: new FormData(form) })
-                .then(resp => resp.json()).then(data => {
-                    if (data.status == "success") {
-                        form.innerHTML = notice("bg-emerald-500/10 text-emerald-200 ring-emerald-500/30", "fa-spinner fa-pulse", "Signing in and finding your cameras…");
-                        setTimeout(() => { window.location = '.'; }, 5000);
-                    } else {
-                        console.error(data);
-                        button.remove("is-loading");
-                        form.querySelector(".error").innerHTML = notice("bg-rose-500/10 text-rose-200 ring-rose-500/30", "fa-circle-exclamation", data.status + ". Please try again.");
+    <script>
+        const $ = (s) => document.querySelector(s);
+        const order = ["welcome", "key", "account", "done"];
+        const errorBox = $("#error");
+        const creds = new FormData();
+        let setupToken = "";
+        let apiHeaders = {};
+
+        function show(step) {
+            document.querySelectorAll("[data-step]").forEach(el => el.classList.toggle("hidden", el.dataset.step !== step));
+            const n = { wait: 2, mfa: 2 }[step] ?? order.indexOf(step);
+            document.querySelectorAll("#dots li").forEach((d, i) => { d.classList.toggle("bg-emerald-400", i <= n); d.classList.toggle("bg-zinc-700", i > n); });
+            $("#advanced").classList.toggle("hidden", step === "done");
+            if (step === "done") listCams();
+        }
+        function fail(msg) {
+            errorBox.textContent = msg;
+            errorBox.classList.toggle("hidden", !msg);
+        }
+        async function post(data) {
+            const resp = await (await fetch("login", { method: "POST", body: data })).json();
+            setupToken = resp.setup || setupToken;
+            return resp.status;
+        }
+
+        const mfaHelp = {
+            TotpVerificationCode: "Open your authenticator app and type the 6-digit code for Wyze.",
+            PrimaryPhone: "Wyze just texted a code to your phone.",
+            Email: "Wyze just emailed you a code.",
+        };
+        let polling = false;
+        async function poll() {
+            if (polling) return;
+            polling = true;
+            while (true) {
+                const s = await fetch(`login/status?setup=${setupToken}`).then(r => r.json()).catch(() => ({ state: "signing_in" }));
+                if (s.state === "done") { fail(""); showLogin(s); show("done"); break; }
+                if (s.state === "mfa") { $("#mfaText").textContent = mfaHelp[s.mfa_type] || mfaHelp.Email; show("mfa"); break; }
+                if (s.state === "error") { fail(`Wyze said: ${s.error}. Check your details and try again.`); show("key"); break; }
+                if (s.state === "idle" && !$("[data-step=wait]").classList.contains("hidden")) { show("key"); break; }
+                await new Promise(r => setTimeout(r, 1000));
+            }
+            polling = false;
+        }
+
+        function showLogin(s) {
+            if (!s.password) return;
+            $("#wbUser").textContent = s.username;
+            $("#wbPass").textContent = s.password;
+            $("#wbLogin").classList.remove("hidden");
+            try { apiHeaders = { Authorization: "Basic " + btoa(`${s.username}:${s.password}`) }; } catch { }
+        }
+
+        async function listCams() {
+            $("#here").textContent = new URL(".", location).href;
+            for (let i = 0; i < 30; i++) {
+                const resp = await fetch("api", { headers: apiHeaders }).catch(() => null);
+                if (resp?.ok) {
+                    const data = await resp.json();
+                    const cams = Object.values(data.cameras || {});
+                    if (cams.length) {
+                        $("#camText").textContent = `Found ${cams.length} camera${cams.length > 1 ? "s" : ""}:`;
+                        $("#camList").replaceChildren(...cams.map(c => {
+                            const li = document.createElement("li");
+                            li.className = "px-4 py-3";
+                            li.textContent = c.nickname || c.name_uri;
+                            return li;
+                        }));
+                        return;
                     }
-                }).catch(error => { console.error(error); button.remove("is-loading"); });
+                } else if (resp?.status === 401) {
+                    break;
+                }
+                await new Promise(r => setTimeout(r, 2000));
+            }
+            $("#camText").textContent = "Signed in. Open your cameras to see them.";
+        }
+
+        document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { fail(""); show(b.dataset.go); }));
+
+        $("[data-step=key]").addEventListener("submit", e => {
+            e.preventDefault();
+            new FormData(e.target).forEach((v, k) => creds.set(k, v.trim()));
+            fail("");
+            show("account");
         });
-    });
-    const tabs = document.querySelectorAll('a.login-tab');
-    tabs.forEach(tab => {
-        tab.addEventListener('click', function () {
-            const targetFormId = this.getAttribute('data-target');
-            document.querySelectorAll('form').forEach(form => form.classList.toggle('is-hidden', form.id !== targetFormId));
-            tabs.forEach(otherTab => otherTab.classList.toggle('is-active', otherTab === tab));
+        $("[data-step=account]").addEventListener("submit", async e => {
+            e.preventDefault();
+            new FormData(e.target).forEach((v, k) => creds.set(k, v));
+            fail("");
+            $("#waitText").textContent = "Signing in to Wyze...";
+            show("wait");
+            const status = await post(creds);
+            if (status !== "success") { fail(status); show("account"); return; }
+            poll();
         });
-    });
-</script>
+        $("[data-step=mfa]").addEventListener("submit", async e => {
+            e.preventDefault();
+            $("#waitText").textContent = "Checking your code...";
+            show("wait");
+            const status = await post(new FormData(e.target));
+            if (status !== "success") { fail(status); show("key"); return; }
+            e.target.reset();
+            poll();
+        });
+        $("#tokenLogin").addEventListener("submit", async e => {
+            e.preventDefault();
+            show("wait");
+            await post(new FormData(e.target));
+            poll();
+        });
+
+        // Resume where the bridge is, e.g. a 2FA prompt for credentials set in the env file.
+        fetch("login/status").then(r => r.json()).then(s => {
+            if (s.state === "idle") return show("welcome");
+            show("wait");
+            poll();
+        }).catch(() => show("welcome"));
+    </script>
 {% endblock %}
