@@ -49,8 +49,9 @@ main() {
     mkdir -p "$DIR/bin"
     curl -fsSL "https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/$REF/mac/wyze-tunnel" -o "$DIR/bin/wyze-tunnel"
     chmod +x "$DIR/bin/wyze-tunnel"
-    grep -qs 'Wyze Tunnel/bin' "$HOME/.zprofile" ||
-        echo 'export PATH="$HOME/Library/Application Support/Wyze Tunnel/bin:$PATH"' >> "$HOME/.zprofile"
+    # .zshrc, not .zprofile: VS Code's and other non-login terminals skip .zprofile.
+    grep -qs 'Wyze Tunnel/bin' "$HOME/.zshrc" ||
+        echo 'export PATH="$HOME/Library/Application Support/Wyze Tunnel/bin:$PATH"' >> "$HOME/.zshrc"
 
     say "Starting the VM"
     limactl start --tty=false "$VM" </dev/null
