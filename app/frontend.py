@@ -16,6 +16,7 @@ from flask import (
     send_from_directory,
 )
 import requests
+import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
 from wyzebridge import config, web_ui, webhooks, wyze_api
@@ -508,6 +509,14 @@ def create_app():
             resp = requests.Response()
             resp.status_code, resp._content = 503, str(ex).encode()
             return resp
+
+    @app.route("/ha-dashboard.yaml")
+    @auth_required
+    def ha_dashboard():
+        """Paste into Home Assistant: Settings, Dashboards, Add, then Raw configuration editor."""
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        body = yaml.safe_dump(web_ui.ha_dashboard(cams), sort_keys=False, allow_unicode=True)
+        return Response(body, mimetype="text/yaml")
 
     @app.route("/cams.m3u8")
     @auth_required

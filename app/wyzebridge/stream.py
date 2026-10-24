@@ -111,7 +111,7 @@ class StreamManager:
                 if time.time() - last_health >= 15:
                     last_health = time.time()
                     mtx_health()
-                    bridge_status(mqtt)
+                    bridge_status(mqtt, self.streams)
             except Exception:
                 logger.exception("[MONITOR] Error in stream monitor loop")
                 time.sleep(1)
