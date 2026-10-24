@@ -20,7 +20,7 @@ jobs:
       - name: Lint (syntax errors and undefined names)
         run: ruff check --select E9,F63,F7,F82 app tests
       - name: Lint shell scripts
-        run: shellcheck -S error native/*.sh mac/*.sh
+        run: shellcheck -S error native/*.sh mac/*.sh box/*.sh box/wyze-tunnel-box
       - run: pytest -q tests
 
   home-assistant:

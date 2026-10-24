@@ -1,7 +1,8 @@
 name: Release
 
 # Push a tag like v2.11.0 to publish a GitHub release with one ready-to-install bundle per CPU
-# plus SHA256SUMS. Installers fetch releases/latest/download/wyze-tunnel-linux-$(uname -m).tar.gz.
+# plus SHA256SUMS, and Tunnel Box disk images (box/build-image.sh). Installers fetch
+# releases/latest/download/wyze-tunnel-linux-$(uname -m).tar.gz.
 # Or run it from the Actions tab: with a version it tags the commit and publishes the same way;
 # without one it only builds the bundles as a workflow artifact.
 on:
@@ -57,3 +58,51 @@ jobs:
           gh release create "$TAG" dist/* --target "$GITHUB_SHA" --generate-notes
           # Tags made with this token don't fire other workflows, so start the Docker/Home Assistant build here.
           gh workflow run docker-image.yml --ref "$TAG"
+
+  # Tunnel Box: flash-and-plug-in disk images, built on a machine with the image's CPU.
+  images:
+    needs: bundles
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { board: pi, cpu: aarch64, runner: ubuntu-24.04-arm }
+          - { board: pc, cpu: x86_64, runner: ubuntu-latest }
+    runs-on: ${{ matrix.runner }}
+    env:
+      TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version && format('v{0}', inputs.version) || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundles
+          path: dist
+      - name: Build the ${{ matrix.board }} image
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq cloud-guest-utils
+          sudo box/build-image.sh ${{ matrix.board }} dist/wyze-tunnel-linux-${{ matrix.cpu }}.tar.gz images
+          sudo chown -R "$USER" images
+          cd images && sha256sum *.img.xz | tee wyze-tunnel-box-${{ matrix.board }}.img.xz.sha256
+
+      - name: Boot the PC image and open the web page
+        if: matrix.board == 'pc'
+        run: |
+          sudo apt-get install -y -qq qemu-system-x86
+          xz -dc images/wyze-tunnel-box-pc.img.xz > box.img
+          sudo qemu-system-x86_64 -m 2048 -smp 2 $([ -e /dev/kvm ] && echo -enable-kvm) -display none \
+            -drive file=box.img,format=raw -nic user,hostfwd=tcp::8080-:80 -serial file:console.log &
+          timeout 600 sh -c 'until curl -fsS -o /dev/null http://127.0.0.1:8080/login; do sleep 5; done' ||
+            { tail -50 console.log; exit 1; }
+          echo "Web page answers on port 80"; grep -a -A3 "Wyze Tunnel is ready" console.log || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.board }}
+          path: images/
+          compression-level: 0
+
+      - name: Add to the release
+        if: env.TAG != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" images/*
