@@ -69,10 +69,11 @@ video.lost, video.lost + i { cursor: default; }
 .ghost * { visibility: hidden; }
 
 /* Fullscreen mode */
-.fullscreen button { position: fixed; bottom: 24px; right: 24px; z-index: 40; opacity: .35; transition: .3s; }
-.fullscreen button:hover { opacity: 1; }
+/* The toggle sits in the summary bar; on the camera wall it floats so it can't cover a tile's buttons otherwise */
+.fullscreen.is-floating button { position: fixed; bottom: 24px; right: 24px; z-index: 40; opacity: .35; transition: .3s; visibility: visible; }
+.fullscreen.is-floating button:hover { opacity: 1; }
 .fs-mode { visibility: hidden; height: 0; padding: 0 !important; overflow: hidden; }
-#topbar.fs-mode, .summary.fs-mode, .tabbar.fs-mode { display: none; }
+#topbar.fs-mode, .tabbar.fs-mode { display: none; }  /* the summary only collapses, so its fullscreen toggle can stay */
 
 /* Fix for jittery video in Firefox #1025 */
 @-moz-document url-prefix() {
@@ -142,7 +143,7 @@ ol:has(> .num-step) { counter-reset: step; }
 .card-header-title .has-text-success { color: #3dcf8e !important; }
 .card-header-title .has-text-warning { color: #f5b33c !important; }
 .card-header-title .has-text-danger { color: #ff6b7d !important; }
-@media (max-width: 767px) { .fullscreen button { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); } #toasts { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); } }
+@media (max-width: 767px) { .fullscreen.is-floating button { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); } #toasts { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); } }
 
 /* Update screen: an endless progress bar, since the updater can't report a percentage */
 .update-bar { animation: update-slide 1.4s ease-in-out infinite; }
@@ -152,3 +153,9 @@ ol:has(> .num-step) { counter-reset: step; }
 /* Opened from the home timeline (live#camera): bring that camera into view and mark it */
 .camera { scroll-margin-top: 16px; }
 .camera:target .card { box-shadow: 0 0 0 3px rgb(var(--accent)); }
+
+/* Tile buttons cover the time the camera prints in its corner, so with a mouse they appear on hover or focus */
+@media (hover: hover) {
+  .cam-acts { opacity: 0; transition: opacity .2s; }
+  .card:hover .cam-acts, .card:focus-within .cam-acts, .card:has(details[open]) .cam-acts, .card:has(.content:not(.is-hidden)) .cam-acts { opacity: 1; }
+}
