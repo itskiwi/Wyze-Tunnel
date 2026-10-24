@@ -53,17 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function applyPreferences() {
   const repeatNumber = getCookie("number_of_columns", 2);
-  const grid = document.querySelectorAll(".camera");
-  for (var i = 0, len = grid.length; i < len; i++) {
-    grid[i].classList.forEach((item) => {
-      if (item.match(/^is\-\d/) || item == "is-one-fifth") {
-        grid[i].classList.remove(item);
-      }
-    });
-    grid[i].classList.add(
-      `is-${repeatNumber == 5 ? "one-fifth" : 12 / repeatNumber}`
-    );
-  }
+  document.querySelector(".cameras")?.style.setProperty("--cols", repeatNumber);
   var sortOrder = getCookie("camera_order", "");
   if (sortOrder) {
     // clean escaped camera_order from flask args
@@ -238,6 +228,7 @@ function refresh_imgs() {
 document.addEventListener("DOMContentLoaded", () => {
   const grid = document.querySelector(".cameras");
   const selector = ".camera";
+  if (!grid) { return; }
   sortable(grid, selector, function () {
     const cameras = document.querySelectorAll(selector);
     const ids = [...cameras].map((camera) => camera.id).filter((x) => x);
@@ -275,12 +266,19 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("a[data-filter]").forEach((a) => {
     a.addEventListener("click", filterCams);
   });
-  document
-    .querySelector(".navbar-brand .navbar-burger")
-    .addEventListener("click", function () {
-      this.classList.toggle("is-active");
-      document.getElementById("refresh-menu").classList.toggle("is-active");
-    });
+  document.getElementById("menu-toggle")?.addEventListener("click", function () {
+    this.classList.toggle("is-active");
+    document.getElementById("refresh-menu").classList.toggle("is-active");
+  });
+
+  // Only one dropdown open at a time; close them on outside click.
+  const dropdowns = document.querySelectorAll("details.dropdown");
+  dropdowns.forEach((d) => d.addEventListener("toggle", () => {
+    if (d.open) dropdowns.forEach((o) => { if (o !== d) o.open = false; });
+  }));
+  document.addEventListener("click", (e) => {
+    dropdowns.forEach((d) => { if (!d.contains(e.target)) d.open = false; });
+  });
 
   // Check for version update
   const checkAPI = document.getElementById("checkUpdate");
@@ -406,6 +404,11 @@ document.addEventListener("DOMContentLoaded", () => {
       const statusIcon = card.querySelector(".status i.fas");
       const preview = card.querySelector(`img.refresh_img, video[data-cam='${cam}']`);
       const motionIcon = card.querySelector(".icon.motion");
+      const statusLabel = card.querySelector(".status-label");
+      if (statusLabel) {
+        statusLabel.textContent = messageData.status;
+        statusLabel.dataset.status = messageData.status;
+      }
       const connected = card.dataset.connected.toLowerCase() === "true";
       updateBatteryLevel(card);
 
@@ -419,8 +422,10 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (messageData.motion) {
+        if (motionIcon.classList.contains("is-hidden")) {
+          sendNotification('Motion', `Motion detected on ${cam}`, "info");
+        }
         motionIcon.classList.remove("is-hidden");
-        sendNotification('Motion', `Motion detected on ${cam}`, "info");
       } else {
         motionIcon.classList.add("is-hidden");
       }
@@ -566,6 +571,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // fullscreen mode
   function toggleFullscreen(fs) {
+    if (!document.querySelector(".fullscreen")) { return; }
     if (fs === undefined) {
       fs = getCookie("fullscreen");
     }
@@ -579,7 +585,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (fs) { autoplay(); }
   }
 
-  document.querySelector(".fullscreen button").addEventListener("click", () => {
+  document.querySelector(".fullscreen button")?.addEventListener("click", () => {
     let fs = getCookie("fullscreen", false) ? "" : "1";
     setCookie("fullscreen", fs)
     toggleFullscreen(fs)
@@ -753,8 +759,20 @@ document.addEventListener("DOMContentLoaded", () => {
     if (notificationEnabled() === true && document.visibilityState != "visible") {
       new Notification(title, { body: message });
     } else {
-      bulmaToast.toast({ message: `<strong>${title}</strong> - ${message}`, type: `is-${type}`, pauseOnHover: true, duration: 10000 })
+      showToast(title, message, type);
     }
+  }
+  function showToast(title, message, type) {
+    const container = document.getElementById("toasts");
+    if (!container) { return; }
+    const toast = document.createElement("div");
+    toast.className = `toast toast-${type} pointer-events-auto rounded-xl bg-zinc-900/95 px-4 py-3 text-sm shadow-2xl ring-1 ring-white/10 backdrop-blur`;
+    const strong = document.createElement("strong");
+    strong.textContent = title;
+    toast.append(strong, document.createElement("br"), document.createTextNode(message));
+    toast.addEventListener("click", () => toast.remove());
+    container.prepend(toast);
+    setTimeout(() => toast.remove(), 8000);
   }
   function updateBatteryLevel(card) {
     if (card.dataset.battery?.toLowerCase() !== "true") { return; }

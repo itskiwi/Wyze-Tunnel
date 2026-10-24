@@ -1,43 +1,41 @@
 <!DOCTYPE html>
-<html lang="en" class="has-background-black-ter">
+<html lang="en" class="h-full bg-zinc-950 antialiased">
 
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Wyze-Bridge</title>
-    <link rel="stylesheet" href="static/bulma.css" />
+    <meta name="color-scheme" content="dark" />
+    <title>Wyze Tunnel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="static/tailwind.css" />
     <link rel="stylesheet" href="static/site.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" />
     {% block stylesheet %}
     {% endblock %}
 </head>
 
-<body>
-    <section class="section">
+<body class="flex min-h-full flex-col text-zinc-100" style="font-family: Inter, ui-sans-serif, system-ui, sans-serif">
+    <main class="section mx-auto w-full max-w-screen-2xl flex-1 px-4 py-6 sm:px-6">
         {% block content %}
         {% endblock %}
-    </section>
-    <footer class="footer fs-display-none">
-        <div class="content has-text-centered">
-            {% block api_info %}
-            {% endblock %}
-            <p>
-                <a href="https://github.com/itskiwi/Wyze-Tunnel"><i class="fa-brands fa-github"></i>
-                    <strong>wyze-tunnel</strong></a>
-                v{{ version }}
-                <a id="checkUpdate" class="icon-text" title="Check for updates" data-version="{{version}}"><span
-                        class="icon"><i class="fas fa-arrows-rotate"></i></span>
-                </a>
-                <a href="https://ko-fi.com/mrlt8" id="kofi" class="icon-text" target="_blank"><span class="icon"><i
-                            class="fas fa-mug-hot"></i></span>
-                </a>
-            </p>
-        </div>
+    </main>
+    <footer class="footer fs-display-none border-t border-white/5 px-4 py-6 text-center text-sm text-zinc-500">
+        {% block api_info %}
+        {% endblock %}
+        <p class="mt-2 flex items-center justify-center gap-2">
+            <a class="font-semibold text-zinc-300 hover:text-white" href="https://github.com/itskiwi/Wyze-Tunnel">
+                <i class="fa-brands fa-github"></i> Wyze Tunnel</a>
+            <span>v{{ version }}</span>
+            <button id="checkUpdate" class="hover:text-white" title="Check for updates" data-version="{{version}}">
+                <i class="fas fa-arrows-rotate"></i></button>
+        </p>
+        <p class="mt-1 text-xs">Based on <a class="hover:text-zinc-300 underline underline-offset-2"
+                href="https://github.com/mrlt8/docker-wyze-bridge">docker-wyze-bridge</a> by mrlt8.</p>
     </footer>
-    <script src="static/bulma-toast.js"></script>
+    <div id="toasts" class="pointer-events-none fixed bottom-20 right-4 z-50 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2"></div>
     {% block javascript %}
     {% endblock %}
 </body>
-
 
 </html>
