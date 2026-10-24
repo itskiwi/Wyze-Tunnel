@@ -280,35 +280,6 @@ document.addEventListener("DOMContentLoaded", () => {
     dropdowns.forEach((d) => { if (!d.contains(e.target)) d.open = false; });
   });
 
-  // Check for version update
-  const checkAPI = document.getElementById("checkUpdate");
-  checkAPI.addEventListener("click", () => {
-    let icon = checkAPI.getElementsByClassName("fa-arrows-rotate")[0].classList;
-    icon.add("fa-spin");
-    fetch("https://api.github.com/repos/itskiwi/Wyze-Tunnel/releases/latest")
-      .then((response) => {
-        if (!response.ok) throw new Error(response.status === 404 ? "No releases published yet" : `GitHub returned ${response.status}`);
-        return response.json();
-      })
-      .then((data) => {
-        let apiVersion = data.tag_name.replace(/[^0-9\.]/g, "");
-        if (apiVersion.localeCompare(checkAPI.dataset.version, undefined, { numeric: true }) === 1) {
-          if (checkAPI.dataset.canUpdate && confirm(`Update to v${apiVersion} now? Streams pause for about a minute.`)) {
-            fetch("update", { method: "POST" })
-              .then((r) => r.ok ? r.json() : Promise.reject(new Error(`Update failed (${r.status})`)))
-              .then(() => sendNotification('Updating…', `Installing v${apiVersion}. Reload the page in a minute.`, "success"))
-              .catch((error) => sendNotification('Update failed', error.message, "danger"));
-          } else {
-            sendNotification('Update available!', `🎉 v${apiVersion}`, "warning");
-          }
-        } else {
-          sendNotification('All up to date!', '✅ Running the latest version!', "success");
-        }
-      })
-      .catch((error) => { sendNotification('Update check failed', error.message, "danger") })
-      .finally(() => { icon.remove("fa-spin"); });
-  });
-
   // Update preview after loading the page
   async function loadPreview(img) {
     let cam = img.getAttribute("data-cam");

@@ -143,3 +143,8 @@ ol:has(> .num-step) { counter-reset: step; }
 .card-header-title .has-text-warning { color: #f5b33c !important; }
 .card-header-title .has-text-danger { color: #ff6b7d !important; }
 @media (max-width: 767px) { .fullscreen button { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); } #toasts { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); } }
+
+/* Update screen: an endless progress bar, since the updater can't report a percentage */
+.update-bar { animation: update-slide 1.4s ease-in-out infinite; }
+@keyframes update-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+@media (prefers-reduced-motion: reduce) { .update-bar { animation: none; width: 100%; opacity: .5; } }

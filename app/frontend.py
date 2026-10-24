@@ -32,7 +32,9 @@ from wyzecam.api import API_STATS
 def create_app():
     app = Flask(__name__)
     app.jinja_env.globals["can_update"] = bool(os.getenv("WT_UPDATE_FILE"))
+    app.jinja_env.globals["current_guest"] = web_ui.current_guest
     wb = WyzeBridge()
+    Thread(target=webhooks.announce_update, daemon=True).start()
     try:
         wb.start()
     except RuntimeError as ex:
@@ -309,10 +311,12 @@ def create_app():
         )
         return resp
 
-    @app.route("/update", methods=["POST"])
+    @app.route("/update", methods=["GET", "POST"])
     @auth_required
     def self_update():
-        """Native installs: ask wyze-tunnel-update.path to install the latest release."""
+        """Native installs: ask wyze-tunnel-update.path to install the latest release. GET reports the running version."""
+        if request.method == "GET":
+            return {"version": config.VERSION, "can_update": bool(os.getenv("WT_UPDATE_FILE"))}
         if not (flag := os.getenv("WT_UPDATE_FILE")):
             return {"result": "error", "error": "This install can't update itself"}, 400
         Path(flag).touch()

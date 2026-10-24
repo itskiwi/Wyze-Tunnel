@@ -56,6 +56,26 @@ jobs:
           docker exec os sh -c 'touch /var/lib/private/wyze-tunnel/update-now'
           timeout 60 sh -c 'until docker exec os sh -c "! test -e /var/lib/private/wyze-tunnel/update-now"; do sleep 2; done'
           docker exec os journalctl -u wyze-tunnel-update --no-pager -n 5
+      - name: Update installs a newer release
+        run: |
+          docker exec os sed -i 's/^VERSION=.*/VERSION=0.0.1/' /opt/wyze-tunnel/app/.env
+          docker exec os /opt/wyze-tunnel/install.sh --update | tee /tmp/update.log
+          grep -q '^Updated to v' /tmp/update.log
+          docker exec os sh -c '! test -e /opt/wyze-tunnel.previous'
+      - name: A release that doesn't start is undone
+        run: |
+          docker exec os cp /src/native/install.sh /opt/wyze-tunnel/install.sh
+          docker exec os sed -i 's/^VERSION=.*/VERSION=0.0.1/' /opt/wyze-tunnel/app/.env
+          # Hold the web port so the new version can't start.
+          docker exec os systemctl stop wyze-tunnel
+          docker exec -d os python3 -c "import socket, time; s = socket.socket(); s.bind(('0.0.0.0', 5000)); s.listen(); time.sleep(600)"
+          sleep 2
+          if docker exec os /opt/wyze-tunnel/install.sh --update; then exit 1; fi
+          docker exec os grep -q '^VERSION=0.0.1' /opt/wyze-tunnel/app/.env
+          docker exec os test -s /opt/wyze-tunnel/.failed-version
+          docker exec os /opt/wyze-tunnel/install.sh --update > /tmp/skip.log
+          grep -q "didn't start here last time" /tmp/skip.log
+          docker exec os pkill -f 'sleep.600'
       - name: Re-run install (update)
         run: docker exec os /src/native/install.sh
       - name: Web UI answers after update

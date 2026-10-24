@@ -96,11 +96,19 @@ class RtspEvent:
             ready_event(uri, event)
 
 
+VIEWERS: dict[str, int] = {}
+
+
 def read_event(camera: str, status: str):
     msg = f"📕 Client stopped reading from {camera}"
     if status == "read":
         msg = f"📖 New client reading from {camera}"
     logger.info(msg)
+    VIEWERS[camera] = max(0, VIEWERS.get(camera, 0) + (1 if status == "read" else -1))
+    # The nightly updater waits until this reads 0, so nobody's stream drops mid-watch.
+    if flag := os.getenv("WT_UPDATE_FILE"):
+        with contextlib.suppress(OSError):
+            Path(flag).with_name("viewers").write_text(str(sum(VIEWERS.values())))
 
 
 def ready_event(camera: str, status: str):
