@@ -31,7 +31,7 @@ def verify_password(username, password):
     if username == WbAuth.username:
         return check_password_hash(WbAuth.hashed_password(), password)
     if WbAuth.enabled and username and (guest := guests.check_guest(username, password)):
-        if request.method == "GET" and (request.path == "/" or request.path.startswith(GUEST_PATHS)):
+        if guest["family"] or request.method == "GET" and (request.path == "/" or request.path.startswith(GUEST_PATHS)):
             return guest
         g.guest_denied = True
         return False
@@ -39,7 +39,7 @@ def verify_password(username, password):
 
 
 def current_guest() -> Optional[dict]:
-    """The guest viewing this page, or None for the owner."""
+    """The guest or family member viewing this page, or None for the owner."""
     user = auth.current_user()
     return user if isinstance(user, dict) else None
 

@@ -5,6 +5,9 @@
     <h1 class="page-title">Login</h1>
 </header>
 
+{% if member %}
+<p class="surface mx-auto max-w-xl p-5 text-sm text-zinc-400">You're signed in as {{ member.guest }}. Only the owner can change the main login.</p>
+{% else %}
 <form id="account" class="mx-auto max-w-xl space-y-6">
     <section class="surface p-5">
         <h2 class="font-semibold">Change your Wyze Tunnel login</h2>
@@ -33,33 +36,34 @@
         <p id="status" class="w-full text-sm sm:ml-2 sm:w-auto" role="status"></p>
     </div>
 </form>
+{% endif %}
 
 {% if enabled %}
 <section class="surface mx-auto mt-6 max-w-xl p-5">
-    <h2 class="font-semibold">Let someone watch for a while</h2>
-    <p class="mt-1 text-sm text-zinc-400">A guest login can see the cameras and live video, but can't change anything.
-        It stops working on its own.</p>
+    <h2 class="font-semibold">Share access</h2>
+    <p class="mt-1 text-sm text-zinc-400">A guest can see the cameras and live video, but can't change anything, and their
+        login stops working on its own. A family login can do everything except change the main login, until you remove it.</p>
     <form id="guestForm" class="mt-3 flex flex-wrap items-end gap-2">
         <label class="block min-w-0 flex-1 text-sm">
-            <span class="text-zinc-400">Guest name</span>
+            <span class="text-zinc-400">Name</span>
             <input class="field mt-1" name="name" required maxlength="32" pattern="[^:]+" placeholder="Sam" autocomplete="off" />
         </label>
         <label class="block text-sm">
             <span class="text-zinc-400">For</span>
             <select class="field mt-1" name="hours">
                 {% for h in guest_hours %}
-                <option value="{{ h }}" {{ 'selected' if h == 24 }}>{{ '1 hour' if h == 1 else ('1 day' if h == 24 else ((h // 24)|string + ' days')) }}</option>
+                <option value="{{ h }}" {{ 'selected' if h == 24 }}>{{ 'Family, always' if h == 0 else ('Guest, 1 hour' if h == 1 else ('Guest, 1 day' if h == 24 else 'Guest, ' ~ (h // 24) ~ ' days')) }}</option>
                 {% endfor %}
             </select>
         </label>
-        <button type="submit" class="btn btn-primary"><i class="fas fa-user-plus"></i>Add guest</button>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-user-plus"></i>Add</button>
     </form>
     <p id="guestStatus" class="mt-2 text-sm" role="status"></p>
     <ul id="guestList" class="mt-3 divide-y divide-zinc-800 text-sm">
         {% for g in guests %}
         <li class="flex items-center gap-3 py-2" data-name="{{ g.name }}">
             <span class="font-medium">{{ g.name }}</span>
-            <span class="text-zinc-400">until <time data-ts="{{ g.expires }}"></time></span>
+            <span class="text-zinc-400">{% if g.expires %}guest until <time data-ts="{{ g.expires }}"></time>{% else %}family{% endif %}</span>
             <button type="button" class="remove-guest btn ml-auto py-1">Remove</button>
         </li>
         {% endfor %}
@@ -124,7 +128,7 @@
                 });
                 const note = document.createElement("p");
                 note.className = "mt-1 text-zinc-400";
-                note.textContent = "Send these to your guest. The password won't be shown again.";
+                note.textContent = "Send these to them. The password won't be shown again.";
                 guestStatus.append(note);
                 guestForm.reset();
             })
@@ -135,7 +139,7 @@
         fetch(`guests/${encodeURIComponent(li.dataset.name)}`, { method: "DELETE" }).then((resp) => resp.ok && li.remove());
     }));
 
-    form.addEventListener("submit", (e) => {
+    form?.addEventListener("submit", (e) => {
         e.preventDefault();
         const data = Object.fromEntries(new FormData(form));
         if (data.password !== data.confirm) { return show(false, "The passwords don't match."); }
