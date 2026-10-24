@@ -10,5 +10,9 @@ Wyze Tunnel builds on other people's work. Thank you to these projects.
 - **node-wyze-bridge** by REEF Research Labs. Inserting H.264 access unit delimiters
   (`h264_metadata=aud=insert`) and stamping frames at the camera's own frame rate come from
   its `node-one` branch. https://github.com/REEF-RESEARCH-LABS/node-wyze-bridge
+- **go2rtc** by AlexxIT (MIT). Bundled as a separate program for the `lan` (wyze://, by seydx)
+  and `webrtc` camera connections. https://github.com/AlexxIT/go2rtc
+- **IDisposable's wyze-bridge** also inspired falling back to another connection after 5 failures in a row
+  and the per-model override.
 - **MediaMTX** by bluenviron (MIT). https://github.com/bluenviron/mediamtx
 - **FFmpeg** (LGPL/GPL). https://ffmpeg.org

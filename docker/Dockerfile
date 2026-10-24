@@ -13,11 +13,11 @@ COPY ../app/ /build/app/
 RUN pip3 install --disable-pip-version-check --prefix=/build/usr/local -r /build/app/requirements.txt
 RUN echo "BUILDING IMAGE FOR $(uname -m)" && \
     if [ "$(uname -m)" = "armv7l" ]; then \
-    LIB_ARCH=arm; FFMPEG_ARCH=arm32v7; MTX_ARCH=armv7; \
+    LIB_ARCH=arm; FFMPEG_ARCH=arm32v7; MTX_ARCH=armv7; G2R_ARCH=arm; \
     elif [ "$(uname -m)" = "aarch64" ]; then \
-    LIB_ARCH=arm64; FFMPEG_ARCH=aarch64; MTX_ARCH=arm64v8; \
+    LIB_ARCH=arm64; FFMPEG_ARCH=aarch64; MTX_ARCH=arm64v8; G2R_ARCH=arm64; \
     else \
-    LIB_ARCH=amd64; FFMPEG_ARCH=x86_64; MTX_ARCH=amd64; \
+    LIB_ARCH=amd64; FFMPEG_ARCH=x86_64; MTX_ARCH=amd64; G2R_ARCH=amd64; \
     fi && \
     cd /build \
     && . app/.env \
@@ -26,6 +26,7 @@ RUN echo "BUILDING IMAGE FOR $(uname -m)" && \
     | tar xzf - -C . \
     && curl -SL https://github.com/bluenviron/mediamtx/releases/download/v${MTX_TAG}/mediamtx_v${MTX_TAG}_linux_${MTX_ARCH}.tar.gz \
     | tar xzf - -C app \
+    && curl -fSL -o app/go2rtc https://github.com/AlexxIT/go2rtc/releases/download/v${GO2RTC_TAG}/go2rtc_linux_${G2R_ARCH} && chmod +x app/go2rtc \
     && cp app/lib/lib.${LIB_ARCH} usr/local/lib/libIOTCAPIs_ALL.so \
     && rm -rf app/*.txt app/lib/  \ 
     && if [ -z "${BUILD_DATE}" ]; then echo BUILD_DATE=$(date) > .build_date; else echo BUILD_DATE=${BUILD_DATE} > .build_date; fi

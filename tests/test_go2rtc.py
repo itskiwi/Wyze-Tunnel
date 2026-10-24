@@ -1,0 +1,62 @@
+from unittest import mock
+
+import pytest
+from wyzebridge import go2rtc
+from wyzecam.api_models import WyzeCamera
+
+
+def cam(model="HL_CAM4", dtls=1, ip="192.168.1.20", parent_dtls=None):
+    return WyzeCamera(p2p_id="UID123", p2p_type=None, ip=ip, enr="secret+/=", mac="AABBCC", product_model=model,
+                      nickname="Front", timezone_name=None, firmware_ver=None, dtls=dtls, parent_dtls=parent_dtls,
+                      parent_enr=None, parent_mac=None, thumbnail=None)
+
+
+@pytest.fixture
+def both(monkeypatch):
+    monkeypatch.setattr(go2rtc, "go2rtc_available", lambda: True)
+    monkeypatch.setattr(go2rtc, "tutk_available", lambda: True)
+
+
+def test_auto_chain(both, monkeypatch):
+    assert go2rtc.source_chain(cam()) == ["tutk", "lan", "webrtc"]
+    assert go2rtc.source_chain(cam(dtls=0)) == ["tutk", "webrtc"]  # old firmware: no go2rtc LAN
+    assert go2rtc.source_chain(cam(ip=None)) == ["tutk", "webrtc"]
+    assert go2rtc.source_chain(cam(model="WYZEDB3")) == ["tutk", "lan"]  # no WebRTC on this model
+    assert go2rtc.source_chain(cam(model="GW_GC1")) == ["webrtc"]  # Gwell (OG): cloud WebRTC only
+    assert go2rtc.source_chain(cam(model="GW_BE1")) == []  # Doorbell Pro: no WebRTC
+    monkeypatch.setattr(go2rtc, "tutk_available", lambda: False)
+    assert go2rtc.source_chain(cam()) == ["lan", "webrtc"]
+    monkeypatch.setattr(go2rtc, "go2rtc_available", lambda: False)
+    assert go2rtc.source_chain(cam()) == []
+
+
+def test_overrides(both, monkeypatch):
+    monkeypatch.setenv("SOURCE", "lan")
+    assert go2rtc.source_chain(cam()) == ["lan"]
+    monkeypatch.setenv("SOURCE_HL_CAM4", "webrtc, tutk")
+    assert go2rtc.source_chain(cam()) == ["webrtc", "tutk"]
+    monkeypatch.setenv("SOURCE_FRONT", "auto")
+    assert go2rtc.source_chain(cam()) == ["tutk", "lan", "webrtc"]
+    monkeypatch.setenv("SOURCE_FRONT", "webrtc")
+    assert go2rtc.source_chain(cam(model="GW_GC1")) == ["webrtc"]
+    monkeypatch.setattr(go2rtc, "go2rtc_available", lambda: False)
+    assert go2rtc.source_chain(cam()) == []
+
+
+def test_urls():
+    assert go2rtc.lan_url(cam(), substream=True) == (
+        "wyze://192.168.1.20?uid=UID123&enr=secret%2B%2F%3D&mac=AABBCC&model=HL_CAM4&subtype=sd&dtls=true")
+    assert go2rtc.webrtc_url("front", "k y") == "webrtc:http://127.0.0.1:5000/signaling/front?kvs&api=k+y#format=wyze"
+    assert go2rtc.webrtc_url("front", "") == "webrtc:http://127.0.0.1:5000/signaling/front?kvs#format=wyze"
+
+
+def test_fallback_moves_to_next_source_after_5_failures():
+    from wyzebridge.wyze_stream import WyzeStream
+    stream = WyzeStream.__new__(WyzeStream)
+    stream.camera, stream.failures, stream.source_idx = cam(), 0, 0
+    stream.sources = ["tutk", "lan", "webrtc"]
+    seen = []
+    for _ in range(15):
+        stream._failed()
+        seen.append(stream.source)
+    assert seen[:4] == ["tutk"] * 4 and seen[4] == "lan" and seen[9] == "webrtc" and seen[14] == "tutk"
