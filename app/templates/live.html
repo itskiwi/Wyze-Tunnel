@@ -317,10 +317,10 @@
     document.addEventListener('DOMContentLoaded', addApiKey);
 </script>
 {% endif %}
-<script src="static/site.js"></script>
+<script src="static/site.js?v={{ version }}"></script>
 {% if show_video %}
 {% if (webrtc and video_format == "webrtc") or video_format =="kvs" %}
-<script src="static/webrtc.js"></script>
+<script src="static/webrtc.js?v={{ version }}"></script>
 {% else %}
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
 {% endif %}

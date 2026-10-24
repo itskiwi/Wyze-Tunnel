@@ -140,7 +140,7 @@
 {% endblock %}
 
 {% block javascript %}
-    <script src="static/cameras.js"></script>
+    <script src="static/cameras.js?v={{ version }}"></script>
     <script>
         const $ = (s) => document.querySelector(s);
         const order = ["welcome", "key", "account", "done"];
