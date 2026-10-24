@@ -23,6 +23,7 @@ SCALE_USER_AGENT = f"Wyze/{APP_VERSION} (iPhone; iOS {IOS_VERSION}; Scale/3.00)"
 AUTH_API = "https://auth-prod.api.wyze.com"
 WYZE_API = "https://api.wyzecam.com/app"
 CLOUD_API = "https://app-core.cloud.wyze.com/app"
+APP_API = "https://app.wyzecam.com/app"
 SC_SV = {
     "default": {
         "sc": "9f275790cab94a72bd206c8876429f3c",
@@ -285,10 +286,12 @@ def post_device(
     return validate_resp(resp)
 
 
-def get_cam_webrtc(auth_info: WyzeCredential, mac_id: str) -> dict:
+def get_cam_webrtc(auth_info: WyzeCredential, mac_id: str, model: str = "") -> dict:
     """Get webrtc for camera."""
     if not auth_info.access_token:
         raise AccessTokenError()
+    if model.startswith("GW_"):
+        return _get_cam_streams(auth_info, mac_id, model)
 
     ui_headers = _headers()
     ui_headers["content-type"] = "application/json"
@@ -307,6 +310,24 @@ def get_cam_webrtc(auth_info: WyzeCredential, mac_id: str) -> dict:
         "signalingUrl": urllib.parse.unquote(resp_json["results"]["signalingUrl"]),
         "servers": resp_json["results"]["servers"],
     }
+
+
+def _get_cam_streams(auth_info: WyzeCredential, mac_id: str, model: str) -> dict:
+    """Gwell cameras (OG) never answer webrtc.api.wyze.com's channel; the app's get_streams one works.
+
+    Ported from IDisposable/docker-wyze-bridge (AGPL-3.0), internal/wyzeapi/cameras.go GetCameraStream.
+    """
+    device = {"device_id": mac_id, "device_model": model, "provider": "webrtc", "parameters": {"use_trickle": True}}
+    payload = sort_dict({"device_list": [device], "nonce": int(time.time() * 1000)})
+    headers = sign_payload(auth_info, "9319141212m2ik", payload)
+    headers["authorization"] = auth_info.access_token  # v4 also checks this, not just the signed access_token
+    resp = validate_resp(post(f"{APP_API}/v4/camera/get_streams", data=payload, headers=headers))
+    params = resp[0]["params"]  # validate_resp already unwrapped "data"
+    url = params["signaling_url"]
+    if "%25" in url:  # double-encoded SigV4 params on some cameras; AWS rejects them
+        url = urllib.parse.unquote(url)
+    servers = [{"urls": s["url"], "username": s.get("username", ""), "credential": s.get("credential", "")} for s in params.get("ice_servers", [])]
+    return {"ClientId": auth_info.phone_id, "signalingUrl": url, "servers": servers}
 
 
 # Wyze API call results for /metrics.prom: ok, error, rate_limited, plus the last rate limit left.

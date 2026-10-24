@@ -1,6 +1,7 @@
 import json
 import os
 from time import sleep
+from types import SimpleNamespace
 from typing import Callable, Generator, Optional
 from urllib.parse import urlparse
 
@@ -9,7 +10,7 @@ from flask import url_for as _url_for
 from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import check_password_hash
 from wyzebridge import config
-from wyzebridge import guests, pocket
+from wyzebridge import guests, integrations, pocket
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
@@ -24,6 +25,8 @@ GUEST_PATHS = "/img/", "/snapshot/", "/thumb/", "/signaling/", "/webrtc/", "/api
 
 @auth.verify_password
 def verify_password(username, password):
+    if token := bearer_token():
+        return verify_app_token(token)
     if config.HASS_TOKEN and request.remote_addr == "172.30.32.2":
         return True
     if WbAuth.api and WbAuth.api in (request.args.get("api"), request.headers.get("api")):
@@ -38,6 +41,30 @@ def verify_password(username, password):
         g.guest_denied = True
         return False
     return WbAuth.enabled == False
+
+
+def bearer_token() -> str:
+    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+    return token.strip() if scheme.lower() == "bearer" else ""
+
+
+def verify_app_token(token: str):
+    """Apps only reach /api/v1. View-only tokens can read; MCP checks each tool itself."""
+    if not (app := integrations.check_token(token)):
+        return False
+    if not request.path.startswith("/api/v1/"):
+        g.app_denied = "App tokens only work with /api/v1."
+    elif app["scope"] == "control" or request.method == "GET" or request.path == "/api/v1/mcp":
+        return SimpleNamespace(app=app["name"], scope=app["scope"])
+    else:
+        g.app_denied = "This token can only view. Make a control token on the Apps page to change things."
+    return False
+
+
+def api_scope() -> str:
+    """control for the owner, family and control tokens; view for view-only tokens."""
+    user = auth.current_user()
+    return user.scope if isinstance(user, SimpleNamespace) else "control"
 
 
 def current_guest() -> Optional[dict]:
@@ -59,6 +86,8 @@ def cross_site_request() -> bool:
 
 @auth.error_handler
 def unauthorized():
+    if g.get("app_denied"):
+        return {"error": g.app_denied}, 403
     if g.get("guest_denied"):
         # 403, not 401, so the browser doesn't ask a guest to log in again.
         return {"error": "Guests can only watch."}, 403

@@ -1,4 +1,5 @@
 # Sorts after test_security.py, which reloads wyzebridge.auth (see test_web_recordings.py).
+import json
 from unittest import mock
 
 import pytest
@@ -59,3 +60,29 @@ def test_locked_backup_round_trip(setup):
     assert "doesn't open" in client.post("/settings/restore", json={**locked, "passphrase": "wrong one"}).json["error"]
     assert client.post("/settings/restore", json={**locked, "passphrase": "correct horse"}).json["status"] == "restored"
     assert wyze_api.load_cam_names() == {"AA": "Porch"}
+
+
+def test_daily_locked_backup(setup, monkeypatch, tmp_path):
+    client, wyze_api, _, _ = setup
+    from wyzebridge import backup
+
+    monkeypatch.setattr(backup, "AUTO_FILE", str(tmp_path / "auto.json"))
+    folder = tmp_path / "nas"
+    assert "already exists" in client.post("/settings/auto-backup", json={"folder": str(folder), "passphrase": "correct horse"}).json["error"]
+    folder.mkdir()
+    wyze_api.save_cam_name("AA", "Porch")
+    path = client.post("/settings/auto-backup", json={"folder": str(folder), "passphrase": "correct horse"}).json["path"]
+    assert "Porch" not in open(path).read()
+    assert backup.auto_backup() is None  # not due again until tomorrow
+
+    day = backup.load_auto()["last"]
+    for i in range(1, 10):
+        assert backup.auto_backup(now=day + i * 86400)
+    assert len(list(folder.glob("wyze-tunnel-settings-*.json"))) == backup.AUTO_KEEP
+    locked = json.loads(sorted(folder.iterdir())[-1].read_text())
+    assert backup.unlock({**locked, "passphrase": "correct horse"})["settings"]["cam_names"] == {"AA": "Porch"}
+
+    # Saving again without a passphrase keeps the stored one; an empty folder turns it off.
+    assert client.post("/settings/auto-backup", json={"folder": str(folder)}).json["path"]
+    assert client.post("/settings/auto-backup", json={"folder": ""}).json["path"] is None
+    assert backup.auto_backup(force=True) is None

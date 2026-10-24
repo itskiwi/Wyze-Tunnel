@@ -20,7 +20,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import backup, config, guests, pocket, privacy, shares, street_watch, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, guests, integrations, pocket, privacy, shares, street_watch, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
@@ -479,6 +479,7 @@ def create_app():
         return render_template(
             "account.html",
             guests=guests.list_guests(),
+            auto_folder=backup.load_auto().get("folder", ""),
             member=web_ui.current_guest(),
             guest_hours=guests.GUEST_HOURS,
             username=WbAuth.username,
@@ -543,6 +544,18 @@ def create_app():
         resp = make_response(data)
         resp.headers["Content-Disposition"] = "attachment; filename=wyze-tunnel-settings.json"
         return resp
+
+    @app.route("/settings/auto-backup", methods=["POST"])
+    @auth_required
+    def settings_auto_backup():
+        if web_ui.current_guest():
+            return {"error": "Only the owner can choose where backups are saved."}, 403
+        try:
+            settings = backup.save_auto(request.get_json(silent=True) or {})
+            path = settings and backup.auto_backup(force=True)
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"status": "saved", "path": path or None}
 
     @app.route("/settings/restore", methods=["POST"])
     @auth_required
@@ -653,10 +666,62 @@ def create_app():
         @wraps(view)
         def wrapped_view(*args, **kwargs):
             if web_ui.current_guest():
-                return {"error": "Only the owner can use Street Watch."}, 403
+                return {"error": "Only the owner can do this."}, 403
             return view(*args, **kwargs)
 
         return auth_required(wrapped_view)
+
+    app.register_blueprint(api_v1.blueprint(wb, auth_required))
+
+    @app.route("/apps")
+    @owner_only
+    def apps_page():
+        return render_template(
+            "apps.html",
+            tokens=integrations.list_tokens(),
+            hooks=integrations.list_hooks(),
+            hook_events=integrations.HOOK_EVENTS,
+            api=WbAuth.api,
+            version=config.VERSION,
+        )
+
+    @app.route("/apps/tokens", methods=["POST"])
+    @owner_only
+    def add_app_token():
+        data = request.get_json(silent=True) or {}
+        try:
+            return {"token": integrations.add_token(data.get("name"), data.get("scope"))}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
+    @app.route("/apps/tokens/<string:token_id>", methods=["DELETE"])
+    @owner_only
+    def remove_app_token(token_id: str):
+        integrations.remove_token(token_id)
+        return {"status": "removed"}
+
+    @app.route("/apps/hooks", methods=["POST"])
+    @owner_only
+    def add_app_hook():
+        data = request.get_json(silent=True) or {}
+        try:
+            return {"secret": integrations.add_hook(data.get("url"), data.get("events"))}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
+    @app.route("/apps/hooks/<string:hook_id>", methods=["DELETE"])
+    @owner_only
+    def remove_app_hook(hook_id: str):
+        integrations.remove_hook(hook_id)
+        return {"status": "removed"}
+
+    @app.route("/apps/hooks/<string:hook_id>/test", methods=["POST"])
+    @owner_only
+    def test_app_hook(hook_id: str):
+        try:
+            return integrations.test_hook(hook_id)
+        except ValueError as ex:
+            return {"error": str(ex)}, 404
 
     @app.route("/street-watch", methods=["GET", "POST"])
     @owner_only
