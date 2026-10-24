@@ -37,10 +37,10 @@ if ($Distros -notcontains $Distro) {
 Say 'Installing Wyze Tunnel inside WSL'
 Wsl -d $Distro -u root -- bash -euo pipefail -c "command -v curl >/dev/null || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl >/dev/null; }; curl -fsSL https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/$Ref/native/install.sh | WT_REF=$env:WT_REF bash >/dev/null"
 
-$Password = wsl.exe -d $Distro -u root --exec sed -n 's/^WB_PASSWORD=//p' /etc/wyze-tunnel/wyze-tunnel.env
+$Password = wsl.exe -d $Distro -u root --exec sh -c "[ -f /var/lib/wyze-tunnel/tokens/wb_login ] || sed -n 's/^WB_PASSWORD=//p' /etc/wyze-tunnel/wyze-tunnel.env"
 Say 'Done! Wyze Tunnel is running.'
 Write-Output '  Open:  http://localhost:5000'
 Write-Output '  Sign in with your Wyze email, password, API ID and API key'
 Write-Output '  (get the API ID and key at https://developer-api-console.wyze.com/#/apikey/view).'
-Write-Output "  Then log in as wbadmin with the password: $Password"
+Write-Output "  Then log in with $(if ($Password) { "username wbadmin and password: $Password" } else { 'the username and password you already use' })"
 Write-Output '  RTSP:  rtsp://localhost:8554/<camera-name>'

@@ -31,7 +31,7 @@
     <h1 id="title">Wyze Tunnel</h1>
     <p id="msg" role="status" aria-live="polite">Checking…</p>
     <dl id="login" hidden>
-      <dt>Username</dt><dd><code>wbadmin</code></dd>
+      <dt>Username</dt><dd><code id="user">wbadmin</code></dd>
       <dt>Password</dt><dd><code id="pw"></code> <button id="copy" class="link">Copy</button></dd>
     </dl>
     <button id="go" hidden>Set up Wyze Tunnel</button>
@@ -55,7 +55,9 @@ async function showWhenUp(openBrowser) {
     try { await fetch(url, { mode: "no-cors" }); break; } catch {}
     await new Promise((r) => setTimeout(r, 2000));
   }
-  $("pw").textContent = (await invoke("password")) || "(the one you set)";
+  const pw = await invoke("password");
+  $("pw").textContent = pw || "(the one you set)";
+  if (!pw) $("user").textContent = "(the one you set)";
   say("Wyze Tunnel is running. It opens in your browser; log in with:");
   $("login").hidden = $("open").hidden = false;
   if (openBrowser) invoke("open_ui");

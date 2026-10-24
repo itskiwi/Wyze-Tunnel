@@ -146,7 +146,11 @@ fn info() -> serde_json::Value {
 #[tauri::command]
 async fn password() -> String {
     tauri::async_runtime::spawn_blocking(|| {
-        let out = vm::as_root(&["sed", "-n", "s/^WB_PASSWORD=//p", "/etc/wyze-tunnel/wyze-tunnel.env"]).output();
+        let out = vm::as_root(&[
+            "sh",
+            "-c",
+            "[ -f /var/lib/wyze-tunnel/tokens/wb_login ] || sed -n 's/^WB_PASSWORD=//p' /etc/wyze-tunnel/wyze-tunnel.env",
+        ]).output();
         out.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
     })
     .await
