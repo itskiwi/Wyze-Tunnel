@@ -1,4 +1,4 @@
-name: Docker Wyze Bridge (HW branch)
+name: Wyze Tunnel (hardware encoding)
 description: HW build. Use the REBUILD button to pull latest image.
 slug: docker_wyze_bridge_hw
 url: "https://github.com/itskiwi/Wyze-Tunnel"
