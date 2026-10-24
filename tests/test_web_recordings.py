@@ -64,3 +64,20 @@ def test_play_requires_range_and_streams_mp4():
 def test_requires_auth():
     _, client = make_client()
     assert client.get("/recordings/cam1").status_code == 401
+
+
+def test_share_link_plays_without_login_until_it_ends(tmp_path, monkeypatch):
+    from wyzebridge import shares
+
+    monkeypatch.setattr(shares, "SHARES_FILE", str(tmp_path / "shares.json"))
+    frontend, client = make_client()
+    start = "2026-10-24T08:42:40.123456Z"
+    bad = client.post("/recordings/cam1/share?api=key", json={"start": start, "duration": 9999})
+    assert bad.status_code == 400
+    url = client.post("/recordings/cam1/share?api=key", json={"start": start, "duration": 60}).json["url"]
+    with mock.patch.object(frontend.requests, "get", return_value=fake_resp(200, b"mp4data")) as get:
+        resp = client.get("/" + url, headers={"Sec-Fetch-Site": "cross-site"})  # opened from a chat app
+    assert resp.data == b"mp4data" and get.call_args.kwargs["params"]["start"] == start
+    assert client.get("/share/nope").status_code == 404
+    with mock.patch("wyzebridge.shares.time.time", return_value=2**40):
+        assert client.get("/" + url).status_code == 404
