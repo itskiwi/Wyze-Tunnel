@@ -19,7 +19,7 @@ def test_save_validates_and_persists():
     with pytest.raises(ValueError):
         webhooks.save_alerts({"topic": "ok", "quiet_start": "22:00"})
     saved = webhooks.save_alerts({"topic": "my-topic", "motion": "on", "quiet_start": "22:00", "quiet_end": "07:00"})
-    assert saved == {"server": "https://ntfy.sh", "topic": "my-topic", "quiet_start": "22:00",
+    assert saved == {"server": "https://ntfy.sh", "topic": "my-topic", "chat_url": "", "quiet_start": "22:00",
                      "quiet_end": "07:00", "motion": True, "offline": False, "siren_away": False}
     assert webhooks.load_alerts() == saved == webhooks.ALERTS
     assert webhooks.alert_url("motion") == "https://ntfy.sh/my-topic"
@@ -77,3 +77,18 @@ def test_siren_burst_has_cooldown(monkeypatch):
         assert not wyze_events.sound_siren(stream)  # cooldown
         thread.call_args.kwargs["target"]()
     assert stream.send_cmd.call_args_list == [mock.call("alarm", "on"), mock.call("alarm", "off")]
+
+
+def test_chat_links_get_their_own_message_format():
+    with pytest.raises(ValueError):
+        webhooks.save_alerts({"chat_url": "https://evil.example/api/webhooks/1"})
+    with pytest.raises(ValueError):
+        webhooks.save_alerts({"chat_url": "http://discord.com/api/webhooks/1"})
+    webhooks.save_alerts({"chat_url": "https://discord.com/api/webhooks/1/x", "motion": "on"})
+    with mock.patch.object(webhooks.requests, "post") as post:
+        assert webhooks.send_webhook("motion", "CAM", "motion!", "https://img/1.jpg")
+        assert not webhooks.send_webhook("offline", "CAM", "offline!")  # offline is off
+    assert post.call_count == 1  # no ntfy topic, so only the chat
+    assert post.call_args.kwargs["json"] == {"content": "**Motion Event**\nmotion!", "embeds": [{"image": {"url": "https://img/1.jpg"}}]}
+    assert webhooks.chat_payload("slack", "T", "m", None) == {"text": "T: m"}
+    assert webhooks.chat_service("https://api.telegram.org/bot1:a/sendMessage?chat_id=5") == "telegram"
