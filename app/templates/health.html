@@ -21,6 +21,7 @@
     {% set sd_free = (sd.free|int / sd.capacity|int * 100)|round|int if sd.status == "1" and sd.capacity|int > 0 else -1 %}
     {% set tips = [] %}
     {% if cam.status == -90 %}{% set _ = tips.append("The camera isn't reachable. Check that it has power and Wi-Fi, then unplug it for 10 seconds.") %}{% endif %}
+    {% if cam.chronic %}{% set _ = tips.append("This camera has failed to connect " ~ cam.failures ~ " times in a row, so Wyze Tunnel now retries only every 5 minutes. Restart the camera, or check its Wi-Fi signal in the Wyze app.") %}{% endif %}
     {% if not cam.enabled %}{% set _ = tips.append("This camera is turned off in Wyze Tunnel. Use Controls, then Enable, on the main page.") %}{% endif %}
     {% if 0 <= wifi < 40 %}{% set _ = tips.append("Weak Wi-Fi (" ~ wifi ~ "%). Move the camera or router closer, or add a mesh point.") %}{% endif %}
     {% if 0 <= sd_free < 10 %}{% set _ = tips.append("The SD card is almost full. Old clips get overwritten, so check Wyze app settings if you need them.") %}{% endif %}
