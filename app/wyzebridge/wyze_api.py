@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 
 import wyzecam
 from requests import get
-from requests.exceptions import HTTPError, RequestException
+from requests.exceptions import ConnectionError, HTTPError, RequestException, Timeout
 from wyzebridge.auth import get_secret
 from wyzebridge.bridge_utils import env_bool, env_filter
 from wyzebridge.config import IMG_PATH, MOTION, TOKEN_PATH
@@ -216,15 +216,20 @@ class WyzeApi:
         self.user = wyzecam.get_user_info(self.auth)
         return self.user
 
+    def get_cameras(self, fresh_data: bool = False) -> list[WyzeCamera]:
+        """Cameras from Wyze, or the saved LAN keys when Wyze can't be reached."""
+        return self.fetch_cameras(fresh_data=fresh_data) or self.cameras or load_lan_keys()
+
     @cached
     @authenticated
-    def get_cameras(self, fresh_data: bool = False) -> list[WyzeCamera]:
+    def fetch_cameras(self, fresh_data: bool = False) -> list[WyzeCamera]:
         if self.cameras and not fresh_data:
             return self.cameras
         self.cameras = wyzecam.get_camera_list(self.auth)
         self._last_pull = time()
         logger.info(f"[API] Fetched [{len(self.cameras)}] cameras")
         logger.debug(f"[API] cameras={[c.nickname for c in self.cameras]}")
+        save_lan_keys(self.cameras)
 
         return self.cameras
 
@@ -304,6 +309,10 @@ class WyzeApi:
             self.auth = wyzecam.refresh_token(self.auth)
             pickle_dump("auth", self.auth)
             return self.auth
+        except (ConnectionError, Timeout) as ex:
+            # Offline: keep the tokens and the saved cameras instead of wiping them to log in again.
+            logger.warning(f"[API] Wyze unreachable, keeping saved login: {ex}")
+            return None
         except Exception as ex:
             logger.error(f"{ex}")
             logger.warning("⏰ Expired refresh token?")
@@ -459,6 +468,29 @@ def load_hidden_cams() -> set[str]:
 def save_hidden_cams(macs: set[str]) -> None:
     with open(HIDDEN_CAMS_FILE, "w") as f:
         json.dump(sorted(macs), f)
+
+
+LAN_KEYS_FILE = TOKEN_PATH + "lan_keys.json"
+
+
+def save_lan_keys(cams: list[WyzeCamera]) -> None:
+    """Keep what local connections need (IP, MAC, P2P id, ENR key) so cameras work when Wyze is down.
+
+    Unlike the *.pickle cache, clear_cache() leaves this file alone.
+    """
+    path = Path(LAN_KEYS_FILE)
+    path.write_text(json.dumps([c.model_dump(exclude={"camera_info"}) for c in cams]))
+    path.chmod(0o600)
+
+
+def load_lan_keys() -> list[WyzeCamera]:
+    try:
+        cams = [WyzeCamera(**c) for c in json.loads(Path(LAN_KEYS_FILE).read_text())]
+    except (FileNotFoundError, ValueError, TypeError):
+        return []
+    if cams:
+        logger.debug(f"[API] Wyze unreachable, using saved keys for {len(cams)} cameras")
+    return cams
 
 
 CAM_NAMES_FILE = TOKEN_PATH + "cam_names.json"
