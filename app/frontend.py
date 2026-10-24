@@ -19,7 +19,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import config, web_ui, webhooks, wyze_api
+from wyzebridge import backup, config, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
@@ -442,6 +442,24 @@ def create_app():
             api=WbAuth.api,
             version=config.VERSION,
         )
+
+    @app.route("/settings/backup")
+    @auth_required
+    def settings_backup():
+        resp = make_response(backup.export_settings())
+        resp.headers["Content-Disposition"] = "attachment; filename=wyze-tunnel-settings.json"
+        return resp
+
+    @app.route("/settings/restore", methods=["POST"])
+    @auth_required
+    def settings_restore():
+        try:
+            restored = backup.import_settings(request.get_json(silent=True))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        # Hidden cameras, names, quality and connection choices apply when streams restart.
+        Thread(target=wb.refresh_cams, daemon=True).start()
+        return {"status": "restored", "restored": restored}
 
     @app.route("/alerts/mode", methods=["POST"])
     @auth_required
