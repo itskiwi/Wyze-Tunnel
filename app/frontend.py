@@ -21,8 +21,9 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, guests, integrations, network, pocket, privacy, shares, street_watch, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, detect, guests, integrations, network, pocket, privacy, recording, shares, street_watch, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
+from wyzebridge.bridge_utils import env_cam
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
 from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED
@@ -611,14 +612,36 @@ def create_app():
     @auth_required
     def recordings_page():
         cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        # Cameras recording for another reason can't be switched off here, so the page says why.
+        locked = {uri: "Always on in your config" for uri in cams if env_cam("record", uri)}
+        locked.update({uri: "On for Search footage" for uri in cams if uri not in locked and detect.wanted(uri)})
         return render_template(
             "recordings.html",
             cameras={uri: cam for uri, cam in cams.items() if cam.get("record")},
+            all_cams={uri: cam["nickname"] for uri, cam in cams.items()},
+            locked=locked,
+            settings=recording.load_settings(),
+            keep_choices=recording.KEEP_CHOICES,
+            default_keep=recording.DEFAULT_KEEP_DAYS,
+            disk=recording.disk_use(),
             selected=request.args.get("cam"),
             playback=PLAYBACK_ENABLED,
             api=WbAuth.api,
             version=config.VERSION,
         )
+
+    @app.route("/recordings/settings", methods=["POST"])
+    @auth_required
+    def recordings_settings():
+        """Save which cameras record and for how long, then restart cameras so it takes effect."""
+        if web_ui.current_guest():
+            return {"error": "Only the owner can change this."}, 403
+        try:
+            recording.save_settings(request.get_json(silent=True) or {}, list(wb.streams.streams))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        Thread(target=wb.restart, daemon=True).start()
+        return {"status": "saved"}
 
     @app.route("/recordings/<string:cam_name>")
     @auth_required

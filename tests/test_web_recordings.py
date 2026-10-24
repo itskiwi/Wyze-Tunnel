@@ -94,3 +94,40 @@ def test_live_hls_goes_through_the_bridge_login(monkeypatch):
     assert resp.data == b"#EXTM3U"
     assert get.call_args.args[0] == "http://127.0.0.1:8888/cam1/seg0.mp4"
     assert get.call_args.kwargs["params"]["_HLS_msn"] == "3"
+
+
+def test_recording_switches_save_and_restart_cameras(tmp_path, monkeypatch):
+    from wyzebridge import recording, web_ui
+
+    monkeypatch.setattr(recording, "SETTINGS_FILE", str(tmp_path / "record.json"))
+    monkeypatch.setattr(web_ui.WbAuth, "enabled", False)
+    import frontend
+
+    with mock.patch.object(frontend, "WyzeBridge") as bridge:
+        client = frontend.create_app().test_client()
+    bridge.return_value.streams.streams = {"front": None, "back": None}
+    bridge.return_value.api.total_cams = 2
+    cams = {"front": {"nickname": "Front", "record": False}, "back": {"nickname": "Back", "record": False}}
+    with mock.patch.object(web_ui, "all_cams", return_value={"cameras": cams}):
+        page = client.get("/recordings").data.decode()
+    assert "RECORD_ALL" not in page and 'value="front"' in page and "Choose cameras to record" in page
+
+    assert client.post("/recordings/settings", json={"keep_days": 99}).status_code == 400
+    with mock.patch.object(frontend, "Thread") as thread:
+        assert client.post("/recordings/settings", json={"cams": ["front", "gone"], "keep_days": 3}).json == {"status": "saved"}
+    assert thread.call_args.kwargs["target"] == bridge.return_value.restart
+    assert recording.wanted("front") and not recording.wanted("back") and recording.keep() == "259200s"
+    recording.save_settings({"all": True}, ["front", "back"])
+    assert recording.wanted("back") and recording.keep() == "604800s"  # 7 days by default
+
+
+def test_disk_use_counts_clips(tmp_path, monkeypatch):
+    from wyzebridge import recording
+
+    monkeypatch.setattr(recording, "RECORD_PATH", str(tmp_path / "record" / "%path" / "%Y-%m-%d_%H-%M-%S-%f"))
+    assert recording.record_root() == tmp_path / "record"
+    assert recording.disk_use()["used"] == 0  # nothing recorded yet, folder missing
+    (tmp_path / "record" / "front").mkdir(parents=True)
+    (tmp_path / "record" / "front" / "a.mp4").write_bytes(b"x" * 10)
+    use = recording.disk_use()
+    assert use["used"] == 10 and use["free"] > 0
