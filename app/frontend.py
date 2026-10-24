@@ -18,7 +18,7 @@ from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
 from wyzebridge import config, web_ui
 from wyzebridge.auth import WbAuth
-from wyzebridge.mtx_server import PLAYBACK_ADDR
+from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED
 from wyzebridge.web_ui import url_for
 
 
@@ -253,6 +253,19 @@ def create_app():
         else:
             return {"result": "error"}
         return {"result": "ok", "restart": restart_cmd.split(",")}
+
+    @app.route("/recordings")
+    @auth_required
+    def recordings_page():
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return render_template(
+            "recordings.html",
+            cameras={uri: cam for uri, cam in cams.items() if cam.get("record")},
+            selected=request.args.get("cam"),
+            playback=PLAYBACK_ENABLED,
+            api=WbAuth.api,
+            version=config.VERSION,
+        )
 
     @app.route("/recordings/<string:cam_name>")
     @auth_required
