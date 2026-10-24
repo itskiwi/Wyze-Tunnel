@@ -20,7 +20,7 @@ def test_save_validates_and_persists():
         webhooks.save_alerts({"topic": "ok", "quiet_start": "22:00"})
     saved = webhooks.save_alerts({"topic": "my-topic", "motion": "on", "quiet_start": "22:00", "quiet_end": "07:00"})
     assert saved == {"server": "https://ntfy.sh", "topic": "my-topic", "chat_url": "", "quiet_start": "22:00",
-                     "quiet_end": "07:00", "motion": True, "offline": False, "siren_away": False}
+                     "quiet_end": "07:00", "motion": True, "person": False, "offline": False, "siren_away": False}
     assert webhooks.load_alerts() == saved == webhooks.ALERTS
     assert webhooks.alert_url("motion") == "https://ntfy.sh/my-topic"
     assert webhooks.alert_url("offline") == ""

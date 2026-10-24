@@ -4,13 +4,14 @@ import sys
 from dataclasses import replace
 from threading import Thread
 
-from wyzebridge import config, guests, integrations
+from wyzebridge import config, detect, guests, integrations, webhooks
 from wyzebridge.auth import STREAM_AUTH, WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import MtxServer
 from wyzebridge.stream import StreamManager
-from wyzebridge.wyze_api import WyzeApi
+from wyzebridge.wyze_api import WyzeApi, display_name
+from wyzebridge.wyze_events import EVENT_LOG
 from wyzebridge.wyze_stream import WyzeStream, WyzeStreamOptions
 from wyzecam.api_models import WyzeCamera
 
@@ -29,6 +30,7 @@ class WyzeBridge(Thread):
         self.mtx.setup_webrtc(config.BRIDGE_IP)
         if config.LLHLS:
             self.mtx.setup_llhls(config.TOKEN_PATH, bool(config.HASS_TOKEN))
+        detect.start_frigate(lambda: list(self.streams.streams))
 
     def run(self, fresh_data: bool = False) -> None:
         self._initialize(fresh_data)
@@ -87,6 +89,9 @@ class WyzeBridge(Thread):
             self.mtx.add_path(stream.uri, not options.reconnect)
             if env_cam("record", cam.name_uri):
                 self.mtx.record(stream.uri)
+                # Only recording cameras: they stay connected anyway, and every hit has a clip to play.
+                if env_cam("detect", cam.name_uri):
+                    detect.watch(stream.uri, display_name(cam), on_detect)
             self.streams.add(stream)
 
     def rtsp_fw_proxy(self, cam: WyzeCamera, stream: WyzeStream) -> bool:
@@ -116,11 +121,19 @@ class WyzeBridge(Thread):
             os._exit(0)
         if self.streams:
             self.streams.stop_all()
+        detect.stop_all()
         self.mtx.stop()
         WyzeStream.go2rtc.stop()
         logger.info("👋 goodbye!")
         # sys.exit would wait on the login, monitor and camera threads, which never end, until systemd kills us 90s later.
         os._exit(0)
+
+
+def on_detect(uri: str, name: str, label: str, det_id: int, ts: float) -> None:
+    img = f"detections/{det_id}.jpg"
+    EVENT_LOG.appendleft({"uri": uri, "name": name, "ts": int(ts), "img": img, "label": label})
+    if label == "person":
+        webhooks.send_webhook("person", uri, f"Person spotted on {name}")
 
 
 if __name__ == "__main__":

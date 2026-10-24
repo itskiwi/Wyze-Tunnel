@@ -16,3 +16,7 @@ Wyze Tunnel builds on other people's work. Thank you to these projects.
   and the per-model override.
 - **MediaMTX** by bluenviron (MIT). https://github.com/bluenviron/mediamtx
 - **FFmpeg** (LGPL/GPL). https://ffmpeg.org
+- **MobileNet-SSD** by chuanqi305 (MIT). Downloaded on first use for built-in detection.
+  https://github.com/chuanqi305/MobileNet-SSD
+- **OpenCV** (Apache-2.0). Runs the detection model. https://opencv.org
+- **Frigate** (MIT). Search reads its events API; no Frigate code is included. https://frigate.video
