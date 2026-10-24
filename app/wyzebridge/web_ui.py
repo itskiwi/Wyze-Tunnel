@@ -4,11 +4,12 @@ from time import sleep
 from typing import Callable, Generator, Optional
 from urllib.parse import urlparse
 
-from flask import request
+from flask import g, request
 from flask import url_for as _url_for
 from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import check_password_hash
 from wyzebridge import config
+from wyzebridge import guests
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
@@ -17,6 +18,8 @@ from wyzebridge.stream import Stream, StreamManager
 auth = HTTPBasicAuth()
 
 API_ENDPOINTS = "/api", "/img", "/snapshot", "/thumb", "/photo", "/recordings", "/metrics.prom", "/signaling"
+# What a guest login can open: the camera grid and live video, nothing that changes anything.
+GUEST_PATHS = "/img/", "/snapshot/", "/thumb/", "/signaling/", "/webrtc/", "/api/sse_status"
 
 
 @auth.verify_password
@@ -27,7 +30,18 @@ def verify_password(username, password):
         return request.path.startswith(API_ENDPOINTS)
     if username == WbAuth.username:
         return check_password_hash(WbAuth.hashed_password(), password)
+    if WbAuth.enabled and username and (guest := guests.check_guest(username, password)):
+        if request.method == "GET" and (request.path == "/" or request.path.startswith(GUEST_PATHS)):
+            return guest
+        g.guest_denied = True
+        return False
     return WbAuth.enabled == False
+
+
+def current_guest() -> Optional[dict]:
+    """The guest viewing this page, or None for the owner."""
+    user = auth.current_user()
+    return user if isinstance(user, dict) else None
 
 
 def cross_site_request() -> bool:
@@ -43,6 +57,9 @@ def cross_site_request() -> bool:
 
 @auth.error_handler
 def unauthorized():
+    if g.get("guest_denied"):
+        # 403, not 401, so the browser doesn't ask a guest to log in again.
+        return {"error": "Guests can only watch."}, 403
     return {"error": "Unauthorized"}, 401
 
 
@@ -64,7 +81,7 @@ def sse_generator(sse_status: Callable) -> Generator[str, str, str]:
         sleep(1)
 
 
-def get_webrtc_signal(cam_name: str, api_key: str) -> dict:
+def get_webrtc_signal(cam_name: str, api_key: str, user: str = "wb") -> dict:
     """Generate signaling for MediaMTX webrtc."""
     hostname = env_bool("DOMAIN", urlparse(request.root_url).hostname or "localhost")
     ssl = "s" if env_bool("MTX_WEBRTCENCRYPTION") else ""
@@ -80,7 +97,7 @@ def get_webrtc_signal(cam_name: str, api_key: str) -> dict:
     }
     if api_key:
         ice_server |= {
-            "username": "wb",
+            "username": user,
             "credential": api_key,
             "credentialType": "password",
         }

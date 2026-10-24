@@ -19,7 +19,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import backup, config, privacy, web_ui, webhooks, wyze_api
+from wyzebridge import backup, config, guests, privacy, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
@@ -140,13 +140,15 @@ def create_app():
         video_format = request.cookies.get("video", "webrtc")
         if req_video := ({"webrtc", "hls", "kvs"} & set(request.args)):
             video_format = req_video.pop()
+        guest = web_ui.current_guest()
         resp = make_response(
             render_template(
                 "index.html",
                 cam_data=web_ui.all_cams(wb.streams, wb.api.total_cams),
                 number_of_columns=number_of_columns,
                 refresh_period=refresh_period,
-                api=WbAuth.api,
+                api="" if guest else WbAuth.api,
+                guest=guest,
                 version=config.VERSION,
                 webrtc=bool(config.BRIDGE_IP),
                 show_video=show_video,
@@ -235,6 +237,8 @@ def create_app():
     def webrtc_signaling(name):
         if "kvs" in request.args:
             return wb.api.get_kvs_signal(name)
+        if web_ui.current_guest():
+            return web_ui.get_webrtc_signal(name, guests.stream_key(), guests.STREAM_USER)
         return web_ui.get_webrtc_signal(name, WbAuth.api)
 
     @app.route("/webrtc/<string:name>")
@@ -449,11 +453,30 @@ def create_app():
             return {"status": "saved"}
         return render_template(
             "account.html",
+            guests=guests.list_guests(),
+            guest_hours=guests.GUEST_HOURS,
             username=WbAuth.username,
             enabled=WbAuth.enabled,
             api=WbAuth.api,
             version=config.VERSION,
         )
+
+    @app.route("/guests", methods=["POST"])
+    @auth_required
+    def add_guest():
+        data = request.get_json(silent=True) or {}
+        hours = data.get("hours")
+        try:
+            password = guests.add_guest(data.get("name"), hours, WbAuth.username)
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"name": data["name"].strip(), "password": password}
+
+    @app.route("/guests/<string:name>", methods=["DELETE"])
+    @auth_required
+    def remove_guest(name: str):
+        guests.remove_guest(name)
+        return {"status": "removed"}
 
     @app.route("/settings/backup")
     @auth_required
