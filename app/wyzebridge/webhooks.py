@@ -6,6 +6,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import requests
+from wyzebridge import integrations
 from wyzebridge.bridge_utils import env_cam
 from wyzebridge.config import TOKEN_PATH, VERSION
 from wyzebridge.logging import logger
@@ -101,6 +102,8 @@ def in_quiet_hours(settings: dict, now: Optional[time] = None) -> bool:
 
 
 def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None) -> bool:
+    if event != "test":
+        integrations.dispatch(event, camera, msg, img)
     url = env_url = env_cam(f"{event}_webhooks", camera, style="original")
     if not url:
         mode = ALERTS.get("mode", "schedule")

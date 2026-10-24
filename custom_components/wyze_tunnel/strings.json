@@ -1,0 +1,35 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Wyze Tunnel",
+        "description": "In Wyze Tunnel, open the gear menu, then Connect apps, then Home Assistant. Make a setup code and paste it here.",
+        "data": { "setup_code": "Setup code" }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect Wyze Tunnel",
+        "description": "This connection's key was removed in Wyze Tunnel. Make a new setup code on its Connect apps page and paste it here.",
+        "data": { "setup_code": "Setup code" }
+      }
+    },
+    "error": {
+      "invalid_code": "That doesn't look like a setup code. Copy the whole thing, starting with wt1.",
+      "invalid_auth": "Wyze Tunnel didn't accept this code. Make a new one and try again.",
+      "cannot_connect": "Home Assistant can't reach Wyze Tunnel at the address in the code. Check the address on the Connect apps page."
+    },
+    "abort": {
+      "already_configured": "This Wyze Tunnel is already set up.",
+      "reauth_successful": "Reconnected."
+    }
+  },
+  "services": {
+    "send_command": {
+      "name": "Send command",
+      "description": "Send any Wyze Tunnel camera command, like night_vision on or rotary_action left.",
+      "fields": {
+        "command": { "name": "Command", "description": "The command name, like spotlight, alarm or night_vision." },
+        "value": { "name": "Value", "description": "What to set it to, like on or off. Leave empty to read the current value." }
+      }
+    }
+  }
+}
