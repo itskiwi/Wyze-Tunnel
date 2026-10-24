@@ -487,10 +487,16 @@ def create_app():
         guests.remove_guest(name)
         return {"status": "removed"}
 
-    @app.route("/settings/backup")
+    @app.route("/settings/backup", methods=["GET", "POST"])
     @auth_required
     def settings_backup():
-        resp = make_response(backup.export_settings())
+        data = backup.export_settings()
+        if request.method == "POST":
+            try:
+                data = backup.encrypt(data, str((request.get_json(silent=True) or {}).get("passphrase") or ""))
+            except ValueError as ex:
+                return {"error": str(ex)}, 400
+        resp = make_response(data)
         resp.headers["Content-Disposition"] = "attachment; filename=wyze-tunnel-settings.json"
         return resp
 
@@ -498,7 +504,7 @@ def create_app():
     @auth_required
     def settings_restore():
         try:
-            restored = backup.import_settings(request.get_json(silent=True))
+            restored = backup.import_settings(backup.unlock(request.get_json(silent=True)))
         except ValueError as ex:
             return {"error": str(ex)}, 400
         # Hidden cameras, names, quality and connection choices apply when streams restart.
