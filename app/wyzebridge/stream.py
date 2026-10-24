@@ -10,6 +10,7 @@ from wyzebridge.ffmpeg import rtsp_snap_cmd
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import bridge_status, cam_control, publish_topic, update_preview
 from wyzebridge.mtx_event import RtspEvent
+from wyzebridge.webhooks import ALERTS
 from wyzebridge.wyze_events import WyzeEvents
 
 
@@ -95,13 +96,16 @@ class StreamManager:
         mqtt = cam_control(self.streams, self.send_cmd)
         logger.info(f"🎬 {self.total} stream{'s'[:self.total^1]} enabled")
         event = RtspEvent(self.streams)
-        events = WyzeEvents(self.streams) if MOTION else None
+        events = None
         last_health = 0.0
         while not self.stop_flag:
             # One bad iteration must not end monitoring, or no stream ever reconnects.
             try:
                 event.read(timeout=1)
                 self.snap_all(self.active_streams())
+                # Created lazily so turning on motion alerts in the web UI needs no restart.
+                if not events and self.streams and (MOTION or ALERTS.get("motion")):
+                    events = WyzeEvents(self.streams)
                 if events:
                     events.check_motion()
                 if time.time() - last_health >= 15:

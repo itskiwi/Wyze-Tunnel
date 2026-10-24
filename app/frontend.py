@@ -17,7 +17,7 @@ from flask import (
 import requests
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import config, web_ui
+from wyzebridge import config, web_ui, webhooks
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
 from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED
@@ -301,6 +301,34 @@ def create_app():
         else:
             return {"result": "error"}
         return {"result": "ok", "restart": restart_cmd.split(",")}
+
+    @app.route("/alerts", methods=["GET", "POST"])
+    @auth_required
+    def alerts():
+        if request.method == "POST":
+            try:
+                webhooks.save_alerts(request.get_json(silent=True) or request.form.to_dict())
+            except ValueError as ex:
+                return {"error": str(ex)}, 400
+            return {"status": "saved"}
+        settings = webhooks.ALERTS or {"server": "https://ntfy.sh", "motion": True, "offline": True}
+        return render_template(
+            "alerts.html",
+            settings=settings,
+            # Anyone who knows an ntfy.sh topic can read it, so suggest one nobody can guess.
+            suggested_topic=f"wyze-tunnel-{secrets.token_hex(6)}",
+            api=WbAuth.api,
+            version=config.VERSION,
+        )
+
+    @app.route("/alerts/test", methods=["POST"])
+    @auth_required
+    def alerts_test():
+        if not webhooks.alert_url("test"):
+            return {"error": "Save a topic first."}, 400
+        if webhooks.send_webhook("test", "Wyze Tunnel", "Test alert from Wyze Tunnel. Alerts are working!"):
+            return {"status": "sent"}
+        return {"error": "Couldn't reach the alert server. Check the server address and your internet."}, 502
 
     @app.route("/recordings")
     @auth_required
