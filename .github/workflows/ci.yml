@@ -120,6 +120,15 @@ jobs:
     needs: windows-bundle
     runs-on: windows-latest
     steps:
+      - uses: actions/checkout@v4
+      # Windows PowerShell 5.1, like users have: installs the latest published bundle.
+      - name: install-native.ps1
+        shell: powershell
+        run: |
+          windows\install-native.ps1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if (-not (Test-Path "$env:LOCALAPPDATA\Wyze Tunnel\native\wyze-tunnel\python\python.exe")) { exit 1 }
+          Get-NetFirewallRule -DisplayName 'Wyze Tunnel (go2rtc.exe)', 'Wyze Tunnel (mediamtx.exe)' | Format-Table DisplayName, Action, Profile
       - uses: actions/download-artifact@v4
         with:
           name: windows-bundle
@@ -127,8 +136,8 @@ jobs:
       - name: Start the bridge, web UI answers
         shell: pwsh
         run: |
-          Expand-Archive wyze-tunnel-windows-x86_64.zip native
-          $n = "$PWD\native\wyze-tunnel"; $d = "$PWD\data"
+          Expand-Archive wyze-tunnel-windows-x86_64.zip bundle  # not native\: the checkout has one
+          $n = "$PWD\bundle\wyze-tunnel"; $d = "$PWD\data"
           'tokens', 'img', 'record', 'logs' | ForEach-Object { New-Item -ItemType Directory -Force "$d\$_" | Out-Null }
           Copy-Item "$n\mediamtx.yml" $d
           $env:FLASK_APP = 'frontend'; $env:PYTHONUNBUFFERED = '1'; $env:PYTHONUTF8 = '1'; $env:PATH = "$n\bin;$env:PATH"
