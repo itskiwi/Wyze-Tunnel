@@ -10,7 +10,7 @@ from wyzebridge.logging import logger
 
 
 def get_ffmpeg_cmd(
-    uri: str, vcodec: str, audio: dict, is_vertical: bool = False
+    uri: str, vcodec: str, audio: dict, is_vertical: bool = False, fps: int = 0
 ) -> list[str]:
     """
     Return the ffmpeg cmd with options from the env.
@@ -26,6 +26,7 @@ def get_ffmpeg_cmd(
         - "codec_out": str, output audio codec
 
     - is_vertical (bool, optional): Specify if the source video is vertical.
+    - fps (int, optional): The camera's frame rate, used to stamp input frames.
 
     Returns:
     - list of str: complete ffmpeg command that is ready to run as subprocess.
@@ -54,6 +55,11 @@ def get_ffmpeg_cmd(
     if env_cam("AUDIO_STREAM", uri, style="original") and audio:
         rtsp_ss += "|" + rss_cmd.format("select=a:") + "_audio"
     h264_enc = env_bool("h264_enc").partition("_")[2]
+    v_out = re_encode_video(uri, is_vertical)
+    # Raw h264 has no timestamps; stamp at the camera's real rate, not ffmpeg's 25fps guess.
+    rate_in = ["-r", str(fps)] if fps else []
+    # Some players (Safari, HomeKit) stall without access unit delimiters.
+    bsf = ["-bsf:v", "h264_metadata=aud=insert"] if v_out == ["copy"] and vcodec == "h264" else []
 
     cmd = env_cam("FFMPEG_CMD", uri, style="original").format(
         cam_name=uri, CAM_NAME=uri.upper(), audio_in=audio_in
@@ -62,10 +68,12 @@ def get_ffmpeg_cmd(
         + env_cam("FFMPEG_FLAGS", uri, flags).strip("'\"\n ").split()
         + thread_queue.split()
         + (["-hwaccel", h264_enc] if h264_enc in {"vaapi", "qsv"} else [])
+        + rate_in
         + ["-f", vcodec, "-i", "pipe:0"]
         + audio_in.split()
         + ["-map", "0:v", "-c:v"]
-        + re_encode_video(uri, is_vertical)
+        + v_out
+        + bsf
         + (["-map", "1:a", "-c:a", audio_out] if audio_in else [])
         + (a_options if audio and audio_out != "copy" else [])
         + ["-fps_mode", "passthrough", "-flush_packets", "1"]

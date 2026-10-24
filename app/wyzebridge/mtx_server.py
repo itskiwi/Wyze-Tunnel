@@ -1,7 +1,9 @@
+import socket
 from os import getenv
 from pathlib import Path
 from signal import SIGKILL
-from subprocess import DEVNULL, Popen
+from subprocess import DEVNULL, Popen, run
+from time import sleep
 from typing import Optional
 
 import yaml
@@ -148,6 +150,7 @@ class MtxServer:
     def start(self):
         if self.sub_process:
             return
+        kill_orphan(MTX_BIN, 8554)
         logger.info(f"[MTX] starting MediaMTX {getenv('MTX_TAG')}")
         self.sub_process = Popen([MTX_BIN, MTX_CONFIG])
 
@@ -254,3 +257,22 @@ def parse_auth(auth: str) -> list[dict[str, str]]:
         logger.info(f"[MTX] Auth [{data['user']}:{data['pass'][:1]}***] {paths=}")
         entries.append(data)
     return entries
+
+
+def port_in_use(port: int) -> bool:
+    with socket.socket() as sock:
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def kill_orphan(binary: str, port: int) -> None:
+    """Stop a copy of `binary` left over from a crash that still holds `port`."""
+    if not port_in_use(port):
+        return
+    name = Path(binary).name
+    logger.warning(f"[MTX] Port {port} is busy. Stopping any leftover {name}...")
+    run(["pkill", "-x", name], stdout=DEVNULL, stderr=DEVNULL, check=False)
+    for _ in range(20):
+        if not port_in_use(port):
+            return
+        sleep(0.1)
+    logger.error(f"[MTX] Port {port} is still in use by another program.")
