@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
 
+{% block title %}Account · {% endblock %}
 {% block content %}
 <header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
-    <h1 class="page-title">Login</h1>
+    <h1 class="page-title">Account and sharing</h1>
 </header>
 
 {% if member %}
@@ -104,7 +105,7 @@
         <p class="mt-1 text-sm text-zinc-400">Saves a locked copy once a day to a folder on this computer, such as a USB
             drive, a NAS share or a synced cloud folder. The last 7 days are kept. Leave the folder empty to stop.</p>
         <label class="mt-2 block text-sm">Folder
-            <input name="folder" value="{{ auto_folder }}" placeholder="/media/backups" autocomplete="off" class="field mt-1 w-full" /></label>
+            <input name="folder" value="{{ auto_folder }}" placeholder="{{ folder_example }}" autocomplete="off" class="field mt-1 w-full" /></label>
         <label class="mt-2 block text-sm">Passphrase{% if auto_folder %} (leave empty to keep the current one){% endif %}
             <input name="passphrase" type="password" autocomplete="new-password" class="field mt-1 w-full" /></label>
         <button type="submit" class="btn mt-3"><i class="fas fa-floppy-disk"></i>Save and back up now</button>
