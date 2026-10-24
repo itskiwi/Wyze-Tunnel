@@ -8,6 +8,7 @@ from unittest import mock
 os.environ["TOKEN_PATH"] = tempfile.mkdtemp()
 sys.path.insert(0, str(Path(__file__).parents[1] / "app"))
 
+import pytest  # noqa: E402
 import requests  # noqa: E402
 
 
@@ -16,10 +17,16 @@ def make_client():
 
     with mock.patch.object(frontend, "WyzeBridge"):
         app = frontend.create_app()
-    from wyzebridge.auth import WbAuth
-
-    WbAuth.api = "key"
     return frontend, app.test_client()
+
+
+@pytest.fixture(autouse=True)
+def api_key(monkeypatch):
+    from wyzebridge import web_ui
+
+    # test_security reloads wyzebridge.auth, leaving web_ui with the old WbAuth. This file must sort after it
+    # so frontend is first imported with the reloaded one, which test_wyze_login patches.
+    monkeypatch.setattr(web_ui.WbAuth, "api", "key")
 
 
 def fake_resp(status, body=b"", json=None):
