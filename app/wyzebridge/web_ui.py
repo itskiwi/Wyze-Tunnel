@@ -20,7 +20,7 @@ auth = HTTPBasicAuth()
 
 API_ENDPOINTS = "/api", "/img", "/snapshot", "/thumb", "/photo", "/recordings", "/detections", "/metrics.prom", "/signaling"
 # What a guest login can open: the camera grid and live video, nothing that changes anything.
-GUEST_PATHS = "/img/", "/snapshot/", "/thumb/", "/signaling/", "/webrtc/", "/api/sse_status"
+GUEST_PATHS = "/hls/", "/img/", "/snapshot/", "/thumb/", "/signaling/", "/webrtc/", "/api/sse_status"
 
 
 @auth.verify_password
@@ -166,6 +166,7 @@ def format_stream(name_uri: str) -> dict:
     webrtc_url = (config.WEBRTC_URL or f"http://{hostname}:8889") + f"/{name_uri}/"
     data = {
         "hls_url": (config.HLS_URL or f"http://{hostname}:8888") + f"/{name_uri}/",
+        "hls_page_url": config.HLS_URL and f"{config.HLS_URL}/{name_uri}/" or f"hls/{name_uri}/",
         "webrtc_url": webrtc_url if config.BRIDGE_IP else None,
         "rtmp_url": (config.RTMP_URL or f"rtmp://{hostname}:1935") + f"/{name_uri}",
         "rtsp_url": (config.RTSP_URL or f"rtsp://{hostname}:8554") + f"/{name_uri}",

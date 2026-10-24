@@ -21,7 +21,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, guests, integrations, pocket, privacy, shares, street_watch, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, detect, guests, integrations, network, pocket, privacy, shares, street_watch, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
@@ -361,6 +361,21 @@ def create_app():
             now=time.time(),
             api=WbAuth.api,
             version=config.VERSION,
+        )
+
+    @app.route("/network")
+    @auth_required
+    def network_page():
+        if web_ui.current_guest():
+            return {"error": "Only the owner can see the Network page."}, 403
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return render_template(
+            "network.html",
+            seen=sorted(network.SEEN.values(), key=lambda e: -e["last"]),
+            other=network.other_connections(cams),
+            cloud_down=network.cloud_down(),
+            keys_saved=network.lan_keys_saved(wyze_api.LAN_KEYS_FILE),
+            now=time.time(),
         )
 
     @app.route("/events")
@@ -818,6 +833,17 @@ def create_app():
         resp.headers["X-Robots-Tag"] = "noindex, nofollow"
         resp.headers["Referrer-Policy"] = "no-referrer"
         return resp
+
+    @app.route("/hls/<path:path>")
+    @auth_required
+    def hls_proxy(path: str):
+        """Live HLS behind the web login; MediaMTX only lets 127.0.0.1 in without the API key."""
+        scheme = "https" if config.LLHLS else "http"
+        try:  # on-demand cameras take a few seconds to start; MediaMTX waits up to 30s
+            resp = requests.get(f"{scheme}://127.0.0.1:8888/{path}", params=request.args, stream=True, timeout=35, verify=False)
+        except requests.RequestException as ex:
+            return str(ex), 503
+        return Response(resp.iter_content(64 * 1024), resp.status_code, content_type=resp.headers.get("Content-Type"))
 
     def mtx_playback(endpoint: str, stream: bool = False, **params) -> requests.Response:
         try:
