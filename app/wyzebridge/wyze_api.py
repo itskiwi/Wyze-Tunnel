@@ -101,7 +101,7 @@ class WyzeCredentials:
 
 
 class WyzeApi:
-    __slots__ = "auth", "user", "creds", "cameras", "_last_pull", "mfa", "login_error"
+    __slots__ = "auth", "user", "creds", "cameras", "_last_pull", "mfa", "login_error", "login_retry_at"
 
     def __init__(self) -> None:
         self.auth: Optional[WyzeCredential] = None
@@ -111,6 +111,7 @@ class WyzeApi:
         self._last_pull: float = 0
         self.mfa: Optional[dict] = None  # pending 2FA for the setup wizard
         self.login_error: str = ""
+        self.login_retry_at: int = 0  # Wyze rate-limit reset, unix time
         if env_bool("FRESH_DATA"):
             self.clear_cache()
 
@@ -141,6 +142,7 @@ class WyzeApi:
     def attempt_login(self, web: bool = False) -> None:
         while self.auth_locked:
             sleep(1)
+        self.login_retry_at = 0
         try:
             auth = self._login()
             if auth.mfa_options and not auth.access_token:
@@ -166,6 +168,7 @@ class WyzeApi:
         except (ValueError, RateLimitError, RequestException) as ex:
             logger.error(f"[API] {ex}")
             self.login_error = str(ex)
+            self.login_retry_at = getattr(ex, "reset_by", 0)
         finally:
             self.mfa = None
             if web and self.login_error:
