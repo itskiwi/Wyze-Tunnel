@@ -57,8 +57,10 @@ def local_ipv4s() -> set[str]:
 
 def on_local_network(ip: str) -> bool:
     """Whether go2rtc's LAN discovery can reach this camera."""
-    # shortcut: assumes /24 subnets (the home-router default); widen if someone's LAN is bigger.
-    return ip.rsplit(".", 1)[0] in {a.rsplit(".", 1)[0] for a in local_ipv4s()}
+    # shortcut: compares /16, since routers use /24 to /22 and Python can't read the mask on Windows.
+    # A second site on the same /16 just tries LAN first, as before, then falls back to webrtc.
+    nets = {a.rsplit(".", 2)[0] for a in local_ipv4s() if not a.startswith(("169.254.", "127."))}
+    return ip.rsplit(".", 2)[0] in nets
 
 
 def source_chain(cam: WyzeCamera) -> list[str]:

@@ -649,7 +649,7 @@ document.addEventListener("DOMContentLoaded", () => {
         videoElement.hls.destroy();
       }
       const hls = new Hls(hlsConfig);
-      const parsedUrl = new URL(videoSrc);
+      const parsedUrl = new URL(videoSrc, window.location.href);
       videoElement.hls = hls;
       if (parsedUrl.username && parsedUrl.password) {
         hls.config.xhrSetup = (xhr) => {
