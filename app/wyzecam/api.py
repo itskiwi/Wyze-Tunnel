@@ -6,13 +6,18 @@ import uuid
 from datetime import datetime
 from hashlib import md5
 from os import getenv
+from functools import partial
 from typing import Any, Optional
 
-from requests import PreparedRequest, Response, get, post
+import requests
+from requests import PreparedRequest, Response
 from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeCredential
 
 IOS_VERSION = getenv("IOS_VERSION")
 APP_VERSION = getenv("APP_VERSION")
+# Without a timeout a dead connection blocks the stream monitor thread forever.
+get = partial(requests.get, timeout=15)
+post = partial(requests.post, timeout=15)
 SCALE_USER_AGENT = f"Wyze/{APP_VERSION} (iPhone; iOS {IOS_VERSION}; Scale/3.00)"
 AUTH_API = "https://auth-prod.api.wyze.com"
 WYZE_API = "https://api.wyzecam.com/app"

@@ -96,14 +96,21 @@ class StreamManager:
         logger.info(f"🎬 {self.total} stream{'s'[:self.total^1]} enabled")
         event = RtspEvent(self.streams)
         events = WyzeEvents(self.streams) if MOTION else None
+        last_health = 0.0
         while not self.stop_flag:
-            event.read(timeout=1)
-            self.snap_all(self.active_streams())
-            if events:
-                events.check_motion()
-            if int(time.time()) % 15 == 0:
-                mtx_health()
-                bridge_status(mqtt)
+            # One bad iteration must not end monitoring, or no stream ever reconnects.
+            try:
+                event.read(timeout=1)
+                self.snap_all(self.active_streams())
+                if events:
+                    events.check_motion()
+                if time.time() - last_health >= 15:
+                    last_health = time.time()
+                    mtx_health()
+                    bridge_status(mqtt)
+            except Exception:
+                logger.exception("[MONITOR] Error in stream monitor loop")
+                time.sleep(1)
         if mqtt:
             mqtt.loop_stop()
         logger.info("Stream monitoring stopped")
