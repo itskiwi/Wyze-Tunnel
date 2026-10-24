@@ -3,11 +3,11 @@
 #   curl -fsSL https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/main/mac/uninstall.sh | bash
 set -euo pipefail
 DIR="$HOME/Library/Application Support/Wyze Tunnel"
-export LIMA_HOME="$DIR/vm"
+export LIMA_HOME="$HOME/.wyze-tunnel"
 PATH="$DIR/lima/bin:$PATH"
 if command -v limactl >/dev/null; then
     limactl start-at-login --enabled=false wyze-tunnel </dev/null >/dev/null 2>&1 || true
     limactl delete -f wyze-tunnel </dev/null || true
 fi
-rm -rf "$DIR"
+rm -rf "$DIR" "$LIMA_HOME"
 echo "Wyze Tunnel has been removed."

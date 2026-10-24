@@ -1,6 +1,6 @@
 # Lima VM for Wyze Tunnel on macOS (needs Lima 1.1+ for `base`).
 # _images/ is the bare Debian image without Lima's default home-folder mount.
-base: template://_images/debian-12
+base: template:_images/debian-12
 cpus: 2
 memory: 2GiB
 disk: 10GiB
