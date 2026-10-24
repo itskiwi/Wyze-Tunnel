@@ -78,7 +78,11 @@ VM
     echo "  Open:  http://localhost:5050  (from other devices: http://$MAC_IP:5050)"
     echo "  Sign in with your Wyze email, password, API ID and API key"
     echo "  (get the API ID and key at https://developer-api-console.wyze.com/#/apikey/view)."
-    echo "  Then log in as \"wbadmin\" with the password: ${WB_PASSWORD:-the one you already use}"
+    if [ -n "$WB_PASSWORD" ]; then
+        echo "  Then log in with username \"wbadmin\" and password: $WB_PASSWORD (change it on the Login page)"
+    else
+        echo "  Then log in with the username and password you already use."
+    fi
     echo "  RTSP:  rtsp://$MAC_IP:8554/<camera-name>"
     echo "  It starts automatically when you log in. Run this command again any time to update."
     [ -n "${WT_NO_OPEN:-}" ] || { sleep 3 && open http://localhost:5050 || true; }

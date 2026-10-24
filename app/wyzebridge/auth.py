@@ -39,6 +39,9 @@ def save_credential(file_name: str, value: str) -> None:
     file_path.write_text(value)
 
 
+# A login chosen in the web UI, as "username\npassword hash". Wins over WB_USERNAME/WB_PASSWORD.
+LOGIN_FILE = Path(TOKEN_PATH, "wb_login")
+
 # Installs from before random credentials already have cached Wyze data; they keep their old ones.
 LEGACY_INSTALL: bool = any(Path(TOKEN_PATH).glob("*.pickle"))
 
@@ -54,6 +57,24 @@ class WbAuth:
     api: str = ""
     _pass: str = get_credential("wb_password")
     _hashed_pass: Optional[str] = None
+
+    @classmethod
+    def load_login(cls) -> None:
+        if LOGIN_FILE.exists():
+            cls.username, _, cls._hashed_pass = LOGIN_FILE.read_text().partition("\n")
+            cls._pass = ""
+
+    @classmethod
+    def set_login(cls, username: str, password: str) -> None:
+        username = username.strip()
+        if not username or ":" in username:
+            raise ValueError("Pick a username without a colon.")
+        if len(password) < 8:
+            raise ValueError("Use at least 8 characters for the password.")
+        hashed = generate_password_hash(password)
+        save_credential(LOGIN_FILE.name, f"{username}\n{hashed}")
+        cls.username, cls._pass, cls._hashed_pass = username, "", hashed
+        logger.info(f"[AUTH] Web login changed to {username=}")
 
     @classmethod
     def hashed_password(cls) -> str:
@@ -72,16 +93,21 @@ class WbAuth:
         cls._update_credentials(email, force)
 
         logger.info(f"[AUTH] WB_USERNAME={cls.username}")
-        logger.info(f"[AUTH] WB_PASSWORD={redact_password(cls._pass)}")
+        if cls._pass:
+            logger.info(f"[AUTH] WB_PASSWORD={redact_password(cls._pass)}")
         logger.info(f"[AUTH] WB_API={redact_password(cls.api)}")
 
     @classmethod
     def _update_credentials(cls, email: str, force: bool = False) -> None:
-        if not (password := get_credential("wb_password")):
-            password = cls._new_credential("wb_password", email.partition("@")[0])
-        if password != cls._pass:
-            cls._pass = password
-            cls._hashed_pass = generate_password_hash(password)
+        if LOGIN_FILE.exists():
+            cls.load_login()
+        else:
+            password = get_credential("wb_password") or cls._new_credential(
+                "wb_password", email.partition("@")[0]
+            )
+            if password != cls._pass:
+                cls._pass = password
+                cls._hashed_pass = generate_password_hash(password)
 
         cls.api = get_credential("wb_api") or cls._new_credential(
             "wb_api", gen_api_key(email)
@@ -90,7 +116,7 @@ class WbAuth:
         if cls._pass == email.partition("@")[0] or cls.api == gen_api_key(email):
             logger.warning(
                 "[AUTH] WB_PASSWORD or WB_API is still derived from your Wyze email. "
-                f"Set your own, or edit {TOKEN_PATH}wb_password and wb_api, then restart."
+                f"Change the password on the Login page, or set your own in {TOKEN_PATH}wb_password and wb_api."
             )
 
     @staticmethod
@@ -103,6 +129,9 @@ class WbAuth:
             logger.warning(f"[AUTH] Generated {file_name.upper()}: {value}")
         save_credential(file_name, value)
         return value
+
+
+WbAuth.load_login()
 
 
 def redact_password(password: Optional[str]):

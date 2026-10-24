@@ -56,3 +56,25 @@ def test_cross_site_detection():
     assert cross_site(Origin="http://evil.example")
     assert not cross_site(Origin="http://localhost")
     assert not cross_site()  # curl, Home Assistant, scripts
+
+
+def test_login_changed_in_ui_wins_and_survives_restart(tmp_path):
+    import pytest
+    from werkzeug.security import check_password_hash
+
+    mod = fresh_auth(tmp_path, legacy=False)
+    api = mod.WbAuth.api
+    for bad in (("", "longenough"), ("a:b", "longenough"), ("me", "short")):
+        with pytest.raises(ValueError):
+            mod.WbAuth.set_login(*bad)
+
+    mod.WbAuth.set_login(" me ", "my new password")
+    assert mod.WbAuth.username == "me"
+    assert check_password_hash(mod.WbAuth.hashed_password(), "my new password")
+    assert "my new password" not in (tmp_path / "wb_login").read_text()
+
+    mod = importlib.reload(auth)  # restart
+    mod.WbAuth.set_email(EMAIL)
+    assert mod.WbAuth.username == "me" and mod.WbAuth._pass == ""
+    assert check_password_hash(mod.WbAuth.hashed_password(), "my new password")
+    assert mod.WbAuth.api == api  # stream login and API key unchanged
