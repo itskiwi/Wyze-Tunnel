@@ -99,7 +99,8 @@ jobs:
           xz -dc images/wyze-tunnel-box-pc.img.xz > box.img
           sudo qemu-system-x86_64 -m 2048 -smp 2 $([ -e /dev/kvm ] && echo -enable-kvm) -display none \
             -drive file=box.img,format=raw -nic user,hostfwd=tcp::8080-:80 -serial file:console.log &
-          timeout 600 sh -c 'until curl -fsS -o /dev/null http://127.0.0.1:8080/login; do sleep 5; done' ||
+          # Runners without KVM boot the image in about 10 minutes, so allow 20.
+          timeout 1200 sh -c 'until curl -fsS -o /dev/null http://127.0.0.1:8080/login; do sleep 5; done' ||
             { tail -50 console.log; exit 1; }
           echo "Web page answers on port 80"; grep -a -A3 "Wyze Tunnel is ready" console.log || true
 
