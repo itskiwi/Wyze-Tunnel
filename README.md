@@ -45,7 +45,13 @@ See the [supported cameras](#supported-cameras) section for additional informati
 
 ## Quick Start
 
-### Mac
+### Windows and Mac app
+
+Download **Wyze Tunnel** for Windows (`.exe`) or Mac (`.dmg`) from the [latest desktop release](https://github.com/itskiwi/Wyze-Tunnel/releases?q=desktop-v), open it and click **Set up**. The Wyze camera library only runs on Linux, so the app quietly sets up a small Linux system for you (WSL2 on Windows 10/11, a background VM on macOS 13+) and keeps it running from the tray or menu bar. On Windows, if WSL isn't turned on yet, it asks for permission once and you restart your PC.
+
+The app isn't code-signed yet: on Mac, right-click it and choose **Open** the first time; on Windows, click **More info**, then **Run anyway**.
+
+### Mac (Terminal)
 
 Open the Terminal app, paste this line and press Return:
 
