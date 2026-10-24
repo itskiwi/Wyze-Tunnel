@@ -25,7 +25,7 @@ def test_thumbnail_retries_401_with_wyze_token(tmp_path, monkeypatch):
 
 
 def test_url_timestamp_reads_both_url_formats():
-    new = "https://prod-sight-safe-auth.wyze.com/resource/80482C293A7F/2026-10-24/80482C293A7F131792835831_1792835832510_13_1_0/b7_-1.jpg?st=a"
+    new = "https://prod-sight-safe-auth.wyze.com/resource/AABBCCDDEEFF/2026-10-24/AABBCCDDEEFF131792835831_1792835832510_13_1_0/b7_-1.jpg?st=a"
     assert wyze_api.url_timestamp(new) == 1792835832
     old = "https://s3.amazonaws.com/bucket/x/MAC_1700000000000_1/y.jpg"
     assert wyze_api.url_timestamp(old) == 1700000000

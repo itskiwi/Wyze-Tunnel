@@ -63,6 +63,15 @@ def create_app():
 
         return wrapped_view
 
+    def owner_only(view):
+        @wraps(view)
+        def wrapped_view(*args, **kwargs):
+            if web_ui.current_guest():
+                return {"error": "Only the owner can do this."}, 403
+            return view(*args, **kwargs)
+
+        return auth_required(wrapped_view)
+
     # One-time token so only the browser that ran the setup wizard sees the web password.
     setup = {"token": ""}
 
@@ -511,7 +520,7 @@ def create_app():
         )
 
     @app.route("/guests", methods=["POST"])
-    @auth_required
+    @owner_only
     def add_guest():
         data = request.get_json(silent=True) or {}
         hours = data.get("hours")
@@ -522,7 +531,7 @@ def create_app():
         return {"name": data["name"].strip(), "password": password}
 
     @app.route("/guests/<string:name>", methods=["DELETE"])
-    @auth_required
+    @owner_only
     def remove_guest(name: str):
         guests.remove_guest(name)
         return {"status": "removed"}
@@ -555,7 +564,7 @@ def create_app():
         return resp
 
     @app.route("/settings/backup", methods=["GET", "POST"])
-    @auth_required
+    @owner_only
     def settings_backup():
         data = backup.export_settings()
         if request.method == "POST":
@@ -580,7 +589,7 @@ def create_app():
         return {"status": "saved", "path": path or None}
 
     @app.route("/settings/restore", methods=["POST"])
-    @auth_required
+    @owner_only
     def settings_restore():
         try:
             restored = backup.import_settings(backup.unlock(request.get_json(silent=True)))
@@ -767,15 +776,6 @@ def create_app():
         finally:
             proc.kill()
             proc.wait()
-
-    def owner_only(view):
-        @wraps(view)
-        def wrapped_view(*args, **kwargs):
-            if web_ui.current_guest():
-                return {"error": "Only the owner can do this."}, 403
-            return view(*args, **kwargs)
-
-        return auth_required(wrapped_view)
 
     app.register_blueprint(api_v1.blueprint(wb, auth_required))
 

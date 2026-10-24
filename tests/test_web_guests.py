@@ -71,6 +71,11 @@ def test_family_login_has_full_access_but_not_owner_login(setup):
     assert b"Signed in as Mom" in page.data and b"apikey" not in page.data
     assert client.get("/cameras", headers=mom).status_code == 200
     assert client.post("/account", json={"username": "x", "password": "longenough"}, headers=mom).status_code == 403
+    # The Login page hides these from family, so the requests behind them say no too.
+    assert client.post("/guests", json={"name": "Eve", "hours": 0}, headers=mom).status_code == 403
+    assert client.delete("/guests/Mom", headers=mom).status_code == 403
+    assert client.get("/settings/backup", headers=mom).status_code == 403
+    assert client.post("/settings/restore", json={"wyze_tunnel_backup": 1, "settings": {}}, headers=mom).status_code == 403
     with mock.patch("wyzebridge.guests.time.time", return_value=2**40):
         assert client.get("/cameras", headers=mom).status_code == 200  # never ends
     client.delete("/guests/Mom", headers=basic("owner", "ownerpass"))
