@@ -1,3 +1,4 @@
+import os
 import signal
 import sys
 from dataclasses import replace
@@ -111,13 +112,14 @@ class WyzeBridge(Thread):
     def clean_up(self, *_):
         """Stop all streams and clean up before shutdown."""
         if self.streams.stop_flag:
-            sys.exit(0)
+            os._exit(0)
         if self.streams:
             self.streams.stop_all()
         self.mtx.stop()
         WyzeStream.go2rtc.stop()
         logger.info("👋 goodbye!")
-        sys.exit(0)
+        # sys.exit would wait on the login, monitor and camera threads, which never end, until systemd kills us 90s later.
+        os._exit(0)
 
 
 if __name__ == "__main__":
