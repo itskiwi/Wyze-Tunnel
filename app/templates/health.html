@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<header class="mb-6 flex flex-wrap items-center gap-3">
+    <a href="./" class="mr-2 flex items-center gap-2 text-lg font-semibold tracking-tight">
+        <span class="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500 text-zinc-950"><i
+                class="fas fa-video text-sm"></i></span>
+        Wyze Tunnel
+    </a>
+    <h1 class="text-lg text-zinc-400">Camera health</h1>
+    <a href="diagnostics" class="btn ml-auto"><i class="fas fa-file-arrow-down"></i>Download diagnostics</a>
+</header>
+
+{% set labels = {-90: "offline", -1: "stopping", 0: "turned off", 1: "idle", 2: "connecting", 3: "streaming"} %}
+<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    {% for uri, cam in cameras.items() %}
+    {% set info = cam.camera_info or {} %}
+    {% set basic = info.basicInfo or {} %}
+    {% set sd = info.sdParm or {} %}
+    {% set wifi = basic.wifidb|int(-1) if basic.wifidb is defined else -1 %}
+    {% set sd_free = (sd.free|int / sd.capacity|int * 100)|round|int if sd.status == "1" and sd.capacity|int > 0 else -1 %}
+    {% set tips = [] %}
+    {% if cam.status == -90 %}{% set _ = tips.append("The camera isn't reachable. Check that it has power and Wi-Fi, then unplug it for 10 seconds.") %}{% endif %}
+    {% if not cam.enabled %}{% set _ = tips.append("This camera is turned off in Wyze Tunnel. Use Controls, then Enable, on the main page.") %}{% endif %}
+    {% if 0 <= wifi < 40 %}{% set _ = tips.append("Weak Wi-Fi (" ~ wifi ~ "%). Move the camera or router closer, or add a mesh point.") %}{% endif %}
+    {% if 0 <= sd_free < 10 %}{% set _ = tips.append("The SD card is almost full. Old clips get overwritten, so check Wyze app settings if you need them.") %}{% endif %}
+    {% if cam.is_battery %}{% set _ = tips.append("Battery camera: it sleeps between events, so it shows as idle most of the time.") %}{% endif %}
+    <article class="rounded-2xl bg-zinc-900 p-5 ring-1 ring-white/5">
+        <div class="flex items-center gap-2">
+            <i class="fas fa-circle text-[8px] {{ 'text-rose-400' if cam.status == -90 else 'text-emerald-400' if cam.status == 3 else 'text-zinc-500' }}"></i>
+            <h2 class="truncate font-semibold">{{ cam.nickname }}</h2>
+            <span class="ml-auto rounded-full bg-white/5 px-2 py-0.5 text-xs text-zinc-400">{{ labels.get(cam.status, "unknown") }}</span>
+        </div>
+        <dl class="mt-3 grid grid-cols-2 gap-y-1 text-sm [&_dt]:text-zinc-400">
+            <dt>Model</dt><dd>{{ cam.model_name }}</dd>
+            <dt>Firmware</dt><dd>{{ cam.firmware_ver or "unknown" }}</dd>
+            {% if cam.ip %}<dt>IP address</dt><dd class="font-mono">{{ cam.ip }}</dd>{% endif %}
+            {% if wifi >= 0 %}<dt>Wi-Fi signal</dt><dd>{{ wifi }}%</dd>{% endif %}
+            {% if sd_free >= 0 %}<dt>SD card free</dt><dd>{{ sd_free }}%</dd>{% endif %}
+            {% if cam.status == 3 and cam.start_time %}<dt>Streaming for</dt><dd>{{ ((now - cam.start_time) / 60)|int }} min</dd>{% endif %}
+        </dl>
+        {% if tips %}
+        <ul class="mt-3 space-y-2 border-t border-white/5 pt-3 text-sm text-amber-200">
+            {% for tip in tips %}<li>{{ tip }}</li>{% endfor %}
+        </ul>
+        {% else %}
+        <p class="mt-3 border-t border-white/5 pt-3 text-sm text-zinc-400">No problems found.</p>
+        {% endif %}
+    </article>
+    {% else %}
+    <p class="text-zinc-400">No cameras found yet.</p>
+    {% endfor %}
+</div>
+<p class="mt-6 text-sm text-zinc-500">Wi-Fi and SD card details appear once a camera has connected at least once.</p>
+{% endblock %}
