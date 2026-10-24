@@ -416,6 +416,12 @@ document.addEventListener("DOMContentLoaded", () => {
         statusLabel.textContent = messageData.status;
         statusLabel.dataset.status = messageData.status;
       }
+      const netMode = card.querySelector(".net-mode");
+      if (netMode) {
+        netMode.textContent = messageData.net_mode || "";
+        netMode.dataset.mode = messageData.net_mode || "";
+        netMode.classList.toggle("is-hidden", !messageData.net_mode);
+      }
       const connected = card.dataset.connected.toLowerCase() === "true";
       updateBatteryLevel(card);
 

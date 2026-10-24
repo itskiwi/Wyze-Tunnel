@@ -161,7 +161,11 @@ class StreamManager:
 
     def get_sse_status(self) -> dict:
         return {
-            uri: {"status": cam.status(), "motion": cam.motion}
+            uri: {
+                "status": cam.status(),
+                "motion": cam.motion,
+                "net_mode": getattr(cam, "net_mode", ""),
+            }
             for uri, cam in self.streams.items()
         }
 
