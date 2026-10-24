@@ -94,6 +94,8 @@ jobs:
           if docker exec os /opt/wyze-tunnel/install.sh --update; then exit 1; fi
           docker exec os grep -q '^VERSION=0.0.1' /opt/wyze-tunnel/app/.env
           docker exec os test -s /opt/wyze-tunnel/.failed-version
+          # A release published while CI runs would be "new" again; mark whatever is latest now as the failed one.
+          docker exec os sh -c 'v=$(curl -fsSL -o /dev/null -w "%{url_effective}" https://github.com/itskiwi/Wyze-Tunnel/releases/latest); echo "${v##*/tag/v}" > /opt/wyze-tunnel/.failed-version'
           docker exec os /opt/wyze-tunnel/install.sh --update > /tmp/skip.log
           grep -q "didn't start here last time" /tmp/skip.log
           docker exec os sh -c 'kill $(cat /tmp/hold.pid)'
