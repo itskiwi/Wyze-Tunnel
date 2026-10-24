@@ -302,6 +302,17 @@ def create_app():
             return {"result": "error"}
         return {"result": "ok", "restart": restart_cmd.split(",")}
 
+    @app.route("/health")
+    @auth_required
+    def health():
+        return render_template(
+            "health.html",
+            cameras=web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"],
+            now=time.time(),
+            api=WbAuth.api,
+            version=config.VERSION,
+        )
+
     @app.route("/alerts", methods=["GET", "POST"])
     @auth_required
     def alerts():
