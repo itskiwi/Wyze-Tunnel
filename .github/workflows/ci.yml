@@ -109,6 +109,14 @@ jobs:
     needs: windows-bundle
     runs-on: windows-latest
     steps:
+      - uses: actions/checkout@v4
+      # Windows PowerShell 5.1, like users have: installs the latest published bundle.
+      - name: install-native.ps1
+        shell: powershell
+        run: |
+          windows\install-native.ps1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if (-not (Test-Path "$env:LOCALAPPDATA\Wyze Tunnel\native\wyze-tunnel\python\python.exe")) { exit 1 }
       - uses: actions/download-artifact@v4
         with:
           name: windows-bundle

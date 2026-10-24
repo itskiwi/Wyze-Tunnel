@@ -20,7 +20,11 @@ if ($Installed -ne $Latest) {
     New-Item -ItemType Directory -Force $Dir | Out-Null
     $Zip = Join-Path $env:TEMP $Bundle
     Invoke-WebRequest "$Release/$Bundle" -OutFile $Zip -UseBasicParsing
-    $Sums = (Invoke-WebRequest "$Release/SHA256SUMS" -UseBasicParsing).Content
+    # Via a file: GitHub serves SHA256SUMS as octet-stream, so PowerShell 5.1's .Content would be bytes.
+    $SumsFile = Join-Path $env:TEMP 'wyze-tunnel-SHA256SUMS'
+    Invoke-WebRequest "$Release/SHA256SUMS" -OutFile $SumsFile -UseBasicParsing
+    $Sums = Get-Content -Raw $SumsFile
+    Remove-Item $SumsFile
     $Want = ($Sums -split "`n" | Where-Object { $_ -match " \*?$([regex]::Escape($Bundle))$" }) -replace ' .*', ''
     if ((Get-FileHash $Zip -Algorithm SHA256).Hash -ne $Want.Trim().ToUpper()) { throw 'The download was damaged (checksum mismatch). Try again.' }
 
