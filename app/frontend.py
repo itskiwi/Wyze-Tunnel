@@ -1,6 +1,7 @@
 import os
 import secrets
 import time
+from threading import Thread
 from functools import wraps
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -17,7 +18,7 @@ from flask import (
 import requests
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import config, web_ui, webhooks
+from wyzebridge import config, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
 from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED
@@ -322,6 +323,34 @@ def create_app():
             api=WbAuth.api,
             version=config.VERSION,
         )
+
+    @app.route("/cameras")
+    @auth_required
+    def cameras_page():
+        return render_template("cameras.html", api=WbAuth.api, version=config.VERSION)
+
+    @app.route("/cameras/visibility", methods=["GET", "POST"])
+    @auth_required
+    def camera_visibility():
+        """Every camera on the account, with which ones are hidden. Hidden cameras don't stream."""
+        cams = wb.api.get_cameras() or []
+        if request.method == "POST":
+            hidden = set((request.get_json(silent=True) or {}).get("hidden") or [])
+            macs = {cam.mac for cam in cams}
+            if not hidden <= macs:
+                return {"error": "Unknown camera."}, 400
+            if cams and hidden == macs:
+                return {"error": "Keep at least one camera showing."}, 400
+            if hidden != wyze_api.load_hidden_cams():
+                wyze_api.save_hidden_cams(hidden)
+                # refresh_cams runs the stream monitor loop, so it can't run in this request.
+                Thread(target=wb.refresh_cams, daemon=True).start()
+            return {"status": "saved"}
+        hidden = wyze_api.load_hidden_cams()
+        return [
+            {"mac": c.mac, "nickname": c.nickname, "model": c.model_name, "hidden": c.mac in hidden}
+            for c in cams
+        ]
 
     @app.route("/alerts", methods=["GET", "POST"])
     @auth_required
