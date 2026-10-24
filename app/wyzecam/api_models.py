@@ -54,6 +54,7 @@ AUDIO_16k = {"WYZE_CAKP2JFUS", "HL_CAM3P", "MODEL_HL_PANP"}
 DOORBELL = {"WYZEDB3", "HL_DB2"}
 
 FLOODLIGHT_CAMS = {"HL_CFL2"}
+SPOTLIGHT_CAMS = {"HL_CAM4"}  # built-in spotlight
 
 VERTICAL_CAMS = {"WYZEDB3", "GW_BE1", "AN_RDB1"}
 # Minimum known firmware version that supports multiple streams
@@ -171,6 +172,10 @@ class WyzeCamera(BaseModel):
     @property
     def is_floodlight(self) -> bool:
         return self.product_model in FLOODLIGHT_CAMS
+
+    @property
+    def is_spotlight(self) -> bool:
+        return self.product_model in SPOTLIGHT_CAMS
 
     @property
     def default_sample_rate(self) -> int:

@@ -349,6 +349,7 @@ class WyzeStream:
             "is_battery": self.camera.is_battery,
             "is_pan_cam": self.camera.is_pan_cam,
             "is_floodlight": self.camera.is_floodlight,
+            "is_spotlight": self.camera.is_spotlight,
             "is_doorbell": self.camera.is_doorbell,
             "webrtc": self.camera.webrtc_support,
             "start_time": self.start_time,
