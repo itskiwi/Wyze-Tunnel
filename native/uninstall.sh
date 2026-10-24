@@ -8,7 +8,7 @@ main() {
     systemctl disable --now wyze-tunnel wyze-tunnel-update.timer wyze-tunnel-update.path 2>/dev/null || true
     rm -f /etc/systemd/system/wyze-tunnel.service /etc/systemd/system/wyze-tunnel-update.{service,timer,path}
     systemctl daemon-reload
-    rm -rf /opt/wyze-tunnel
+    rm -rf /opt/wyze-tunnel /usr/local/bin/wyze-tunnel
     if [ "${1:-}" = "--purge" ]; then
         rm -rf /etc/wyze-tunnel /var/lib/private/wyze-tunnel /var/lib/wyze-tunnel
         echo "Wyze Tunnel and all of its data were removed."

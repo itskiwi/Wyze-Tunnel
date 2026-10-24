@@ -10,4 +10,5 @@ if command -v limactl >/dev/null; then
     limactl delete -f wyze-tunnel </dev/null || true
 fi
 rm -rf "$DIR" "$LIMA_HOME"
+[ ! -f "$HOME/.zprofile" ] || sed -i '' '/Wyze Tunnel\/bin/d' "$HOME/.zprofile"
 echo "Wyze Tunnel has been removed."

@@ -383,6 +383,26 @@ def create_app():
             version=config.VERSION,
         )
 
+    @app.route("/account", methods=["GET", "POST"])
+    @auth_required
+    def account():
+        if request.method == "POST":
+            if not WbAuth.enabled:
+                return {"error": "Login is turned off (WB_AUTH=False)."}, 400
+            data = request.get_json(silent=True) or request.form.to_dict()
+            try:
+                WbAuth.set_login(data.get("username", ""), data.get("password", ""))
+            except ValueError as ex:
+                return {"error": str(ex)}, 400
+            return {"status": "saved"}
+        return render_template(
+            "account.html",
+            username=WbAuth.username,
+            enabled=WbAuth.enabled,
+            api=WbAuth.api,
+            version=config.VERSION,
+        )
+
     @app.route("/alerts/test", methods=["POST"])
     @auth_required
     def alerts_test():

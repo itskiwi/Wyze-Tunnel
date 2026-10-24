@@ -114,10 +114,13 @@ if [ ! -f "$CONF_DIR/wyze-tunnel.env" ]; then
     sed -i "s/^WB_IP=.*/WB_IP=$IP/" "$CONF_DIR/wyze-tunnel.env"
     sed -i "s/^#WB_PASSWORD=.*/WB_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(12))')/" "$CONF_DIR/wyze-tunnel.env"
 fi
-WB_PASSWORD=$(sed -n 's/^WB_PASSWORD=//p' "$CONF_DIR/wyze-tunnel.env")
+# A login changed on the web page replaces the one in the settings file.
+WB_PASSWORD=$([ -f /var/lib/wyze-tunnel/tokens/wb_login ] || sed -n 's/^WB_PASSWORD=//p' "$CONF_DIR/wyze-tunnel.env")
 
 install -m 755 "$SRC/native/uninstall.sh" "$PREFIX/uninstall.sh"
 install -m 755 "$SRC/native/install.sh" "$PREFIX/install.sh"
+# --update runs this script against a downloaded release, which may predate the command.
+[ ! -f "$SRC/native/wyze-tunnel" ] || install -D -m 755 "$SRC/native/wyze-tunnel" /usr/local/bin/wyze-tunnel
 import_docker
 
 # Turn on daily updates for new installs only, so a `systemctl disable` sticks across re-runs.
@@ -130,6 +133,11 @@ systemctl enable --now wyze-tunnel-update.path 2>/dev/null
 [ -z "$NEW_TIMER" ] || systemctl enable --now wyze-tunnel-update.timer 2>/dev/null
 systemctl restart wyze-tunnel
 
+LOGIN="the username and password you already use."
+[ -z "$WB_PASSWORD" ] || LOGIN="username \"wbadmin\" and password:
+     $WB_PASSWORD
+     You can change it on the Login page."
+
 cat <<MSG
 
   Wyze Tunnel is installed and running.
@@ -137,16 +145,21 @@ cat <<MSG
   1. Open http://${IP:-<this-machine-ip>}:5000 in your browser.
   2. Sign in with your Wyze email, password, API ID and API key.
      Get the API ID and key at https://developer-api-console.wyze.com/#/apikey/view
-  3. Then log in to the web page as "wbadmin" with the password:
-     ${WB_PASSWORD:-the one you already use (set WB_PASSWORD in the settings file to change it)}
+  3. Then log in to the web page with $LOGIN
 
   It starts automatically on boot. Logs: journalctl -u wyze-tunnel -f
   Advanced settings: $CONF_DIR/wyze-tunnel.env
   Updates install automatically once a day (turn off: sudo systemctl disable --now wyze-tunnel-update.timer).
+  Trouble? Run: wyze-tunnel help   (restart, logs, repair and more)
   Uninstall: sudo $PREFIX/uninstall.sh
 MSG
 if [ -n "$DOCKER_BRIDGE" ]; then
-    cat <<MSG
+    LOGIN="the username and password you already use."
+[ -z "$WB_PASSWORD" ] || LOGIN="username \"wbadmin\" and password:
+     $WB_PASSWORD
+     You can change it on the Login page."
+
+cat <<MSG
 
   Moved over from your Docker container "$DOCKER_BRIDGE" (sign-in and snapshots).
   It uses the same ports, so stop it and keep it from coming back:

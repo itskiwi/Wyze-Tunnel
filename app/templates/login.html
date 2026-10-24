@@ -102,6 +102,16 @@
                 <dt class="text-zinc-400">Username</dt><dd id="wbUser" class="select-all"></dd>
                 <dt class="text-zinc-400">Password</dt><dd id="wbPass" class="select-all break-all"></dd>
             </dl>
+            <details class="mt-3">
+                <summary class="cursor-pointer text-amber-200">Choose your own instead</summary>
+                <form id="ownLogin" class="mt-3 space-y-2">
+                    <input name="username" required pattern="[^:]+" autocomplete="username" placeholder="Username" class="field">
+                    <input name="password" type="password" required minlength="8" autocomplete="new-password"
+                        placeholder="Password (8 or more characters)" class="field">
+                    <button class="btn px-4 py-2">Use this login</button>
+                    <p id="ownStatus" class="text-sm" role="status"></p>
+                </form>
+            </details>
         </div>
         <a href="."
             class="btn btn-primary w-full py-3 text-base">Open
@@ -186,6 +196,16 @@
             $("#wbLogin").classList.remove("hidden");
             try { apiHeaders = { Authorization: "Basic " + btoa(`${s.username}:${s.password}`) }; } catch { }
         }
+
+        $("#ownLogin").addEventListener("submit", async e => {
+            e.preventDefault();
+            const data = Object.fromEntries(new FormData(e.target));
+            const resp = await fetch("account", { method: "POST", headers: { ...apiHeaders, "Content-Type": "application/json" }, body: JSON.stringify(data) }).catch(() => null);
+            const body = await resp?.json().catch(() => ({})) || {};
+            if (!resp?.ok) { $("#ownStatus").textContent = body.error || "Couldn't save. Try again."; return; }
+            showLogin({ username: data.username.trim(), password: data.password });
+            $("#ownStatus").textContent = "Saved. Use this login from now on.";
+        });
 
         async function listCams() {
             $("#here").textContent = new URL(".", location).href;
