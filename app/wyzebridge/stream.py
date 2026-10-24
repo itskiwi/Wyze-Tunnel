@@ -5,6 +5,7 @@ from subprocess import Popen, TimeoutExpired
 from threading import Thread
 from typing import Any, Callable, Optional, Protocol
 
+from wyzebridge import guests
 from wyzebridge.config import MOTION, MQTT_DISCOVERY, SNAPSHOT_INT, SNAPSHOT_TYPE
 from wyzebridge.ffmpeg import rtsp_snap_cmd
 from wyzebridge.logging import logger
@@ -115,6 +116,7 @@ class StreamManager:
                     mtx_health()
                     bridge_status(mqtt, self.streams)
                     privacy.check(self.streams)
+                    guests.prune()
             except Exception:
                 logger.exception("[MONITOR] Error in stream monitor loop")
                 time.sleep(1)
