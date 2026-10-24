@@ -27,9 +27,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ -n "$TAG" ]; then
             [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Bad version: $TAG" >&2; exit 1; }
+            # A lower number would become GitHub's "latest" and send new installs backwards.
+            LATEST=$(gh release view --json tagName -q .tagName 2>/dev/null || echo v0.0.0)
+            [ "$(printf '%s\n' "${LATEST#v}" "${TAG#v}" | sort -V | tail -1)" = "${TAG#v}" ] && [ "$LATEST" != "$TAG" ] ||
+              { echo "$TAG isn't newer than the latest release ($LATEST). Pick a higher version." >&2; exit 1; }
             export VERSION=${TAG#v}
           fi
           for cpu in x86_64 aarch64 armv7l; do native/build-bundle.sh "$cpu" dist; done
