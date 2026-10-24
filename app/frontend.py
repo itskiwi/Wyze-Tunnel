@@ -445,6 +445,8 @@ def create_app():
         if request.method == "POST":
             if not WbAuth.enabled:
                 return {"error": "Login is turned off (WB_AUTH=False)."}, 400
+            if web_ui.current_guest():
+                return {"error": "Only the owner can change this login."}, 403
             data = request.get_json(silent=True) or request.form.to_dict()
             try:
                 WbAuth.set_login(data.get("username", ""), data.get("password", ""))
@@ -454,6 +456,7 @@ def create_app():
         return render_template(
             "account.html",
             guests=guests.list_guests(),
+            member=web_ui.current_guest(),
             guest_hours=guests.GUEST_HOURS,
             username=WbAuth.username,
             enabled=WbAuth.enabled,
