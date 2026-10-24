@@ -1,4 +1,4 @@
-from os import environ, getenv, makedirs
+from os import environ, getenv, makedirs, path
 from platform import machine
 
 from dotenv import load_dotenv
@@ -26,7 +26,9 @@ CONNECT_TIMEOUT: int = env_bool("CONNECT_TIMEOUT", 20, style="int")
 
 # TODO: change TOKEN_PATH  to /config for all:
 TOKEN_PATH: str = getenv("TOKEN_PATH", "/config/" if HASS_TOKEN else "/tokens/").rstrip("/") + "/"
-IMG_PATH: str = f'/{env_bool("IMG_DIR", "img").strip("/")}/'
+_img_dir = env_bool("IMG_DIR", "img", style="original")
+# A Windows drive path (native desktop app) is used as is; otherwise the old "/<dir>/" form.
+IMG_PATH: str = _img_dir.rstrip("/\\") + "/" if path.splitdrive(_img_dir)[0] else f'/{_img_dir.lower().strip("/")}/'
 
 SNAPSHOT_TYPE, SNAPSHOT_INT = split_int_str(env_bool("SNAPSHOT"), min=15, default=180)
 SNAPSHOT_FORMAT: str = env_bool("SNAPSHOT_FORMAT", style="original").strip("/")

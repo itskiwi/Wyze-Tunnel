@@ -63,3 +63,48 @@ jobs:
       - name: Service logs
         if: always()
         run: docker exec os journalctl -u wyze-tunnel --no-pager -n 100 || docker logs os
+
+  windows-bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: native/build-windows-bundle.sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-bundle
+          path: dist/
+
+  windows:
+    name: install (Windows, native)
+    needs: windows-bundle
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-bundle
+      # Starts the bridge the way the desktop app does (desktop/src-tauri/src/main.rs, start_native).
+      - name: Start the bridge
+        shell: pwsh
+        run: |
+          Expand-Archive wyze-tunnel-windows-x86_64.zip native
+          $n = "$PWD\native\wyze-tunnel"; $d = "$PWD\data"
+          'tokens', 'img', 'record', 'logs' | ForEach-Object { New-Item -ItemType Directory -Force "$d\$_" | Out-Null }
+          Copy-Item "$n\mediamtx.yml" $d
+          $env:FLASK_APP = 'frontend'; $env:PYTHONUNBUFFERED = '1'; $env:PATH = "$n\bin;$env:PATH"
+          $env:TOKEN_PATH = "$d\tokens\"; $env:IMG_DIR = "$d\img\"; $env:RECORD_PATH = "$d\record\%path\%Y-%m-%d_%H-%M-%S-%f"; $env:LOG_PATH = "$d\logs"
+          $env:MEDIAMTX_BIN = "$n\mediamtx.exe"; $env:MEDIAMTX_CONFIG = "$d\mediamtx.yml"
+          $env:GO2RTC_BIN = "$n\go2rtc.exe"; $env:GO2RTC_CONFIG = "$d\go2rtc.yaml"
+          $env:TUTK_LIB = "$n\no-wyze-sdk"; $env:WB_AUTH = 'True'; $env:WB_PASSWORD = 'ci-only-password'
+          Start-Process "$n\python\python.exe" -ArgumentList '-m', 'flask', 'run', '--host=0.0.0.0' -WorkingDirectory "$n\app" `
+            -RedirectStandardOutput bridge.log -RedirectStandardError bridge.err.log
+      - name: Web UI answers
+        shell: pwsh
+        run: |
+          for ($i = 0; $i -lt 40; $i++) {
+            try { Invoke-WebRequest http://127.0.0.1:5000/login -UseBasicParsing | Out-Null; exit 0 } catch { Start-Sleep 3 }
+          }
+          exit 1
+      - name: Bridge logs
+        if: always()
+        shell: pwsh
+        run: Get-Content bridge.log, bridge.err.log -ErrorAction SilentlyContinue

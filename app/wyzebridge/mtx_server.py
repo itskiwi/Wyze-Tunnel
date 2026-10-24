@@ -1,7 +1,7 @@
 import socket
+import sys
 from os import getenv
 from pathlib import Path
-from signal import SIGKILL
 from subprocess import DEVNULL, Popen, run
 from time import sleep
 from typing import Optional
@@ -9,6 +9,7 @@ from typing import Optional
 import yaml
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
+from wyzebridge.mtx_event import event_cmd
 
 # Not MTX_*: MediaMTX treats those env vars as its own config overrides.
 MTX_BIN = getenv("MEDIAMTX_BIN", "/app/mediamtx")
@@ -90,8 +91,7 @@ class MtxServer:
         with MtxInterface() as mtx:
             mtx.set("paths", {})
             for event in {"Read", "Unread", "Ready", "NotReady"}:
-                bash_cmd = f"echo $MTX_PATH,{event}! > /tmp/mtx_event;"
-                mtx.set(f"pathDefaults.runOn{event}", f"bash -c '{bash_cmd}'")
+                mtx.set(f"pathDefaults.runOn{event}", event_cmd(event))
             mtx.set("pathDefaults.runOnDemandStartTimeout", "30s")
             mtx.set("pathDefaults.runOnDemandCloseAfter", "60s")
             mtx.set("pathDefaults.recordPath", record_path)
@@ -127,9 +127,8 @@ class MtxServer:
     def add_path(self, uri: str, on_demand: bool = True):
         with MtxInterface() as mtx:
             if on_demand:
-                cmd = f"bash -c 'echo $MTX_PATH,{{}}! > /tmp/mtx_event'"
-                mtx.set(f"paths.{uri}.runOnDemand", cmd.format("start"))
-                mtx.set(f"paths.{uri}.runOnUnDemand", cmd.format("stop"))
+                mtx.set(f"paths.{uri}.runOnDemand", event_cmd("start"))
+                mtx.set(f"paths.{uri}.runOnUnDemand", event_cmd("stop"))
             else:
                 mtx.set(f"paths.{uri}", {})
 
@@ -159,7 +158,7 @@ class MtxServer:
             return
         if self.sub_process.poll() is None:
             logger.info("[MTX] Stopping MediaMTX...")
-            self.sub_process.send_signal(SIGKILL)
+            self.sub_process.kill()
             self.sub_process.communicate()
         self.sub_process = None
 
@@ -270,7 +269,11 @@ def kill_orphan(binary: str, port: int) -> None:
         return
     name = Path(binary).name
     logger.warning(f"Port {port} is busy. Stopping any leftover {name}...")
-    run(["pkill", "-x", name], stdout=DEVNULL, stderr=DEVNULL, check=False)
+    cmd = ["taskkill", "/F", "/IM", name] if sys.platform == "win32" else ["pkill", "-x", name]
+    try:
+        run(cmd, stdout=DEVNULL, stderr=DEVNULL, check=False)
+    except OSError as ex:
+        logger.error(f"Could not stop {name}: {ex}")
     for _ in range(20):
         if not port_in_use(port):
             return

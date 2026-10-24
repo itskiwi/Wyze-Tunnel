@@ -63,13 +63,13 @@ async function showWhenUp(openBrowser) {
   if (openBrowser) invoke("open_ui");
 }
 
-async function setup() {
+async function setup(full = false) {
   $("go").disabled = true;
   $("log").hidden = false;
   $("log").textContent = "";
   say("Setting up. The first time takes a few minutes, so keep this window open.");
   try {
-    const code = await invoke("install");
+    const code = await invoke("install", { full });
     if (code === 0) { $("log").hidden = true; return showWhenUp(true); }
     if (code === 3) return say("Windows needs to restart to finish turning on WSL. Restart your PC, then open Wyze Tunnel again.");
     if (code === 4) return say("Virtualization is turned off in your PC's BIOS. Restart, open the BIOS (usually Del or F2 while starting), turn on \"SVM Mode\" or \"Intel Virtualization Technology\", save, then open Wyze Tunnel again.");
@@ -86,7 +86,16 @@ listen("log", ({ payload }) => {
   log.textContent += payload.replace(/\x1b\[[0-9;]*m/g, "") + "\n";
   log.scrollTop = log.scrollHeight;
 });
-$("go").onclick = setup;
+$("go").onclick = () => setup();
+// Tray item on Windows: the WSL setup adds controls (PTZ, siren) and cameras go2rtc can't reach.
+listen("full-setup", () => {
+  $("title").textContent = "Full camera support";
+  say("This sets up a small Linux system (WSL) for camera controls and older cameras. Windows asks for permission and may need a restart.");
+  $("login").hidden = $("open").hidden = true;
+  $("go").textContent = "Set up";
+  $("go").hidden = $("go").disabled = false;
+  $("go").onclick = () => setup(true);
+});
 $("open").onclick = () => invoke("open_ui");
 $("copy").onclick = () => navigator.clipboard.writeText($("pw").textContent).then(() => ($("copy").textContent = "Copied"));
 
@@ -94,7 +103,7 @@ invoke("info").then((info) => {
   url = info.url;
   if (info.installed) return showWhenUp(false);
   $("title").textContent = "Welcome to Wyze Tunnel";
-  say("Wyze cameras need a small Linux system to run. Wyze Tunnel will download and set it up for you in the background. You only do this once.");
+  say("Wyze Tunnel will download what it needs and set it up for you. You only do this once.");
   $("go").hidden = false;
 });
 </script>

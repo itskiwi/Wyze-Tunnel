@@ -32,7 +32,8 @@ jobs:
             export VERSION=${TAG#v}
           fi
           for cpu in x86_64 aarch64 armv7l; do native/build-bundle.sh "$cpu" dist; done
-          cd dist && sha256sum *.tar.gz | tee SHA256SUMS
+          native/build-windows-bundle.sh dist  # the Windows desktop app runs this natively
+          cd dist && sha256sum *.tar.gz *.zip | tee SHA256SUMS
 
       - name: Check the x86_64 bundle runs
         run: |
