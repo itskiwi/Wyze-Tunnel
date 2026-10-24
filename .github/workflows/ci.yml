@@ -90,7 +90,7 @@ jobs:
           $n = "$PWD\native\wyze-tunnel"; $d = "$PWD\data"
           'tokens', 'img', 'record', 'logs' | ForEach-Object { New-Item -ItemType Directory -Force "$d\$_" | Out-Null }
           Copy-Item "$n\mediamtx.yml" $d
-          $env:FLASK_APP = 'frontend'; $env:PYTHONUNBUFFERED = '1'; $env:PATH = "$n\bin;$env:PATH"
+          $env:FLASK_APP = 'frontend'; $env:PYTHONUNBUFFERED = '1'; $env:PYTHONUTF8 = '1'; $env:PATH = "$n\bin;$env:PATH"
           $env:TOKEN_PATH = "$d\tokens\"; $env:IMG_DIR = "$d\img\"; $env:RECORD_PATH = "$d\record\%path\%Y-%m-%d_%H-%M-%S-%f"; $env:LOG_PATH = "$d\logs"
           $env:MEDIAMTX_BIN = "$n\mediamtx.exe"; $env:MEDIAMTX_CONFIG = "$d\mediamtx.yml"
           $env:GO2RTC_BIN = "$n\go2rtc.exe"; $env:GO2RTC_CONFIG = "$d\go2rtc.yaml"

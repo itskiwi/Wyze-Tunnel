@@ -152,6 +152,7 @@ mod vm {
             .current_dir(n.join("app"))
             .env("FLASK_APP", "frontend")
             .env("PYTHONUNBUFFERED", "1")
+            .env("PYTHONUTF8", "1") // the logs print emoji; the default cp1252 console encoding crashes on them
             .env("PATH", format!("{};{path}", n.join("bin").display()))
             .env("TOKEN_PATH", d.join("tokens"))
             .env("IMG_DIR", d.join("img"))
