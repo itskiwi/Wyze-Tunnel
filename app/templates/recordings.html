@@ -80,7 +80,7 @@
         share.classList.remove("hidden");
         share.onclick = () => shareClip(cam, clip);
         clips.querySelectorAll(".bg-white\\/10").forEach((b) => b.classList.remove("bg-white/10"));
-        button.classList.add("bg-white/10");
+        button?.classList.add("bg-white/10");
     }
 
     function shareClip(cam, clip) {
@@ -100,12 +100,26 @@
             .finally(() => out.classList.remove("hidden"));
     }
 
-    function load(cam) {
+    // From the home timeline: play from a little before the moment (?t=Unix seconds) if it was recorded.
+    function playMoment(cam, segments, t) {
+        const want = t * 1000 - 10000;
+        for (const seg of segments) {
+            const start = new Date(seg.start).getTime(), end = start + seg.duration * 1000;
+            if (t * 1000 < start || t * 1000 > end) continue;
+            const from = Math.max(start, want);
+            const iso = from === start ? seg.start : new Date(from).toISOString();
+            return play(cam, { start: new Date(from), iso, duration: Math.min(120, (end - from) / 1000) });
+        }
+        document.getElementById("now-playing").textContent = "Nothing was recorded at that moment. Pick a clip instead.";
+    }
+
+    function load(cam, moment) {
         history.replaceState(null, "", `?cam=${encodeURIComponent(cam)}`);
         clips.innerHTML = '<p class="p-3 text-sm text-zinc-500">Loading…</p>';
         fetch(`recordings/${encodeURIComponent(cam)}`)
             .then((resp) => resp.ok ? resp.json() : Promise.reject(new Error(`The bridge answered ${resp.status}`)))
             .then((segments) => {
+                if (moment) playMoment(cam, segments, moment);
                 const list = splitClips(segments);
                 clips.replaceChildren();
                 if (!list.length) {
@@ -143,7 +157,7 @@
 
     if (select && clips) {
         select.addEventListener("change", () => load(select.value));
-        load(select.value);
+        load(select.value, Number(new URLSearchParams(location.search).get("t")) || 0);
     }
 </script>
 {% endblock %}

@@ -26,13 +26,21 @@ def test_health_gives_plain_english_fixes(client):
     assert "SD card is almost full" not in page
 
 
-def test_events_page_lists_recent_motion(client):
+def test_home_timeline_lists_recent_motion(client):
     from wyzebridge.wyze_events import EVENT_LOG
 
-    assert "No motion events yet" in client.get("/events").get_data(as_text=True)
+    assert "Motion is off" in client.get("/").get_data(as_text=True)
     EVENT_LOG.appendleft({"uri": "front", "name": "Front Door", "ts": 1761300000, "img": "https://example.com/a.jpg"})
     try:
-        page = client.get("/events").get_data(as_text=True)
+        page = client.get("/").get_data(as_text=True)
     finally:
         EVENT_LOG.clear()
-    assert "Front Door" in page and "https://example.com/a.jpg" in page and 'datetime="1761300000"' in page
+    assert '"name": "Front Door"' in page and "https://example.com/a.jpg" in page and "1761300000" in page
+    assert ">Weak<" in page and "1 offline" in page  # camera strip and status chips
+    assert client.get("/events").headers["Location"] == "./"
+
+
+def test_grid_links_and_wall_displays_open_live_view(client):
+    assert client.get("/?columns=3&fullscreen").headers["Location"] == "live?columns=3&fullscreen"
+    client.set_cookie("fullscreen", "1")
+    assert client.get("/").headers["Location"] == "live"
