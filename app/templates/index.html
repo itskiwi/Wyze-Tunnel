@@ -197,6 +197,14 @@
                             <button class="button btn" data-cmd="floodlight" data-payload="off">Off</button>
                         </div>
                         {% endif %}
+                        {% if camera.is_doorbell %}
+                        <p class="menu-label"><i class="fas fa-comment"></i> Quick reply</p>
+                        <div class="grid gap-1 p-1">
+                            <button class="button btn justify-start" data-cmd="quick_response" data-payload="1">"Can I help you?"</button>
+                            <button class="button btn justify-start" data-cmd="quick_response" data-payload="2">"Be there shortly"</button>
+                            <button class="button btn justify-start" data-cmd="quick_response" data-payload="3">"Leave the package at the door"</button>
+                        </div>
+                        {% endif %}
                         {% if camera.is_spotlight %}
                         <p class="menu-label"><i class="fas fa-sun"></i> Spotlight</p>
                         <div class="grid grid-cols-2 gap-1 p-1">
