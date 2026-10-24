@@ -156,6 +156,34 @@ jobs:
             Start-Sleep 3
           }
           exit 1
+      # Footage search on Windows: OpenCV loads, the model downloads, ffmpeg's raw frames pipe through, a hit is saved.
+      - name: Detection works in the Windows bundle
+        shell: pwsh
+        run: |
+          $n = "$PWD\bundle\wyze-tunnel"; $d = "$PWD\detect-data"
+          New-Item -ItemType Directory -Force $d | Out-Null; 'paths: {}' | Set-Content "$d\mediamtx.yml"
+          $env:PATH = "$n\bin;$env:PATH"; $env:TOKEN_PATH = "$d\"; $env:IMG_DIR = "$d\img\"; $env:MEDIAMTX_CONFIG = "$d\mediamtx.yml"
+          @'
+          import subprocess
+          import numpy as np
+          from wyzebridge import detect
+          model = detect.load_model()
+          assert model, "the detection model didn't load"
+          watcher = detect.Watcher("ci", "CI")
+          cmd = watcher.ffmpeg_cmd()
+          cmd = cmd[:cmd.index("-i")] + ["-f", "lavfi", "-i", "testsrc=size=1280x720:rate=5", "-t", "1"] + cmd[cmd.index("-map"):]
+          cmd.remove("-rtsp_transport"); cmd.remove("tcp")
+          raw = subprocess.run(cmd, capture_output=True, check=True).stdout
+          frame = np.frombuffer(raw[: detect.WIDTH * detect.HEIGHT * 3], np.uint8).reshape(detect.HEIGHT, detect.WIDTH, 3)
+          print("found", detect.find_objects(model, frame))
+          class Fake:
+              def detect(self, frame, score):
+                  return [15], [0.9], [[0, 0, 1, 1]]
+          watcher.check(Fake(), frame)
+          assert (detect.THUMB_DIR / "1.jpg").exists() and detect.search()[0]["label"] == "person"
+          print("detection ok")
+          '@ | & "$n\python\python.exe" -
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Bridge logs
         if: always()
         shell: pwsh

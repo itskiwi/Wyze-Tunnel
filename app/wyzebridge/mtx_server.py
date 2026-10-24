@@ -126,17 +126,16 @@ class MtxServer:
 
     def add_path(self, uri: str, on_demand: bool = True):
         with MtxInterface() as mtx:
+            mtx.set(f"paths.{uri}", {})  # drop settings from before a restart, like recording that was switched off
             if on_demand:
                 mtx.set(f"paths.{uri}.runOnDemand", event_cmd("start"))
                 mtx.set(f"paths.{uri}.runOnUnDemand", event_cmd("stop"))
-            else:
-                mtx.set(f"paths.{uri}", {})
 
     def add_source(self, uri: str, value: str):
         with MtxInterface() as mtx:
             mtx.set(f"paths.{uri}.source", value)
 
-    def record(self, uri: str):
+    def record(self, uri: str, keep: Optional[str] = None):
         record_path = RECORD_PATH.replace("%path", uri).format(
             cam_name=uri.lower(), CAM_NAME=uri.upper()
         )
@@ -145,6 +144,8 @@ class MtxServer:
         with MtxInterface() as mtx:
             mtx.set(f"paths.{uri}.record", True)
             mtx.set(f"paths.{uri}.recordPath", record_path)
+            if keep:
+                mtx.set(f"paths.{uri}.recordDeleteAfter", keep)
 
     def start(self):
         if self.sub_process:

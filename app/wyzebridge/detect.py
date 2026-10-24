@@ -1,10 +1,12 @@
 """Spot people, cars and animals in recording cameras, or read them from Frigate, so footage can be searched.
 
 Built-in detection runs MobileNet-SSD (MIT, github.com/chuanqi305/MobileNet-SSD) on keyframes only, so it stays
-light enough for a Raspberry Pi. Set FRIGATE_URL to use Frigate's detections instead (its own models, including
-packages with Frigate+).
+light enough for a Raspberry Pi. A Frigate address (settings or FRIGATE_URL) uses Frigate's detections instead (its
+own models, including packages with Frigate+). Cameras and the Frigate address are set on the Search footage page.
 """
 
+import json
+import re
 import sqlite3
 import subprocess
 import time
@@ -20,15 +22,18 @@ try:
 except ImportError:  # no wheels for 32-bit ARM, so built-in detection is off there
     cv2 = None
 
-from wyzebridge.bridge_utils import env_bool
+from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.config import IMG_PATH, TOKEN_PATH
 from wyzebridge.ffmpeg import parse_timedelta
 from wyzebridge.logging import logger
 
 FRIGATE_URL = env_bool("FRIGATE_URL", style="original").rstrip("/")
+SETTINGS_FILE = TOKEN_PATH + "detect.json"
 MIN_SCORE = float(env_bool("DETECT_SCORE") or 0.6)
 COOLDOWN = 60  # one row per camera and label a minute, not one per keyframe
-KEEP = parse_timedelta("DETECT_KEEP") or parse_timedelta("RECORD_KEEP") or timedelta(days=30)
+KEEP = parse_timedelta("DETECT_KEEP") or parse_timedelta("RECORD_KEEP") or timedelta(days=7)
+# Cameras switched on in the web UI record too, so every hit has a clip; keep those clips as long as the hits.
+AUTO_RECORD_KEEP = f"{int(KEEP.total_seconds())}s"
 DB_FILE = TOKEN_PATH + "detections.db"
 THUMB_DIR = Path(IMG_PATH, "detections")
 MODEL_DIR = Path(TOKEN_PATH, "models")
@@ -115,8 +120,40 @@ def labels() -> list[str]:
         return [r[0] for r in con.execute("SELECT label FROM detections GROUP BY label ORDER BY COUNT(*) DESC")]
 
 
+def load_settings() -> dict:
+    """{"cams": [uri, ...], "frigate_url": str} saved from the web UI."""
+    try:
+        with open(SETTINGS_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def save_settings(form: dict, uris: list[str]) -> dict:
+    """Validate and save. Raises ValueError with a message for the user."""
+    url = str(form.get("frigate_url") or "").strip().rstrip("/")
+    if url and not re.fullmatch(r"https?://[^\s/]+(/[^\s]*)?", url):
+        raise ValueError("The Frigate address should look like http://192.168.1.20:5000")
+    cams = form.get("cams") or []
+    if not isinstance(cams, list) or not all(isinstance(c, str) for c in cams):
+        raise ValueError("Pick cameras from the list")
+    settings = {"cams": [c for c in cams if c in uris], "frigate_url": url}
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f)
+    return settings
+
+
+def frigate_url() -> str:
+    return load_settings().get("frigate_url") or FRIGATE_URL
+
+
+def wanted(uri: str) -> bool:
+    """Built-in detection for this camera: switched on in the web UI or with DETECT_<CAM>."""
+    return not frigate_url() and bool(cv2) and (uri in load_settings().get("cams", []) or bool(env_cam("detect", uri)))
+
+
 def enabled() -> bool:
-    return bool(FRIGATE_URL or _watchers)
+    return bool(frigate_url() or any(not w.stop_flag.is_set() for w in _watchers.values()))
 
 
 def load_model():
@@ -229,15 +266,16 @@ class Watcher(Thread):
 
 def watch(uri: str, name: str, on_detect=None) -> None:
     """Start watching a camera once; calling again after a bridge restart is a no-op."""
-    if FRIGATE_URL or (uri in _watchers and _watchers[uri].is_alive()):
+    if uri in _watchers and not _watchers[uri].stop_flag.is_set():
         return
     _watchers[uri] = Watcher(uri, name, on_detect)
     _watchers[uri].start()
 
 
-def stop_all() -> None:
-    for watcher in _watchers.values():
-        watcher.stop()
+def stop_all(keep: frozenset = frozenset()) -> None:
+    for uri, watcher in _watchers.items():
+        if uri not in keep:
+            watcher.stop()
 
 
 def frigate_uri(camera: str, uris: list[str]) -> str:
@@ -250,7 +288,7 @@ def frigate_uri(camera: str, uris: list[str]) -> str:
 
 def poll_frigate(uris: list[str], since: float) -> float:
     """Save Frigate's finished events newer than `since`; returns the newest start time seen."""
-    resp = requests.get(f"{FRIGATE_URL}/api/events", params={"after": since, "limit": 100}, timeout=10)
+    resp = requests.get(f"{frigate_url()}/api/events", params={"after": since, "limit": 100}, timeout=10)
     resp.raise_for_status()
     for event in resp.json():
         score = event.get("top_score") or (event.get("data") or {}).get("top_score") or 0
@@ -267,15 +305,14 @@ def poll_frigate(uris: list[str], since: float) -> float:
 
 
 def start_frigate(get_uris) -> None:
-    if not FRIGATE_URL:
-        return
+    """Poll Frigate whenever an address is set; it can be set or cleared from the web UI at any time."""
 
     def loop():
         since = time.time() - 86400
-        logger.info(f"[DETECT] Reading detections from Frigate at {FRIGATE_URL}")
         while True:
             try:
-                since = poll_frigate(get_uris(), since)
+                if frigate_url():
+                    since = poll_frigate(get_uris(), since)
             except (requests.RequestException, ValueError, KeyError) as ex:
                 logger.warning(f"[DETECT] Couldn't read events from Frigate: {ex}")
             time.sleep(30)
@@ -285,4 +322,4 @@ def start_frigate(get_uris) -> None:
 
 def frigate_media(ext_id: str, kind: str) -> requests.Response:
     """Stream a Frigate event's thumbnail.jpg or clip.mp4."""
-    return requests.get(f"{FRIGATE_URL}/api/events/{ext_id}/{kind}", stream=True, timeout=10)
+    return requests.get(f"{frigate_url()}/api/events/{ext_id}/{kind}", stream=True, timeout=10)

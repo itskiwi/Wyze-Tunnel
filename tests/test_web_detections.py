@@ -21,6 +21,7 @@ def fresh_db(monkeypatch, tmp_path):
 
     monkeypatch.setattr(detect, "DB_FILE", str(tmp_path / "detections.db"))
     monkeypatch.setattr(detect, "THUMB_DIR", tmp_path / "thumbs")
+    monkeypatch.setattr(detect, "SETTINGS_FILE", str(tmp_path / "detect.json"))
     monkeypatch.setattr(web_ui.WbAuth, "api", "key")
 
 
@@ -105,3 +106,29 @@ def test_api_links_local_hits_to_recordings_and_frigate_to_its_clips():
         media = client.get("/detections/2.mp4?api=key")
     assert media.data == b"mp4" and get.call_args.args[0].endswith("/api/events/e1/clip.mp4")
     assert client.get("/detections/1.mp4?api=key").status_code == 404
+
+
+def test_settings_pick_cameras_and_frigate_turns_local_off():
+    with pytest.raises(ValueError):
+        detect.save_settings({"frigate_url": "frigate:5000"}, ["front"])
+    saved = detect.save_settings({"cams": ["front", "gone"]}, ["front", "back"])
+    assert saved == {"cams": ["front"], "frigate_url": ""}
+    assert detect.wanted("front") and not detect.wanted("back")
+    detect.save_settings({"cams": ["front"], "frigate_url": "http://frigate:5000/"}, ["front"])
+    assert detect.frigate_url() == "http://frigate:5000" and not detect.wanted("front") and detect.enabled()
+
+
+def test_settings_page_saves_and_restarts_cameras(monkeypatch):
+    import frontend
+    from wyzebridge import web_ui
+
+    monkeypatch.setattr(web_ui.WbAuth, "enabled", False)
+
+    with mock.patch.object(frontend, "WyzeBridge") as bridge:
+        client = frontend.create_app().test_client()
+    bridge.return_value.streams.streams = {"front": None}
+    assert client.post("/search/settings", json={"frigate_url": "nope"}).status_code == 400
+    with mock.patch.object(frontend, "Thread") as thread:
+        assert client.post("/search/settings", json={"cams": ["front"]}).json == {"status": "saved"}
+    assert thread.call_args.kwargs["target"] == bridge.return_value.restart
+    assert detect.load_settings()["cams"] == ["front"]

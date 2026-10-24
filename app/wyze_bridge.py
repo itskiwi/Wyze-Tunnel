@@ -72,6 +72,7 @@ class WyzeBridge(Thread):
         WyzeStream.user = self.api.get_user()
         WyzeStream.api = self.api
 
+        watching = set()
         for cam in self.api.filtered_cams():
             logger.info(f"[+] Adding {cam.nickname} [{cam.product_model}]")
             if config.SNAPSHOT_TYPE == "api":
@@ -79,7 +80,8 @@ class WyzeBridge(Thread):
             options = WyzeStreamOptions(
                 quality=env_cam("quality", cam.name_uri),
                 audio=bool(env_cam("enable_audio", cam.name_uri)),
-                record=bool(env_cam("record", cam.name_uri)),
+                # Spotting needs a recording to play hits from, so switching it on records the camera too.
+                record=bool(env_cam("record", cam.name_uri)) or detect.wanted(cam.name_uri),
                 reconnect=is_livestream(cam.name_uri) or not config.ON_DEMAND,
             )
             self.add_substream(cam, options)
@@ -87,12 +89,14 @@ class WyzeBridge(Thread):
             stream.rtsp_fw_enabled = self.rtsp_fw_proxy(cam, stream)
 
             self.mtx.add_path(stream.uri, not options.reconnect)
-            if env_cam("record", cam.name_uri):
-                self.mtx.record(stream.uri)
-                # Only recording cameras: they stay connected anyway, and every hit has a clip to play.
-                if env_cam("detect", cam.name_uri):
-                    detect.watch(stream.uri, display_name(cam), on_detect)
+            if options.record:
+                keep = None if env_cam("record", cam.name_uri) else detect.AUTO_RECORD_KEEP
+                self.mtx.record(stream.uri, keep)
+            if detect.wanted(cam.name_uri):
+                detect.watch(stream.uri, display_name(cam), on_detect)
+                watching.add(stream.uri)
             self.streams.add(stream)
+        detect.stop_all(keep=frozenset(watching))  # cameras switched off since the last start
 
     def rtsp_fw_proxy(self, cam: WyzeCamera, stream: WyzeStream) -> bool:
         if rtsp_fw := env_bool("rtsp_fw").lower():
