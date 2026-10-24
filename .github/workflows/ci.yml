@@ -83,7 +83,7 @@ jobs:
         with:
           name: windows-bundle
       # Starts the bridge the way the desktop app does (desktop/src-tauri/src/main.rs, start_native).
-      - name: Start the bridge
+      - name: Start the bridge, web UI answers
         shell: pwsh
         run: |
           Expand-Archive wyze-tunnel-windows-x86_64.zip native
@@ -97,9 +97,7 @@ jobs:
           $env:TUTK_LIB = "$n\no-wyze-sdk"; $env:WB_AUTH = 'True'; $env:WB_PASSWORD = 'ci-only-password'
           Start-Process "$n\python\python.exe" -ArgumentList '-m', 'flask', 'run', '--host=0.0.0.0' -WorkingDirectory "$n\app" `
             -RedirectStandardOutput bridge.log -RedirectStandardError bridge.err.log
-      - name: Web UI answers
-        shell: pwsh
-        run: |
+          # Same step: the Windows runner ends a step's child processes when the step finishes.
           for ($i = 0; $i -lt 40; $i++) {
             curl.exe -fsS -o NUL --max-time 10 http://127.0.0.1:5000/login
             if ($LASTEXITCODE -eq 0) { exit 0 }
