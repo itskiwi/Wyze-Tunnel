@@ -1,0 +1,499 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Wyze Tunnel API",
+    "version": "1",
+    "description": "Make a key on the Connect apps page (gear menu). Send it as `Authorization: Bearer wt_...`. Look-only keys can use GET; look-and-control keys can also send commands. Guide: https://github.com/itskiwi/Wyze-Tunnel/blob/main/docs/apps-and-api.md"
+  },
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
+  "security": [
+    {
+      "key": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "key": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Camera": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "front-door"
+          },
+          "name": {
+            "type": "string",
+            "example": "Front Door"
+          },
+          "model": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "connected",
+              "connecting",
+              "stopped",
+              "disabled",
+              "stopping",
+              "failed",
+              "offline",
+              "unknown"
+            ]
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "streaming": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "motion": {
+            "type": "boolean",
+            "description": "Motion in the last 20 seconds"
+          },
+          "last_motion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Unix time of the last motion event"
+          },
+          "recording": {
+            "type": "boolean"
+          },
+          "features": {
+            "type": "object",
+            "properties": {
+              "doorbell": {
+                "type": "boolean"
+              },
+              "pan_cam": {
+                "type": "boolean"
+              },
+              "floodlight": {
+                "type": "boolean"
+              },
+              "spotlight": {
+                "type": "boolean"
+              },
+              "battery": {
+                "type": "boolean"
+              }
+            }
+          },
+          "streams": {
+            "type": "object",
+            "properties": {
+              "rtsp": {
+                "type": "string",
+                "description": "Includes a read-only stream login"
+              },
+              "hls": {
+                "type": "string"
+              },
+              "webrtc": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "stream_login": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "username": {
+                "type": "string"
+              },
+              "password": {
+                "type": "string"
+              }
+            }
+          },
+          "snapshot": {
+            "type": "string",
+            "example": "api/v1/cameras/front-door/snapshot"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Check your key",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string",
+                      "enum": [
+                        "view",
+                        "control"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cameras": {
+      "get": {
+        "summary": "List cameras",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Camera"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cameras/{camera}": {
+      "get": {
+        "summary": "One camera",
+        "parameters": [
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Camera id from /cameras"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Camera"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cameras/{camera}/snapshot": {
+      "get": {
+        "summary": "A picture from the camera",
+        "description": "Fresh when the camera is streaming, else the latest from the Wyze cloud.",
+        "parameters": [
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Camera id from /cameras"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JPEG",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "404": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cameras/{camera}/commands/{command}": {
+      "post": {
+        "summary": "Send a command (look-and-control keys)",
+        "description": "Commands include state (start, stop, enable, disable), night_vision, irled, status_light, spotlight, floodlight, alarm, rotary_action (left, right, up, down), motion_detection, quality and bitrate. Leave value out to read the current setting.",
+        "parameters": [
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Camera id from /cameras"
+          },
+          {
+            "name": "command",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "night_vision"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "description": "Like on, off or left"
+                  }
+                }
+              },
+              "example": {
+                "value": "on"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The camera's answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "summary": "Recent motion events, newest first",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "uri": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "ts": {
+                        "type": "integer"
+                      },
+                      "img": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Bridge health and camera problems",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "degraded"
+                      ]
+                    },
+                    "cameras": {
+                      "type": "integer"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "camera": {
+                            "type": "string"
+                          },
+                          "issue": {
+                            "type": "string",
+                            "enum": [
+                              "offline",
+                              "repeated_failures",
+                              "weak_wifi",
+                              "sd_card_full",
+                              "using_relay"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "summary": "MCP server (Streamable HTTP, JSON replies) for AI apps",
+        "description": "Tools: list_cameras, get_snapshot, recent_events, bridge_health, and send_command for look-and-control keys.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "JSON-RPC 2.0 message"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "JSON-RPC reply"
+          },
+          "202": {
+            "description": "Notification accepted"
+          }
+        }
+      }
+    }
+  }
+}
