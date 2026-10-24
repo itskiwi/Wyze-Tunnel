@@ -7,6 +7,17 @@
 
 <form id="alerts" class="mx-auto max-w-xl space-y-6">
     <section class="surface p-5">
+        <h2 class="font-semibold">Who's home?</h2>
+        <div id="mode" class="mt-3 grid grid-cols-3 gap-1 rounded-full bg-zinc-800 p-1" role="radiogroup" aria-label="Alert mode">
+            {% for value, label in [("home", "Home"), ("schedule", "Normal"), ("away", "Away")] %}
+            <button type="button" role="radio" data-mode="{{ value }}" aria-checked="{{ 'true' if (settings.mode or 'schedule') == value else 'false' }}"
+                class="rounded-full px-3 py-1.5 text-sm text-zinc-300 aria-checked:bg-zinc-950 aria-checked:text-accent">{{ label }}</button>
+            {% endfor %}
+        </div>
+        <p id="modeHint" class="mt-2 text-sm text-zinc-400"></p>
+    </section>
+
+    <section class="surface p-5">
         <h2 class="font-semibold">1. Get the free ntfy app</h2>
         <p class="mt-1 text-sm text-zinc-400">Alerts go to your phone through ntfy, a free notification app. No account needed.</p>
         <div class="mt-3 flex flex-wrap gap-2">
@@ -72,6 +83,24 @@
         return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
             .then((resp) => resp.json().then((data) => resp.ok ? data : Promise.reject(new Error(data.error || resp.statusText))));
     }
+    const hints = {
+        home: "Motion alerts are paused. You still hear if a camera goes offline.",
+        schedule: "Motion alerts follow your quiet hours below.",
+        away: "Every motion alert comes through, even during quiet hours. Use it when you travel.",
+    };
+    const modes = [...document.querySelectorAll("#mode [data-mode]")];
+    function showMode() {
+        const on = modes.find((b) => b.getAttribute("aria-checked") === "true");
+        document.getElementById("modeHint").textContent = hints[on.dataset.mode];
+    }
+    modes.forEach((button) => button.addEventListener("click", () => {
+        post("alerts/mode", { mode: button.dataset.mode }).then(() => {
+            modes.forEach((b) => b.setAttribute("aria-checked", b === button));
+            showMode();
+        }).catch((err) => show(false, err.message));
+    }));
+    showMode();
+
     function save() {
         const data = Object.fromEntries(new FormData(form));
         return post("alerts", data).then(() => show(true, "Saved."));

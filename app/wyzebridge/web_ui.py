@@ -16,7 +16,7 @@ from wyzebridge.stream import Stream, StreamManager
 
 auth = HTTPBasicAuth()
 
-API_ENDPOINTS = "/api", "/img", "/snapshot", "/thumb", "/photo", "/recordings"
+API_ENDPOINTS = "/api", "/img", "/snapshot", "/thumb", "/photo", "/recordings", "/metrics.prom"
 
 
 @auth.verify_password
@@ -151,6 +151,51 @@ def all_cams(streams: StreamManager, total: int) -> dict:
         "enabled": streams.active,
         "cameras": format_streams(streams.get_all_cam_info()),
     }
+
+
+def _int(value, default: int = -1) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def bridge_issues(cams: dict[str, dict]) -> list[dict]:
+    """Problems worth fixing, by camera. Feeds /api/health and the Health page."""
+    issues = []
+    for uri, cam in cams.items():
+        info = cam.get("camera_info") or {}
+        wifi = _int((info.get("basicInfo") or {}).get("wifidb"))
+        sd = info.get("sdParm") or {}
+        checks = {
+            "offline": cam.get("status") == -90,
+            "repeated_failures": cam.get("chronic"),
+            "weak_wifi": 0 <= wifi < 40,
+            "sd_card_full": sd.get("status") == "1" and _int(sd.get("capacity")) > 0
+            and _int(sd.get("free")) / _int(sd.get("capacity")) < 0.1,
+            "using_relay": cam.get("net_mode") == "relay",
+        }
+        issues += [{"camera": uri, "issue": issue} for issue, hit in checks.items() if hit]
+    return issues
+
+
+def prometheus_metrics(cams: dict[str, dict], api_stats: dict) -> str:
+    lines = [f"wyze_tunnel_cameras {len(cams)}"]
+    for uri, cam in cams.items():
+        label = f'{{camera="{uri}"}}'
+        lines += [
+            f"wyze_camera_streaming{label} {int(cam.get('status') == 3)}",
+            f"wyze_camera_offline{label} {int(cam.get('status') == -90)}",
+            f"wyze_camera_enabled{label} {int(bool(cam.get('enabled')))}",
+            f"wyze_camera_motion{label} {int(bool(cam.get('motion')))}",
+        ]
+        if (wifi := _int(((cam.get("camera_info") or {}).get("basicInfo") or {}).get("wifidb"))) >= 0:
+            lines.append(f"wyze_camera_wifi_percent{label} {wifi}")
+    for result in ("ok", "error", "rate_limited"):
+        lines.append(f'wyze_api_calls_total{{result="{result}"}} {api_stats.get(result, 0)}')
+    if "rate_limit_remaining" in api_stats:
+        lines.append(f"wyze_api_rate_limit_remaining {api_stats['rate_limit_remaining']}")
+    return "\n".join(lines) + "\n"
 
 
 def boa_snapshot(stream: Stream) -> Optional[dict]:

@@ -3,6 +3,7 @@ import json
 import time
 import urllib.parse
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from hashlib import md5
 from os import getenv
@@ -308,8 +309,26 @@ def get_cam_webrtc(auth_info: WyzeCredential, mac_id: str) -> dict:
     }
 
 
+# Wyze API call results for /metrics.prom: ok, error, rate_limited, plus the last rate limit left.
+API_STATS: Counter = Counter()
+
+
 def validate_resp(resp: Response) -> dict:
-    if int(resp.headers.get("X-RateLimit-Remaining", 100)) <= 10:
+    try:
+        data = _validate_resp(resp)
+    except RateLimitError:
+        API_STATS["rate_limited"] += 1
+        raise
+    except Exception:
+        API_STATS["error"] += 1
+        raise
+    API_STATS["ok"] += 1
+    return data
+
+
+def _validate_resp(resp: Response) -> dict:
+    API_STATS["rate_limit_remaining"] = int(resp.headers.get("X-RateLimit-Remaining", 100))
+    if API_STATS["rate_limit_remaining"] <= 10:
         raise RateLimitError(resp)
 
     resp_json = resp.json()

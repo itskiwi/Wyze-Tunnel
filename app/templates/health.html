@@ -6,6 +6,12 @@
     <a href="diagnostics" class="btn ml-auto"><i class="fas fa-file-arrow-down"></i>Download diagnostics</a>
 </header>
 
+{% if cameras %}
+<p class="mb-4 text-sm {{ 'text-amber-200' if issues else 'text-emerald-300' }}" role="status">
+    {% set affected = issues|map(attribute='camera')|unique|list|length %}
+    {{ affected ~ " of " ~ cameras|length ~ " cameras need attention." if issues else "All cameras look healthy." }}
+</p>
+{% endif %}
 {% set labels = {-90: "offline", -1: "stopping", 0: "turned off", 1: "idle", 2: "connecting", 3: "streaming"} %}
 <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
     {% for uri, cam in cameras.items() %}

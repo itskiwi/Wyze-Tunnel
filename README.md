@@ -299,6 +299,7 @@ http://localhost:5000/
 
 - **Alerts**: phone notifications through the free [ntfy](https://ntfy.sh) app when there's motion (with a snapshot) or a camera goes offline, plus quiet hours. Set them up in the web UI under Alerts. Motion alerts use Wyze's cloud motion events. `MOTION_WEBHOOKS` and `OFFLINE_WEBHOOKS`, if you set them, take priority.
 - **Recordings**: play and download clips for cameras with recording turned on.
+- **Monitoring**: `/api/health` returns `ok` or `degraded` with a list of issues (offline, weak Wi-Fi, full SD card, relay, repeated failures). `/metrics.prom` serves Prometheus metrics per camera plus Wyze API call counts. Both accept the API key like other `/api` endpoints.
 - **Install as an app**: use "Add to Home Screen" on your phone. `f` opens the full-screen camera wall, `r` refreshes previews and `1`-`6` sets the number of columns.
 
 See also: 

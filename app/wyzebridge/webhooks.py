@@ -10,6 +10,8 @@ from wyzebridge.logging import logger
 
 ALERTS_FILE = TOKEN_PATH + "alerts.json"
 ALERT_EVENTS = ("motion", "offline")
+# home: no motion alerts. away (holiday): motion alerts even in quiet hours. schedule: quiet hours apply.
+ALERT_MODES = ("schedule", "home", "away")
 
 
 def load_alerts() -> dict:
@@ -40,11 +42,23 @@ def save_alerts(form: dict) -> dict:
         raise ValueError("Set both a start and an end for quiet hours, or neither")
     settings = {"server": server, "topic": topic, **quiet}
     settings |= {event: bool(form.get(event)) for event in ALERT_EVENTS}
+    if "mode" in ALERTS:
+        settings["mode"] = ALERTS["mode"]
+    _write_alerts(settings)
+    return settings
+
+
+def set_alert_mode(mode: str) -> None:
+    if mode not in ALERT_MODES:
+        raise ValueError(f"Use one of: {', '.join(ALERT_MODES)}")
+    _write_alerts(ALERTS | {"mode": mode})
+
+
+def _write_alerts(settings: dict) -> None:
     with open(ALERTS_FILE, "w") as f:
         json.dump(settings, f)
     ALERTS.clear()
     ALERTS.update(settings)
-    return settings
 
 
 ALERTS: dict = load_alerts()
@@ -68,7 +82,8 @@ def in_quiet_hours(settings: dict, now: Optional[time] = None) -> bool:
 def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None) -> bool:
     url = env_cam(f"{event}_webhooks", camera, style="original")
     if not url:
-        if event == "motion" and in_quiet_hours(ALERTS):
+        mode = ALERTS.get("mode", "schedule")
+        if event == "motion" and (mode == "home" or (mode == "schedule" and in_quiet_hours(ALERTS))):
             return False
         url = alert_url(event)
     if not url:
@@ -85,7 +100,7 @@ def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None) -
 
     logger.debug(f"[WEBHOOKS] 📲 Triggering {event.upper()} event for {camera}")
     try:
-        resp = requests.post(url, headers=header, data=msg.encode(), verify=False, timeout=10)
+        resp = requests.post(url, headers=header, data=msg.encode(), timeout=10)
         resp.raise_for_status()
         return True
     except Exception as ex:

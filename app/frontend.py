@@ -25,6 +25,7 @@ from wyzebridge.ffmpeg import probe_stream, stream_warnings
 from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED
 from wyzebridge.web_ui import url_for
 from wyzebridge.wyze_events import EVENT_LOG
+from wyzecam.api import API_STATS
 
 
 def create_app():
@@ -180,6 +181,19 @@ def create_app():
     def api_all_cams():
         return web_ui.all_cams(wb.streams, wb.api.total_cams)
 
+    @app.route("/api/health")
+    @auth_required
+    def api_health():
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        issues = web_ui.bridge_issues(cams)
+        return {"status": "degraded" if issues else "ok", "cameras": len(cams), "issues": issues}
+
+    @app.route("/metrics.prom")
+    @auth_required
+    def metrics_prom():
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return Response(web_ui.prometheus_metrics(cams, API_STATS), mimetype="text/plain; version=0.0.4")
+
     @app.route("/api/<string:cam_name>")
     @auth_required
     def api_cam(cam_name: str):
@@ -327,9 +341,11 @@ def create_app():
     @app.route("/health")
     @auth_required
     def health():
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
         return render_template(
             "health.html",
-            cameras=web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"],
+            cameras=cams,
+            issues=web_ui.bridge_issues(cams),
             now=time.time(),
             api=WbAuth.api,
             version=config.VERSION,
@@ -370,9 +386,22 @@ def create_app():
             return {"status": "saved"}
         hidden = wyze_api.load_hidden_cams()
         return [
-            {"mac": c.mac, "nickname": c.nickname, "model": c.model_name, "hidden": c.mac in hidden}
+            {"mac": c.mac, "nickname": wyze_api.display_name(c), "model": c.model_name, "hidden": c.mac in hidden}
             for c in cams
         ]
+
+    @app.route("/cameras/name", methods=["POST"])
+    @auth_required
+    def camera_name():
+        """Rename a camera in Wyze Tunnel. An empty name goes back to the name from the Wyze app."""
+        data = request.get_json(silent=True) or {}
+        mac, name = data.get("mac"), str(data.get("name") or "").strip()
+        if mac not in {cam.mac for cam in wb.api.get_cameras() or []}:
+            return {"error": "Unknown camera."}, 400
+        if len(name) > 64:
+            return {"error": "Keep the name under 64 characters."}, 400
+        wyze_api.save_cam_name(mac, name)
+        return {"status": "saved"}
 
     @app.route("/alerts", methods=["GET", "POST"])
     @auth_required
@@ -412,6 +441,15 @@ def create_app():
             api=WbAuth.api,
             version=config.VERSION,
         )
+
+    @app.route("/alerts/mode", methods=["POST"])
+    @auth_required
+    def alerts_mode():
+        try:
+            webhooks.set_alert_mode(str((request.get_json(silent=True) or {}).get("mode")))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"status": "saved"}
 
     @app.route("/alerts/test", methods=["POST"])
     @auth_required
