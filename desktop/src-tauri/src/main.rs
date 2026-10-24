@@ -89,7 +89,8 @@ mod vm {
 
     pub fn installed() -> bool {
         cmd("wsl.exe").args(["-l", "-q"]).output()
-            .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).lines().any(|l| l.trim() == DISTRO))
+            // NUL stripping: older inbox wsl.exe ignores WSL_UTF8 and prints UTF-16.
+            .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).replace('\0', "").lines().any(|l| l.trim() == DISTRO))
     }
     pub fn install_cmd(res: &Path) -> Command {
         let mut c = cmd("powershell.exe");
