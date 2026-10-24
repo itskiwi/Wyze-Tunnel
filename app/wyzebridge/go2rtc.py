@@ -57,8 +57,8 @@ def source_chain(cam: WyzeCamera) -> list[str]:
     if go2rtc_available():
         if cam.ip and cam.dtls and not cam.parent_dtls and not cam.is_gwell:
             chain.append("lan")
-        # shortcut: Gwell cameras (OG, Doorbell Pro) use a different cloud WebRTC; opt in with SOURCE_<CAM>=webrtc.
-        if cam.webrtc_support and not cam.is_gwell:
+        # shortcut: unverified whether Gwell cameras (OG) answer Wyze's Kinesis WebRTC; if not, port the Gwell P2P client.
+        if cam.webrtc_support:
             chain.append("webrtc")
     return chain
 

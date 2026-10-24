@@ -22,7 +22,8 @@ def test_auto_chain(both, monkeypatch):
     assert go2rtc.source_chain(cam(dtls=0)) == ["tutk", "webrtc"]  # old firmware: no go2rtc LAN
     assert go2rtc.source_chain(cam(ip=None)) == ["tutk", "webrtc"]
     assert go2rtc.source_chain(cam(model="WYZEDB3")) == ["tutk", "lan"]  # no WebRTC on this model
-    assert go2rtc.source_chain(cam(model="GW_GC1")) == []  # Gwell: opt in only
+    assert go2rtc.source_chain(cam(model="GW_GC1")) == ["webrtc"]  # Gwell (OG): cloud WebRTC only
+    assert go2rtc.source_chain(cam(model="GW_BE1")) == []  # Doorbell Pro: no WebRTC
     monkeypatch.setattr(go2rtc, "tutk_available", lambda: False)
     assert go2rtc.source_chain(cam()) == ["lan", "webrtc"]
     monkeypatch.setattr(go2rtc, "go2rtc_available", lambda: False)
