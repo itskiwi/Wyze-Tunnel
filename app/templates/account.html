@@ -99,6 +99,17 @@
             <input id="restore" type="file" accept="application/json,.json" class="sr-only" /></label>
     </div>
     <p id="restoreStatus" class="mt-2 text-sm" role="status"></p>
+    <form id="autoBackup" class="mt-4 border-t border-zinc-800 pt-3">
+        <h3 class="text-sm font-semibold">Back up every day</h3>
+        <p class="mt-1 text-sm text-zinc-400">Saves a locked copy once a day to a folder on this computer, such as a USB
+            drive, a NAS share or a synced cloud folder. The last 7 days are kept. Leave the folder empty to stop.</p>
+        <label class="mt-2 block text-sm">Folder
+            <input name="folder" value="{{ auto_folder }}" placeholder="/media/backups" autocomplete="off" class="field mt-1 w-full" /></label>
+        <label class="mt-2 block text-sm">Passphrase{% if auto_folder %} (leave empty to keep the current one){% endif %}
+            <input name="passphrase" type="password" autocomplete="new-password" class="field mt-1 w-full" /></label>
+        <button type="submit" class="btn mt-3"><i class="fas fa-floppy-disk"></i>Save and back up now</button>
+        <p id="autoStatus" class="mt-2 text-sm" role="status"></p>
+    </form>
 </section>
 {% endblock %}
 
@@ -128,6 +139,21 @@
                 say(true, "Locked backup saved. Keep the passphrase somewhere safe.");
             })
             .catch((err) => say(false, err.message));
+    });
+
+    const autoForm = document.getElementById("autoBackup");
+    autoForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const out = document.getElementById("autoStatus");
+        const data = { folder: autoForm.folder.value, passphrase: autoForm.passphrase.value };
+        fetch("settings/auto-backup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })
+            .then((resp) => resp.json().then((body) => resp.ok ? body : Promise.reject(new Error(body.error || resp.statusText))))
+            .then((body) => {
+                out.className = "mt-2 text-sm text-emerald-300";
+                out.textContent = body.path ? `Saved ${body.path}. The next copy is in a day.` : "Daily backups are off.";
+                autoForm.passphrase.value = "";
+            })
+            .catch((err) => { out.className = "mt-2 text-sm text-rose-300"; out.textContent = err.message; });
     });
 
     document.getElementById("restore").addEventListener("change", async (e) => {

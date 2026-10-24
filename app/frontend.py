@@ -462,6 +462,7 @@ def create_app():
         return render_template(
             "account.html",
             guests=guests.list_guests(),
+            auto_folder=backup.load_auto().get("folder", ""),
             member=web_ui.current_guest(),
             guest_hours=guests.GUEST_HOURS,
             username=WbAuth.username,
@@ -526,6 +527,18 @@ def create_app():
         resp = make_response(data)
         resp.headers["Content-Disposition"] = "attachment; filename=wyze-tunnel-settings.json"
         return resp
+
+    @app.route("/settings/auto-backup", methods=["POST"])
+    @auth_required
+    def settings_auto_backup():
+        if web_ui.current_guest():
+            return {"error": "Only the owner can choose where backups are saved."}, 403
+        try:
+            settings = backup.save_auto(request.get_json(silent=True) or {})
+            path = settings and backup.auto_backup(force=True)
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"status": "saved", "path": path or None}
 
     @app.route("/settings/restore", methods=["POST"])
     @auth_required
