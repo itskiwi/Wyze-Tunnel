@@ -239,12 +239,12 @@ fn main() {
                         std::thread::spawn(vm::stop);
                     }
                     "update" => {
-                        // Reinstalling updates the Linux side; a newer app goes to the releases page.
+                        // A newer app goes to the releases page; the Linux side updates itself
+                        // (wyze-tunnel-update runs daily), this just runs it now.
                         if let Some(tag) = newer_release() {
                             vm::open_url(&format!("{RELEASES}/tag/{tag}"));
-                        } else if let Ok(res) = app.path().resource_dir() {
-                            let app = app.clone();
-                            std::thread::spawn(move || run_installer(&app, &res));
+                        } else {
+                            std::thread::spawn(|| vm::as_root(&["systemctl", "start", "--no-block", "wyze-tunnel-update"]).output());
                         }
                     }
                     "quit" => app.exit(0),
