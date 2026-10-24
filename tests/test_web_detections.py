@@ -132,3 +132,19 @@ def test_settings_page_saves_and_restarts_cameras(monkeypatch):
         assert client.post("/search/settings", json={"cams": ["front"]}).json == {"status": "saved"}
     assert thread.call_args.kwargs["target"] == bridge.return_value.restart
     assert detect.load_settings()["cams"] == ["front"]
+
+
+def test_old_cpu_turns_detection_off():
+    """NumPy raises RuntimeError on CPUs older than x86-64-v2; the bridge must still start (Tunnel Box under QEMU)."""
+    import subprocess
+
+    code = (
+        "import sys\n"
+        "class Old:\n"
+        "    def find_spec(self, name, *a):\n"
+        "        if name.split('.')[0] in ('cv2', 'numpy'): raise RuntimeError('X86_V2')\n"
+        "sys.meta_path.insert(0, Old())\n"
+        "from wyzebridge import detect\n"
+        "assert detect.cv2 is None\n"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True, cwd=Path(__file__).parents[1] / "app")
