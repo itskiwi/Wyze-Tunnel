@@ -26,6 +26,7 @@ from wyzebridge.web_ui import url_for
 
 def create_app():
     app = Flask(__name__)
+    app.jinja_env.globals["can_update"] = bool(os.getenv("WT_UPDATE_FILE"))
     wb = WyzeBridge()
     try:
         wb.start()
@@ -276,6 +277,15 @@ def create_app():
             f"attachment; filename=wyze-tunnel-diagnostics-{time.strftime('%Y%m%d-%H%M%S')}.txt"
         )
         return resp
+
+    @app.route("/update", methods=["POST"])
+    @auth_required
+    def self_update():
+        """Native installs: ask wyze-tunnel-update.path to install the latest release."""
+        if not (flag := os.getenv("WT_UPDATE_FILE")):
+            return {"result": "error", "error": "This install can't update itself"}, 400
+        Path(flag).touch()
+        return {"result": "ok"}
 
     @app.route("/restart/<string:restart_cmd>")
     @auth_required

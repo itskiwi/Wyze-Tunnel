@@ -5,8 +5,8 @@ set -euo pipefail
 
 main() {
     [ "$(id -u)" -eq 0 ] || { echo "Please run as root, e.g. with sudo." >&2; exit 1; }
-    systemctl disable --now wyze-tunnel 2>/dev/null || true
-    rm -f /etc/systemd/system/wyze-tunnel.service
+    systemctl disable --now wyze-tunnel wyze-tunnel-update.timer wyze-tunnel-update.path 2>/dev/null || true
+    rm -f /etc/systemd/system/wyze-tunnel.service /etc/systemd/system/wyze-tunnel-update.{service,timer,path}
     systemctl daemon-reload
     rm -rf /opt/wyze-tunnel
     if [ "${1:-}" = "--purge" ]; then

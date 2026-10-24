@@ -1,0 +1,9 @@
+[Unit]
+Description=Update Wyze Tunnel when the web UI asks
+
+[Path]
+# Written by the service (DynamicUser state dir) when someone presses "Update now".
+PathExists=/var/lib/private/wyze-tunnel/update-now
+
+[Install]
+WantedBy=multi-user.target

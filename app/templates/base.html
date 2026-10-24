@@ -33,7 +33,8 @@
             <a class="font-semibold text-zinc-300 hover:text-white" href="https://github.com/itskiwi/Wyze-Tunnel">
                 <i class="fa-brands fa-github"></i> Wyze Tunnel</a>
             <span>v{{ version }}</span>
-            <button id="checkUpdate" class="hover:text-white" title="Check for updates" data-version="{{version}}">
+            <button id="checkUpdate" class="hover:text-white" title="Check for updates" data-version="{{version}}"
+                data-can-update="{{ 1 if can_update else '' }}">
                 <i class="fas fa-arrows-rotate"></i></button>
         </p>
         <p class="mt-1 text-xs">Based on <a class="hover:text-zinc-300 underline underline-offset-2"
