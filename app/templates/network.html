@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Network</h1>
+</header>
+
+{% set age = ((now - keys_saved) / 3600)|int ~ " hours ago" if keys_saved else "" %}
+<p class="mb-4 text-sm {{ 'text-amber-200' if cloud_down else 'text-zinc-400' }}" role="status">
+    {% if cloud_down %}Wyze's cloud can't be reached right now. {{ "Cameras on your network keep streaming with the keys saved " ~ age ~ "." if keys_saved else "No local keys were saved, so cameras can't be reached until Wyze is back." }}
+    {% elif keys_saved %}Keys for local streaming were saved {{ age }}, so cameras on your network keep working if Wyze's cloud goes down.
+    {% else %}Keys for local streaming will be saved the next time Wyze Tunnel gets your camera list from Wyze.{% endif %}
+</p>
+
+<section class="surface mb-4 p-5">
+    <h2 class="font-semibold">Seen since Wyze Tunnel started</h2>
+    {% if seen %}
+    <ul class="mt-3 divide-y divide-zinc-800 text-sm">
+        {% for e in seen %}
+        <li class="flex flex-wrap items-center gap-2 py-2">
+            <i class="fas fa-circle text-[8px] {{ 'text-rose-400' if e.error else 'text-emerald-400' }}" aria-hidden="true"></i>
+            <span class="font-mono">{{ e.host }}</span>
+            <span class="text-zinc-400">{{ e.purpose or "Other" }}</span>
+            <span class="ml-auto text-zinc-500">{{ "your network" if e.local else "internet" }} · {{ e.count }}× · {{ ((now - e.last) / 60)|int }} min ago{% if e.error %} · <span class="text-rose-300" title="{{ e.error }}">couldn't connect</span>{% endif %}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="mt-3 text-sm text-zinc-400">No outside connections yet.</p>
+    {% endif %}
+</section>
+
+<section class="surface p-5">
+    <h2 class="font-semibold">Made by the streaming programs</h2>
+    {% if other %}
+    <ul class="mt-3 divide-y divide-zinc-800 text-sm">
+        {% for e in other %}
+        <li class="flex flex-wrap items-center gap-2 py-2">
+            <span class="font-mono">{{ e.host }}</span>
+            <span class="text-zinc-400">{{ e.purpose }}</span>
+            <span class="ml-auto text-zinc-500">{{ "your network" if e.local else "internet" }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="mt-3 text-sm text-zinc-400">None right now.</p>
+    {% endif %}
+</section>
+<p class="mt-6 text-sm text-zinc-500">The live view in your browser also asks stun.l.google.com for its public address. That request comes from your browser, not from Wyze Tunnel.</p>
+{% endblock %}
