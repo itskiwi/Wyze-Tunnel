@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% set hide_nav = guest %}
 
 {% block settings_menu %}
 <p class="menu-label">Layout</p>
@@ -129,6 +130,7 @@
                 </table>
             </div>
             <div class="cam-acts fs-display-none absolute bottom-2.5 right-2.5 z-10 flex gap-1.5">
+                {% if not guest %}
                 <details class="dropdown">
                     <summary class="cam-action" title="Controls" aria-label="Controls for {{ camera.nickname }}"><i class="fas fa-sliders"></i></summary>
                     <div class="menu cam-menu cam-control" data-cam="{{cam_uri}}">
@@ -224,6 +226,7 @@
                 <button class="toggle-details cam-action" data-cam="{{cam_uri}}" title="Camera details" aria-label="Details for {{ camera.nickname }}">
                     <i class="fas fa-circle-info" aria-hidden="true"></i>
                 </button>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -247,7 +250,10 @@
 
 
 {% block api_info %}
-{% if api %}
+{% if guest %}
+<p>Watching as {{ guest.guest }}. This guest login ends <time data-ts="{{ guest.expires }}"></time>.</p>
+<script>document.querySelectorAll("time[data-ts]").forEach((t) => t.textContent = new Date(t.dataset.ts * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }));</script>
+{% elif api %}
 <p>API key: <code>{{ api }}</code></p>
 {% else %}
 <p class="text-amber-300/80"><i class="fas fa-triangle-exclamation"></i> Web UI login is turned off.</p>
