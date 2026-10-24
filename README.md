@@ -47,6 +47,18 @@ See the [supported cameras](#supported-cameras) section for additional informati
 
 ## Quick Start
 
+### Mac
+
+Open the Terminal app, paste this line and press Return:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/itskiwi/Wyze-Tunnel/main/mac/install.sh | bash
+```
+
+It sets everything up in a small background VM (no Docker needed), starts at login, and opens `http://localhost:5050` when done. Run it again to update. To remove it, run the same line with `uninstall.sh` instead of `install.sh`.
+
+### Docker
+
 Install [docker](https://docs.docker.com/get-docker/) and run:
 
 ```bash
