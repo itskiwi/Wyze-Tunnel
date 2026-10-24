@@ -51,4 +51,27 @@ if (-not (Test-Path $Settings)) {
         "WB_PASSWORD=$Password"
     )
 }
+# Cameras answer go2rtc over UDP and other devices reach MediaMTX, so both need inbound firewall rules.
+# One Windows permission prompt, only when a rule is missing or a Block rule (from a canceled firewall prompt) exists.
+# Only Wyze Tunnel's own two programs are touched (approved by the project owner, 2026-10-24).
+$Exes = 'go2rtc.exe', 'mediamtx.exe' | ForEach-Object { Join-Path $Native "wyze-tunnel\$_" }
+$NeedsFix = $Exes | Where-Object {
+    $rules = Get-NetFirewallApplicationFilter -Program $_ -ErrorAction SilentlyContinue | Get-NetFirewallRule -ErrorAction SilentlyContinue |
+        Where-Object { $_.Direction -eq 'Inbound' -and $_.Enabled -eq 'True' }
+    -not ($rules | Where-Object Action -eq 'Allow') -or ($rules | Where-Object Action -eq 'Block')
+}
+if ($NeedsFix) {
+    Say 'Letting cameras through Windows Firewall (click Yes on the Windows permission prompt)'
+    $Fix = ($Exes -replace "'", "''" | ForEach-Object {
+        "Get-NetFirewallApplicationFilter -Program '$_' -ErrorAction SilentlyContinue | Get-NetFirewallRule | Where-Object Direction -eq Inbound | Remove-NetFirewallRule; " +
+        "New-NetFirewallRule -DisplayName 'Wyze Tunnel ($(Split-Path $_ -Leaf))' -Direction Inbound -Action Allow -Program '$_' -Profile Any | Out-Null"
+    }) -join '; '
+    try {
+        $Encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Fix))  # no quoting to get wrong
+        $p = Start-Process powershell.exe -ArgumentList '-NoProfile', '-EncodedCommand', $Encoded -Verb RunAs -WindowStyle Hidden -Wait -PassThru
+        if ($p.ExitCode) { Write-Output "The firewall change didn't finish (error $($p.ExitCode)). Cameras on this network may not connect." }
+    } catch {
+        Write-Output 'Skipped the firewall change. Cameras on this network may not connect until you click Set up again and choose Yes.'
+    }
+}
 Say 'Done! Wyze Tunnel is ready.'
