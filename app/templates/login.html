@@ -96,6 +96,11 @@
         <p id="camText" class="text-zinc-400">Looking for your cameras...</p>
         <div id="camList" class="surface divide-y divide-zinc-800"></div>
         <p id="camStatus" class="text-sm text-zinc-400" role="status"></p>
+        <div id="streamTest" class="hidden space-y-3">
+            <button type="button" id="runTest" class="btn h-11 w-full"><i class="fas fa-stethoscope"></i>Test my cameras</button>
+            <p class="text-sm text-zinc-500">Watches each camera for a few seconds and checks the picture size, smoothness and connection.</p>
+            <div id="testResults" class="grid gap-3"></div>
+        </div>
         <div id="wbLogin" class="hidden rounded-3xl bg-amber-500/10 p-5 text-sm">
             <p class="font-medium text-amber-200">Save this login. You'll need it to open Wyze Tunnel, and it
                 won't be shown again.</p>
@@ -215,12 +220,53 @@
                 if (await renderCameraToggles($("#camList"), $("#camStatus"), apiHeaders)) {
                     const count = $("#camList").children.length;
                     $("#camText").textContent = `Found ${count} camera${count > 1 ? "s" : ""}. Uncheck any you don't want to show. You can change this later under Cameras.`;
+                    $("#streamTest").classList.remove("hidden");
                     return;
                 }
                 await new Promise(r => setTimeout(r, 2000));
             }
             $("#camText").textContent = "Signed in. Open your cameras to see them.";
         }
+
+        // Stream test: one card per shown camera with a snapshot, what arrived, and any problems.
+        async function testCameras() {
+            const btn = $("#runTest"), out = $("#testResults");
+            btn.disabled = true;
+            out.replaceChildren();
+            const data = await fetch("api", { headers: apiHeaders }).then(r => r.json()).catch(() => ({}));
+            const cams = Object.entries(data.cameras || {}).filter(([, c]) => c.enabled && !c.substream);
+            if (!cams.length) out.textContent = "No cameras are ready yet. Give them a few seconds, then try again.";
+            for (const [uri, cam] of cams) {
+                const card = document.createElement("article");
+                card.className = "surface flex gap-3 p-3";
+                const pic = Object.assign(document.createElement("div"), { className: "grid aspect-video w-28 flex-none place-items-center overflow-hidden rounded-2xl bg-zinc-800 text-zinc-500" });
+                pic.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i>';
+                const body = Object.assign(document.createElement("div"), { className: "min-w-0 flex-1 text-sm" });
+                const name = Object.assign(document.createElement("p"), { className: "font-semibold text-zinc-100", textContent: cam.nickname });
+                const line = Object.assign(document.createElement("p"), { className: "text-zinc-400", textContent: "Connecting…" });
+                body.append(name, line);
+                card.append(pic, body);
+                out.append(card);
+                const r = await fetch(`api/${uri}/stream-test`, { headers: apiHeaders }).then(r => r.json()).catch(() => ({ error: "no reply", warnings: ["Wyze Tunnel didn't answer. Try again."] }));
+                if (r.error) {
+                    pic.innerHTML = '<i class="fas fa-video-slash"></i>';
+                    line.textContent = "No video";
+                } else {
+                    const img = Object.assign(document.createElement("img"), { className: "h-full w-full object-cover", alt: "", src: `snapshot/${uri}.jpg?${Date.now()}` });
+                    img.onerror = () => { pic.innerHTML = '<i class="fas fa-image"></i>'; };
+                    pic.replaceChildren(img);
+                    const codecs = [r.video, r.audio].filter(Boolean).join(" + ").toUpperCase();
+                    line.textContent = `${r.width}×${r.height} · ${r.fps} fps · ${(r.kbps / 1000).toFixed(1)} Mbps · ${codecs}`;
+                }
+                const tips = r.warnings || [];
+                const note = Object.assign(document.createElement("p"), { className: tips.length ? "mt-1 text-amber-300/80" : "mt-1 text-emerald-400" });
+                note.textContent = tips.length ? tips.join(" ") : "Looks good.";
+                body.append(note);
+            }
+            btn.disabled = false;
+            btn.lastChild.textContent = "Test again";
+        }
+        $("#runTest").addEventListener("click", testCameras);
 
         document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { fail(""); show(b.dataset.go); }));
 
