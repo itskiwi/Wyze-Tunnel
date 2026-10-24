@@ -20,3 +20,7 @@ Wyze Tunnel builds on other people's work. Thank you to these projects.
   https://github.com/chuanqi305/MobileNet-SSD
 - **OpenCV** (Apache-2.0). Runs the detection model. https://opencv.org
 - **Frigate** (MIT). Search reads its events API; no Frigate code is included. https://frigate.video
+- **Font Awesome Free** 6.1.1 by Fonticons (icons CC BY 4.0, fonts SIL OFL 1.1, code MIT). Bundled in
+  `app/static/fontawesome` so the web UI works without internet. https://fontawesome.com
+- **hls.js** 1.5.13 by video-dev (Apache-2.0). Bundled as `app/static/hls.min.js` for live video in
+  the browser. https://github.com/video-dev/hls.js

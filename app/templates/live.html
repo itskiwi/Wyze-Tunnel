@@ -87,7 +87,7 @@
                     <span class="icon text-[#d4d4d4]" title="{{ (camera.camera_info.sdParm.free|int/1024)|round(2) }} of {{ (camera.camera_info.sdParm.capacity|int/1024)|round(2) }} GB free on SD card">
                         <i class="fas fa-sd-card"></i></span>
                     {% endif %}
-                    {% if camera.camera_info.channelResquestResult.audio == "1"%}
+                    {% if camera.camera_info.get("channelResquestResult", {}).get("audio") == "1" %}
                     <span class="icon text-[#d4d4d4]" title="Audio enabled"><i class="fas fa-volume-high"></i></span>
                     {% endif %}
                     {% endif %}
@@ -108,6 +108,11 @@
                         poster="{{ camera.img_url or 'static/loading.svg' }}">
                     </video>
                     <i class="fas"></i>
+                    {% elif camera.status == -90 and not camera.img_url %}
+                    <div class="no-preview grid h-full place-items-center text-zinc-500">
+                        <div class="text-center"><i class="fas fa-plug-circle-xmark text-2xl"></i>
+                            <p class="mt-2 text-sm">Camera offline</p></div>
+                    </div>
                     {% elif camera.img_url or camera.connected or (camera.on_demand and camera.enabled) %}
                     <img class="refresh_img loading-preview h-full w-full object-contain {{'connected' if camera.connected}}"
                         src="{{ camera.img_url or 'static/loading.svg' }}" data-cam="{{cam_uri}}" alt="{{ camera.nickname }} preview" />
@@ -321,7 +326,7 @@
 {% if (webrtc and video_format == "webrtc") or video_format =="kvs" %}
 <script src="static/webrtc.js?v={{ version }}"></script>
 {% else %}
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<script src="static/hls.min.js?v={{ version }}"></script>
 {% endif %}
 {% endif %}
 {% endblock %}

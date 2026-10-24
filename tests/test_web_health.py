@@ -44,3 +44,10 @@ def test_grid_links_and_wall_displays_open_live_view(client):
     assert client.get("/?columns=3&fullscreen").headers["Location"] == "live?columns=3&fullscreen"
     client.set_cookie("fullscreen", "1")
     assert client.get("/").headers["Location"] == "live"
+
+
+def test_live_view_survives_partial_camera_info(client):
+    page = client.get("/live").get_data(as_text=True)
+    assert "Weak" in page  # camera_info without channelResquestResult used to crash the page
+    assert "Camera offline" in page  # instead of a spinner that never ends
+    assert "cdnjs" not in page and "jsdelivr" not in page  # icons and video work without internet
