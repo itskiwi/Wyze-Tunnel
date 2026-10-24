@@ -178,6 +178,12 @@
                             <button class="button btn" data-cmd="rotary_degree" data-payload="down" aria-label="Tilt down"><i class="fas fa-chevron-down"></i></button>
                             <span></span>
                         </div>
+                        <p class="menu-label" title="Positions saved as Pan Scan points in the Wyze app">Saved positions</p>
+                        <div class="grid grid-cols-4 gap-1 p-1">
+                            {% for n in range(1, 5) %}
+                            <button class="button btn" data-cmd="cruise_point" data-payload="{{ n }}" aria-label="Go to saved position {{ n }}">{{ n }}</button>
+                            {% endfor %}
+                        </div>
                         {% endif %}
                         {% if camera.is_floodlight %}
                         <p class="menu-label"><i class="fas fa-lightbulb"></i> Floodlight</p>

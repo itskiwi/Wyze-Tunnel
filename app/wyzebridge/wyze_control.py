@@ -1,5 +1,6 @@
 import socket
 from datetime import datetime, timedelta
+from functools import partial
 from multiprocessing import Queue
 from queue import Empty
 from re import findall
@@ -217,6 +218,17 @@ def update_bit_fps(sess: WyzeIOTCSession, topic: str, payload: Any) -> dict:
         return resp | {"status": "error", "response": str(ex)}
 
 
+def _ioctl_retry(mux, make_msg, tries: int = 3, timeout: int = 2):
+    """Pan cameras drop the odd PTZ ioctl while moving, so resend instead of waiting long."""
+    for attempt in range(tries):
+        msg = make_msg()
+        try:
+            return mux.send_ioctl(msg).result(timeout=timeout)
+        except Empty:
+            logger.warning(f"[CONTROL] No reply to {type(msg).__name__}, try {attempt + 1} of {tries}")
+    raise TimeoutError("The camera didn't respond. Try again.")
+
+
 def pan_to_cruise_point(sess: WyzeIOTCSession, cmd):
     """
     Pan to cruise point/waypoint.
@@ -228,7 +240,10 @@ def pan_to_cruise_point(sess: WyzeIOTCSession, cmd):
 
     i = int(cmd[1]) - 1 if int(cmd[1]) > 0 else int(cmd[1])
     with sess.iotctrl_mux() as mux:
-        points = mux.send_ioctl(tutk_protocol.K11010GetCruisePoints()).result(timeout=5)
+        try:
+            points = _ioctl_retry(mux, tutk_protocol.K11010GetCruisePoints)
+        except TimeoutError as ex:
+            return resp | {"response": str(ex)}
         if not points or not isinstance(points, list):
             return resp | {"response": f"Invalid cruise points: {points=}"}
 
@@ -238,9 +253,10 @@ def pan_to_cruise_point(sess: WyzeIOTCSession, cmd):
             return resp | {"response": f"Cruise point {i} NOT found. {points=}"}
 
         logger.info(f"Pan to cruise_point={i} {waypoints}")
-        res = mux.send_ioctl(tutk_protocol.K11018SetPTZPosition(*waypoints)).result(
-            timeout=5
-        )
+        try:
+            res = _ioctl_retry(mux, partial(tutk_protocol.K11018SetPTZPosition, *waypoints))
+        except TimeoutError as ex:
+            return resp | {"response": str(ex)}
 
     return resp | {
         "status": "success",
