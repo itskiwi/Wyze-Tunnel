@@ -293,7 +293,14 @@ document.addEventListener("DOMContentLoaded", () => {
       .then((data) => {
         let apiVersion = data.tag_name.replace(/[^0-9\.]/g, "");
         if (apiVersion.localeCompare(checkAPI.dataset.version, undefined, { numeric: true }) === 1) {
-          sendNotification('Update available!', `🎉 v${apiVersion}`, "warning");
+          if (checkAPI.dataset.canUpdate && confirm(`Update to v${apiVersion} now? Streams pause for about a minute.`)) {
+            fetch("update", { method: "POST" })
+              .then((r) => r.ok ? r.json() : Promise.reject(new Error(`Update failed (${r.status})`)))
+              .then(() => sendNotification('Updating…', `Installing v${apiVersion}. Reload the page in a minute.`, "success"))
+              .catch((error) => sendNotification('Update failed', error.message, "danger"));
+          } else {
+            sendNotification('Update available!', `🎉 v${apiVersion}`, "warning");
+          }
         } else {
           sendNotification('All up to date!', '✅ Running the latest version!', "success");
         }

@@ -19,10 +19,26 @@ REPO=itskiwi/Wyze-Tunnel
 [ "$(id -u)" -eq 0 ] || { echo "Please run as root, e.g. with sudo." >&2; exit 1; }
 command -v systemctl >/dev/null || { echo "This installer needs a Linux system with systemd." >&2; exit 1; }
 
+# --update is what the daily timer and the web UI's update button run: install the latest release only if it's newer.
+UPDATE=
+if [ "${1:-}" = --update ]; then
+    rm -f /var/lib/private/wyze-tunnel/update-now
+    LATEST=$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest")
+    LATEST=${LATEST##*/tag/v}
+    CURRENT=$(sed -n 's/^VERSION=//p' "$PREFIX/app/.env" 2>/dev/null || true)
+    if [[ ! $LATEST =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || [ "$(printf '%s\n' "$LATEST" "$CURRENT" | sort -V | tail -1)" = "$CURRENT" ]; then
+        echo "Wyze Tunnel is up to date (v$CURRENT)."
+        return 0
+    fi
+    echo "==> Updating Wyze Tunnel v$CURRENT -> v$LATEST"
+    UPDATE=1
+    unset WT_REF
+fi
+
 # Use the checkout or bundle this script sits in. When piped from curl, download the latest
 # release bundle for this CPU (or the source of WT_REF, or main if there is no release yet).
 SRC=$(cd "$(dirname "${BASH_SOURCE[0]:-.}")/.." 2>/dev/null && pwd)
-if [ ! -f "$SRC/app/.env" ] || [ ! -f "$SRC/native/wyze-tunnel.service" ]; then
+if [ -n "$UPDATE" ] || [ ! -f "$SRC/app/.env" ] || [ ! -f "$SRC/native/wyze-tunnel.service" ]; then
     SRC=$(mktemp -d)
     trap 'rm -rf "$SRC"' EXIT
     BUNDLE=wyze-tunnel-linux-$(uname -m).tar.gz
@@ -100,11 +116,17 @@ fi
 WB_PASSWORD=$(sed -n 's/^WB_PASSWORD=//p' "$CONF_DIR/wyze-tunnel.env")
 
 install -m 755 "$SRC/native/uninstall.sh" "$PREFIX/uninstall.sh"
+install -m 755 "$SRC/native/install.sh" "$PREFIX/install.sh"
 import_docker
 
-install -m 644 "$SRC/native/wyze-tunnel.service" /etc/systemd/system/wyze-tunnel.service
+# Turn on daily updates for new installs only, so a `systemctl disable` sticks across re-runs.
+NEW_TIMER=
+[ -f /etc/systemd/system/wyze-tunnel-update.timer ] || NEW_TIMER=1
+install -m 644 "$SRC"/native/wyze-tunnel.service "$SRC"/native/wyze-tunnel-update.{service,timer,path} /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable wyze-tunnel >/dev/null
+systemctl enable --now wyze-tunnel-update.path 2>/dev/null
+[ -z "$NEW_TIMER" ] || systemctl enable --now wyze-tunnel-update.timer 2>/dev/null
 systemctl restart wyze-tunnel
 
 cat <<MSG
@@ -119,6 +141,7 @@ cat <<MSG
 
   It starts automatically on boot. Logs: journalctl -u wyze-tunnel -f
   Advanced settings: $CONF_DIR/wyze-tunnel.env
+  Updates install automatically once a day (turn off: sudo systemctl disable --now wyze-tunnel-update.timer).
   Uninstall: sudo $PREFIX/uninstall.sh
 MSG
 if [ -n "$DOCKER_BRIDGE" ]; then
