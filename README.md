@@ -303,6 +303,7 @@ http://localhost:5000/
 - **Auto restart**: a camera that fails to connect 10 times in a row gets restarted through the Wyze cloud, at most once every 6 hours. Set `AUTO_RESTART=false` to turn this off.
 - **Guest and family logins**: on the Login page, give someone their own name and password. A guest can watch the cameras and live video for 1 hour to 7 days, can't change anything, and the login stops working on its own. A family login has full access, except changing the main login, until you remove it.
 - **Chat alerts**: on the Alerts page, paste a Discord or Slack webhook link, or a Telegram sendMessage link, to get motion and offline alerts there too, with the snapshot.
+- **Data saver**: in Settings on the Cameras page, switch every camera to SD in one tap, or back to full HD. Also works as `GET /api/all/quality/sd`.
 - **Monitoring**: `/api/health` returns `ok` or `degraded` with a list of issues (offline, weak Wi-Fi, full SD card, relay, repeated failures). `/metrics.prom` serves Prometheus metrics per camera plus Wyze API call counts. Both accept the API key like other `/api` endpoints.
 - **Install as an app**: use "Add to Home Screen" on your phone. `f` opens the full-screen camera wall, `r` refreshes previews and `1`-`6` sets the number of columns.
 
