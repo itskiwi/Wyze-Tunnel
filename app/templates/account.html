@@ -1,17 +1,12 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<header class="mb-6 flex flex-wrap items-center gap-3">
-    <a href="./" class="mr-2 flex items-center gap-2 text-lg font-semibold tracking-tight">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500 text-zinc-950"><i
-                class="fas fa-video text-sm"></i></span>
-        Wyze Tunnel
-    </a>
-    <h1 class="text-lg text-zinc-400">Login</h1>
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Login</h1>
 </header>
 
 <form id="account" class="mx-auto max-w-xl space-y-6">
-    <section class="rounded-2xl bg-zinc-900 p-5 ring-1 ring-white/5">
+    <section class="surface p-5">
         <h2 class="font-semibold">Change your Wyze Tunnel login</h2>
         <p class="mt-1 text-sm text-zinc-400">This is the login for this web page, not your Wyze account. Camera
             streams and the API key don't change.</p>

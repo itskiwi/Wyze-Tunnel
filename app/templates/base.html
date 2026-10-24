@@ -31,11 +31,9 @@
     <link rel="manifest" href="static/manifest.webmanifest" />
     <link rel="icon" href="static/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="static/icon-192.png" />
-    <meta name="theme-color" content="#09090b" />
+    <meta name="theme-color" content="#0e100e" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
     <link rel="stylesheet" href="static/tailwind.css" />
     <link rel="stylesheet" href="static/site.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" />
@@ -43,12 +41,45 @@
     {% endblock %}
 </head>
 
-<body class="flex min-h-full flex-col text-zinc-100" style="font-family: Inter, ui-sans-serif, system-ui, sans-serif">
-    <main class="section mx-auto w-full max-w-screen-2xl flex-1 px-4 py-6 sm:px-6">
+<body class="flex min-h-full flex-col font-sans text-[15px] text-zinc-100">
+    <svg width="0" height="0" class="absolute" aria-hidden="true"><defs>
+        <symbol id="mark" viewBox="0 0 44 44"><path d="M7 38V22C7 13 13.5 6 22 6s15 7 15 16v16z" fill="rgb(var(--accent))"/><ellipse cx="22" cy="24" rx="7.5" ry="8" fill="#fff"/><circle cx="23.5" cy="25" r="3.8" fill="#13241a"/><circle cx="25" cy="23.5" r="1.1" fill="#fff"/></symbol>
+    </defs></svg>
+    {% if not hide_nav %}
+    {% set page = request.endpoint %}
+    {% set pages = [("index", "./", "Cameras", "fa-table-cells-large"), ("recordings_page", "recordings", "Recordings", "fa-clock-rotate-left"), ("events", "events", "Events", "fa-list"), ("alerts", "alerts", "Alerts", "fa-bell"), ("health", "health", "Health", "fa-heart-pulse")] %}
+    <header id="topbar" class="fs-display-none safe-x mx-auto flex w-full max-w-screen-2xl items-center gap-3 pb-1 pt-3">
+        <a href="./" class="flex items-center gap-2.5 font-display text-[19px] font-extrabold text-zinc-50">
+            <svg class="h-9 w-9" aria-hidden="true"><use href="#mark" /></svg>Wyze Tunnel</a>
+        <nav class="seg ml-2 hidden md:inline-flex" aria-label="Main">
+            {% for endpoint, href, label, icon in pages %}
+            <a href="{{ href }}" class="tab" {{ 'aria-current=page' if page == endpoint }}>{{ label }}</a>
+            {% endfor %}
+        </nav>
+        <div class="ml-auto flex items-center gap-2">
+            <button class="theme-toggle round-btn" aria-label="Switch theme"><i class="fas fa-circle-half-stroke"></i></button>
+            <details class="dropdown relative">
+                <summary class="round-btn cursor-pointer list-none" aria-label="Settings"><i class="fas fa-gear"></i></summary>
+                <div class="menu right-0 w-64">
+                    {% block settings_menu %}{% endblock %}
+                    <a href="cameras" class="menu-item"><i class="fas fa-eye w-4"></i>Choose cameras</a>
+                    <a href="account" class="menu-item"><i class="fas fa-key w-4"></i>Wyze login</a>
+                    <a href="diagnostics" class="menu-item" title="A report with secrets removed, for bug reports"><i class="fas fa-file-medical w-4"></i>Download diagnostics</a>
+                </div>
+            </details>
+        </div>
+    </header>
+    <nav class="tabbar fs-display-none md:hidden" aria-label="Main">
+        {% for endpoint, href, label, icon in pages %}
+        <a href="{{ href }}" {{ 'aria-current=page' if page == endpoint }}><i class="fas {{ icon }}"></i>{{ label }}</a>
+        {% endfor %}
+    </nav>
+    {% endif %}
+    <main class="section safe-x mx-auto w-full max-w-screen-2xl flex-1 py-4">
         {% block content %}
         {% endblock %}
     </main>
-    <footer class="footer fs-display-none border-t border-white/5 px-4 py-6 text-center text-sm text-zinc-500">
+    <footer class="footer fs-display-none px-4 pb-28 pt-6 text-center text-sm text-zinc-500 md:pb-8">
         {% block api_info %}
         {% endblock %}
         <p class="mt-2 flex items-center justify-center gap-2">

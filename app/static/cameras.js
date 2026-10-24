@@ -38,7 +38,7 @@ async function renderCameraToggles(list, status, headers = {}) {
     const row = document.createElement("div");
     row.className = "flex items-center gap-3 px-4 py-3";
     const box = Object.assign(document.createElement("input"), { type: "checkbox", value: cam.mac, checked: !cam.hidden });
-    box.className = "h-4 w-4 shrink-0 cursor-pointer accent-emerald-500";
+    box.className = "h-4 w-4 shrink-0 cursor-pointer accent-accent";
     box.setAttribute("aria-label", `Show ${cam.nickname || cam.mac}`);
     box.addEventListener("change", save);
     const name = Object.assign(document.createElement("input"), { type: "text", value: cam.nickname || "", placeholder: cam.mac, maxLength: 64 });

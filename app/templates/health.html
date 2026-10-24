@@ -1,13 +1,8 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<header class="mb-6 flex flex-wrap items-center gap-3">
-    <a href="./" class="mr-2 flex items-center gap-2 text-lg font-semibold tracking-tight">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500 text-zinc-950"><i
-                class="fas fa-video text-sm"></i></span>
-        Wyze Tunnel
-    </a>
-    <h1 class="text-lg text-zinc-400">Camera health</h1>
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Camera health</h1>
     <a href="diagnostics" class="btn ml-auto"><i class="fas fa-file-arrow-down"></i>Download diagnostics</a>
 </header>
 
@@ -34,7 +29,7 @@
     {% if cam.net_mode == "relay" %}{% set _ = tips.append("Streaming through Wyze's relay servers, which adds delay and can drop. If the camera is on your home Wi-Fi, check that Wyze Tunnel is on the same network.") %}{% endif %}
     {% if cam.net_mode == "internet" %}{% set _ = tips.append("Connected over the internet, not your home network. It works, but uses the camera's internet upload while you watch.") %}{% endif %}
     {% if cam.is_battery %}{% set _ = tips.append("Battery camera: it sleeps between events, so it shows as idle most of the time.") %}{% endif %}
-    <article class="rounded-2xl bg-zinc-900 p-5 ring-1 ring-white/5">
+    <article class="surface p-5">
         <div class="flex items-center gap-2">
             <i class="fas fa-circle text-[8px] {{ 'text-rose-400' if cam.status == -90 else 'text-emerald-400' if cam.status == 3 else 'text-zinc-500' }}"></i>
             <h2 class="truncate font-semibold">{{ cam.nickname }}</h2>
