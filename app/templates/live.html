@@ -58,6 +58,13 @@
             {% endfor %}
         </div>
         {% endif %}
+        {% if cam_data.cameras %}
+        <div class="fullscreen">
+            <button class="btn h-10 w-10 rounded-full p-0" title="Camera wall: full screen (f)" aria-label="Toggle full screen">
+                <i class="fas fa-maximize"></i>
+            </button>
+        </div>
+        {% endif %}
     </div>
 </div>
 
@@ -273,11 +280,6 @@
     {% endfor %}
 </div>
 
-<div class="fullscreen">
-    <button class="btn h-10 w-10 rounded-full p-0" title="Toggle fullscreen">
-        <i class="fas fa-maximize"></i>
-    </button>
-</div>
 {% else %}
 </div>
 <div class="surface mx-auto mt-10 max-w-md p-8 text-center text-zinc-400">
