@@ -503,31 +503,43 @@ document.addEventListener("DOMContentLoaded", () => {
       const table = content.getElementsByTagName("table")[0]
       fetch(`api/${cam}`).then(resp => resp.json()).then(data => {
         table.innerHTML = ""
+        const row = (label, value) => {
+          if (value === undefined || value === null || value === "") return;
+          const r = table.insertRow();
+          r.insertCell(0).textContent = label;
+          r.insertCell(1).textContent = value;
+        };
+        const info = data.camera_info || {};
+        const wifi = parseInt(info.basicInfo?.wifidb), sd = info.sdParm || {};
+        const gb = (mb) => (mb / 1024).toFixed(1);  // sdParm counts megabytes
+        row("Status", { "-90": "offline", "-1": "stopping", 0: "off", 1: "idle", 2: "connecting", 3: "streaming" }[data.status] ?? data.status);
+        row("Model", data.model_name);
+        row("Firmware", data.firmware_ver);
+        row("Connection", { local: "your home network", internet: "over the internet", relay: "through Wyze's relay" }[data.net_mode]);
+        if (data.status === 3 && data.start_time) row("Streaming since", new Date(data.start_time * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+        row("Quality", data.quality?.toUpperCase());
+        if (!isNaN(wifi)) row("Wi-Fi signal", `${wifi}%`);
+        if (sd.status === "1" && +sd.capacity) row("SD card", `${gb(sd.free)} of ${gb(sd.capacity)} GB free`);
+        row("IP address", data.ip);
+        row("Name in links", data.name_uri);
+        row("RTSP link", data.rtsp_url);
+        // Everything else, for people who want the raw numbers.
+        const more = document.createElement("details");
+        more.className = "mt-2";
+        more.innerHTML = '<summary class="cursor-pointer text-zinc-400">All details</summary><table class="mt-1 w-full table-fixed [&_td]:break-words [&_td]:py-1 [&_td]:align-top [&_td:first-child]:w-2/5 [&_td:first-child]:pr-3 [&_td:first-child]:text-zinc-400"><tbody></tbody></table>';
+        const raw = more.querySelector("tbody");
         for (const [key, value] of Object.entries(data)) {
-          if (key == "camera_info" && value != null) {
-            for (const [k, v] of Object.entries(value)) {
-              let newRow = table.insertRow();
-              let keyCell = newRow.insertCell(0)
-              let valCell = newRow.insertCell(1)
-              keyCell.textContent = k
-              valCell.appendChild(document.createElement("code")).textContent = JSON.stringify(v, null, 2)
-            }
-            continue;
-          }
-          let newRow = table.insertRow();
-          let keyCell = newRow.insertCell(0)
-          let valCell = newRow.insertCell(1)
-          keyCell.textContent = key
-          if (typeof value === 'string' && (key.endsWith("_url") || key == 'thumbnail')) {
-            let link = document.createElement('a');
-            link.href = value;
-            link.title = value;
-            link.textContent = value.substring(0, Math.min(40, value.length)) + (value.length >= 40 ? "..." : "");
-            valCell.appendChild(link)
+          const r = raw.insertRow();
+          r.insertCell(0).textContent = key;
+          const cell = r.insertCell(1);
+          if (typeof value === "string" && (key.endsWith("_url") || key === "thumbnail")) {
+            cell.append(Object.assign(document.createElement("a"), { href: value, title: value, textContent: value.length > 40 ? value.slice(0, 40) + "..." : value }));
           } else {
-            valCell.appendChild(document.createElement("code")).textContent = value
+            cell.append(Object.assign(document.createElement("code"), { textContent: typeof value === "object" ? JSON.stringify(value, null, 1) : String(value) }));
           }
         }
+        table.closest(".content").querySelector("details")?.remove();
+        table.after(more);
       }).catch(error => { console.error(error); });
     }
     content.classList.toggle("is-hidden");
@@ -762,7 +774,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // "night_vision" + "auto" reads as "Night vision auto" in the toast; a few commands need their own words.
   const COMMAND_WORDS = { rotary_degree: "Moved", reset_rotation: "Back to center", cruise_point: "Went to position", alarm: "Siren",
     state: "Stream", net_mode: "Connection", quick_response: "Played reply", power: "Power" };
-  const PAYLOAD_WORDS = { hd: "HD", sd: "SD", no_relay: "no relay", enable: "on", disable: "off", 3: "" };
+  const PAYLOAD_WORDS = { hd: "HD", sd: "SD", no_relay: "no relay", enable: "turned on", disable: "turned off", start: "started", stop: "stopped", 3: "" };
   function commandText(cmd, payload = "") {
     const label = COMMAND_WORDS[cmd] || cmd[0].toUpperCase() + cmd.slice(1).replaceAll("_", " ");
     return `${label} ${PAYLOAD_WORDS[payload] ?? payload}`.trim();
