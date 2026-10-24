@@ -38,6 +38,21 @@
 </form>
 {% endif %}
 
+{% if enabled and not member %}
+<section id="phone" class="surface mx-auto mt-6 max-w-xl p-5">
+    <h2 class="font-semibold">Pair a phone</h2>
+    <p class="mt-1 text-sm text-zinc-400">Scan the code with your phone's camera. It signs the phone in, no password to type, and it
+        shows up under Share access so you can remove it later.</p>
+    <button id="pairBtn" type="button" class="btn btn-primary mt-3"><i class="fas fa-qrcode"></i>Show code</button>
+    <div id="pairCodes" class="mt-4 hidden flex-wrap gap-6"></div>
+    <p id="pairStatus" class="mt-2 text-sm" role="status"></p>
+    <p class="mt-3 text-sm text-zinc-400">To watch away from home without touching your router, install
+        <a class="underline underline-offset-2 hover:text-zinc-200" href="https://tailscale.com/download" target="_blank" rel="noopener">Tailscale</a>
+        (free) on this computer and your phone, sign in to both with the same account, then show the code again. You'll get an
+        Anywhere code.</p>
+</section>
+{% endif %}
+
 {% if enabled %}
 <section class="surface mx-auto mt-6 max-w-xl p-5">
     <h2 class="font-semibold">Share access</h2>
@@ -124,6 +139,30 @@
             .then(() => say(true, "Restored. Cameras reconnect in a few seconds."))
             .catch((err) => say(false, err.message))
             .finally(() => { e.target.value = ""; });
+    });
+
+    const pairCodes = document.getElementById("pairCodes");
+    const labels = { home: ["At home", "Works on your home Wi-Fi."], anywhere: ["Anywhere", "Works on Wi-Fi or mobile data while Tailscale is on."] };
+    document.getElementById("pairBtn")?.addEventListener("click", () => {
+        const out = document.getElementById("pairStatus");
+        fetch("pair", { method: "POST" })
+            .then((resp) => resp.json().then((body) => resp.ok ? body : Promise.reject(new Error(body.error || resp.statusText))))
+            .then((codes) => {
+                pairCodes.innerHTML = "";
+                // Anywhere first: the phone keeps the address it paired with, and that one also works at home.
+                for (const key of ["anywhere", "home"].filter((k) => codes[k])) {
+                    const fig = document.createElement("figure");
+                    fig.innerHTML = `<div class="w-fit overflow-hidden rounded-lg"></div><figcaption class="mt-2 text-sm"><span class="font-medium"></span> <span class="text-zinc-400"></span></figcaption>`;
+                    fig.firstChild.innerHTML = codes[key].qr;
+                    fig.querySelector(".font-medium").textContent = labels[key][0];
+                    fig.querySelector(".text-zinc-400").textContent = labels[key][1];
+                    pairCodes.append(fig);
+                }
+                pairCodes.classList.replace("hidden", "flex");
+                out.className = "mt-2 text-sm text-zinc-400";
+                out.textContent = "Each code works once, for 10 minutes. Reload this page after pairing to see the phone below.";
+            })
+            .catch((err) => { out.className = "mt-2 text-sm text-rose-300"; out.textContent = err.message; });
     });
 
     const when = (ts) => new Date(ts * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });

@@ -7,3 +7,4 @@ python-dotenv==1.0.*
 requests==2.32.*
 PyYAML==6.0.*
 xxtea==3.3.*
+segno==1.6.*
