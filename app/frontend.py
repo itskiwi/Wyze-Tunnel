@@ -1,4 +1,5 @@
 import os
+import secrets
 import time
 from functools import wraps
 from pathlib import Path
@@ -39,6 +40,9 @@ def create_app():
 
         return wrapped_view
 
+    # One-time token so only the browser that ran the setup wizard sees the web password.
+    setup = {"token": ""}
+
     @app.before_request
     def block_cross_site():
         # Images and links to the UI stay embeddable; everything else (commands, restarts, login) is same-site only.
@@ -60,12 +64,19 @@ def create_app():
                 version=config.VERSION,
             )
 
+        if code := request.form.get("mfaCode"):
+            if not wb.api.mfa:
+                return {"status": "no 2FA code was requested"}
+            wb.api.mfa["verification_code"] = code.strip()
+            return {"status": "success"}
+
         tokens = request.form.get("tokens")
         refresh = request.form.get("refresh")
 
         if tokens or refresh:
             wb.api.token_auth(tokens=tokens, refresh=refresh)
-            return {"status": "success"}
+            setup["token"] = secrets.token_urlsafe()
+            return {"status": "success", "setup": setup["token"]}
 
         credentials = {
             "email": request.form.get("email"),
@@ -75,10 +86,29 @@ def create_app():
         }
 
         if all(credentials.values()):
+            wb.api.login_error = ""
             wb.api.creds.update(**credentials)
-            return {"status": "success"}
+            setup["token"] = secrets.token_urlsafe()
+            return {"status": "success", "setup": setup["token"]}
 
         return {"status": "missing credentials"}
+
+    @app.route("/login/status")
+    def wyze_login_status():
+        """Poll target for the setup wizard. Exposes no account or camera data."""
+        if wb.api.auth and (WbAuth.api or not WbAuth.enabled):
+            token = request.args.get("setup", "")
+            if not (WbAuth.enabled and token and secrets.compare_digest(token, setup["token"])):
+                return {"state": "done"}
+            setup["token"] = ""
+            return {"state": "done", "username": WbAuth.username, "password": WbAuth._pass}
+        if wb.api.auth:
+            return {"state": "signing_in"}
+        if wb.api.mfa and "verification_code" not in wb.api.mfa:
+            return {"state": "mfa", "mfa_type": wb.api.mfa["mfa_type"]}
+        if wb.api.login_error:
+            return {"state": "error", "error": wb.api.login_error}
+        return {"state": "signing_in" if wb.api.creds.is_set else "idle"}
 
     @app.route("/")
     @auth_required
