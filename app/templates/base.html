@@ -4,7 +4,29 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="dark light" />
+    <script>
+        // Theme: "light", "dark", or unset to follow the system. Runs before paint to avoid a flash.
+        (() => {
+            const icons = { light: "fa-sun", dark: "fa-moon" }, next = { light: "dark", dark: "", "": "light" };
+            const get = () => { try { return localStorage.getItem("theme") || ""; } catch { return ""; } };
+            const apply = (t) => {
+                t ? document.documentElement.dataset.theme = t : delete document.documentElement.dataset.theme;
+                document.querySelectorAll(".theme-toggle").forEach((b) => {
+                    b.querySelector("i").className = "fas " + (icons[t] || "fa-circle-half-stroke");
+                    b.title = "Theme: " + (t || "system");
+                });
+            };
+            apply(get());
+            document.addEventListener("DOMContentLoaded", () => apply(get()));
+            document.addEventListener("click", (e) => {
+                if (!e.target.closest(".theme-toggle")) return;
+                const t = next[get()];
+                try { t ? localStorage.setItem("theme", t) : localStorage.removeItem("theme"); } catch { }
+                apply(t);
+            });
+        })();
+    </script>
     <title>Wyze Tunnel</title>
     <link rel="manifest" href="static/manifest.webmanifest" />
     <link rel="icon" href="static/icon.svg" type="image/svg+xml" />
