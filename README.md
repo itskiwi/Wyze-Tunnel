@@ -305,6 +305,7 @@ http://localhost:5000/
 - **Chat alerts**: on the Alerts page, paste a Discord or Slack webhook link, or a Telegram sendMessage link, to get motion and offline alerts there too, with the snapshot.
 - **Data saver**: in Settings on the Cameras page, switch every camera to SD in one tap, or back to full HD. Also works as `GET /api/all/quality/sd`.
 - **Share a clip**: on the Recordings page, Share makes a link anyone can open for 24 hours to watch that one clip, without a login.
+- **Camera settings**: each camera's controls have a Camera settings section for the status light, timestamp, motion box, Wyze motion detection and app alerts, and flipping the image. Pan cameras add Follow motion and Patrol, and the Cam v4 gets a Spotlight button.
 - **Monitoring**: `/api/health` returns `ok` or `degraded` with a list of issues (offline, weak Wi-Fi, full SD card, relay, repeated failures). `/metrics.prom` serves Prometheus metrics per camera plus Wyze API call counts. Both accept the API key like other `/api` endpoints.
 - **Install as an app**: use "Add to Home Screen" on your phone. `f` opens the full-screen camera wall, `r` refreshes previews and `1`-`6` sets the number of columns.
 
