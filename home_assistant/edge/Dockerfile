@@ -1,1 +1,1 @@
-FROM mrlt8/wyze-bridge:edge
+FROM ghcr.io/itskiwi/wyze-tunnel:edge
