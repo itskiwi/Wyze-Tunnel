@@ -20,7 +20,12 @@ def _load() -> dict:
         return {}
 
 
-def create_share(cam: str, start: str, duration) -> str:
+def _save(shares: dict) -> None:
+    with open(SHARES_FILE, "w") as f:
+        json.dump(shares, f)
+
+
+def create_share(cam: str, start: str, duration, **extra) -> str:
     """Save a share and return its token. Raises ValueError with a message for the user."""
     if not re.fullmatch(r"\d{4}-\d\d-\d\dT[\d:.]+(Z|[+-]\d\d:\d\d)", str(start)):
         raise ValueError("Pick a clip to share.")
@@ -33,12 +38,26 @@ def create_share(cam: str, start: str, duration) -> str:
     now = time.time()
     shares = {t: s for t, s in _load().items() if s["expires"] > now}
     token = secrets.token_urlsafe(18)
-    shares[token] = {"cam": cam, "start": start, "duration": duration, "expires": int(now) + SHARE_HOURS * 3600}
-    with open(SHARES_FILE, "w") as f:
-        json.dump(shares, f)
+    shares[token] = {"cam": cam, "start": start, "duration": duration, "expires": int(now) + SHARE_HOURS * 3600, **extra}
+    _save(shares)
     return token
 
 
 def get_share(token: str) -> Optional[dict]:
     share = _load().get(token)
     return share if share and share["expires"] > time.time() else None
+
+
+def count_view(token: str) -> None:
+    shares = _load()
+    if token in shares:
+        shares[token]["views"] = shares[token].get("views", 0) + 1
+        _save(shares)
+
+
+def remove_share(token: str) -> bool:
+    shares = _load()
+    if shares.pop(token, None) is None:
+        return False
+    _save(shares)
+    return True
