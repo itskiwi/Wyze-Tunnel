@@ -24,6 +24,7 @@ from wyzebridge.diagnostics import build_report
 from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED
 from wyzebridge.web_ui import url_for
 from wyzebridge.wyze_events import EVENT_LOG
+from wyzecam.api import API_STATS
 
 
 def create_app():
@@ -179,6 +180,19 @@ def create_app():
     def api_all_cams():
         return web_ui.all_cams(wb.streams, wb.api.total_cams)
 
+    @app.route("/api/health")
+    @auth_required
+    def api_health():
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        issues = web_ui.bridge_issues(cams)
+        return {"status": "degraded" if issues else "ok", "cameras": len(cams), "issues": issues}
+
+    @app.route("/metrics.prom")
+    @auth_required
+    def metrics_prom():
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return Response(web_ui.prometheus_metrics(cams, API_STATS), mimetype="text/plain; version=0.0.4")
+
     @app.route("/api/<string:cam_name>")
     @auth_required
     def api_cam(cam_name: str):
@@ -317,9 +331,11 @@ def create_app():
     @app.route("/health")
     @auth_required
     def health():
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
         return render_template(
             "health.html",
-            cameras=web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"],
+            cameras=cams,
+            issues=web_ui.bridge_issues(cams),
             now=time.time(),
             api=WbAuth.api,
             version=config.VERSION,
