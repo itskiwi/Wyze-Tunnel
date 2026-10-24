@@ -251,6 +251,8 @@
                         {% endif %}
                         {% if camera.record %}
                         <a href="recordings?cam={{cam_uri}}" class="menu-item"><i class="fas fa-clock-rotate-left w-4"></i>Recordings</a>
+                        {% elif not current_guest() %}
+                        <a href="recordings#setup" class="menu-item"><i class="fas fa-clock-rotate-left w-4"></i>Turn on recording</a>
                         {% endif %}
                         <button class="menu-item copy-rtsp"><i class="fas fa-copy w-4"></i>Copy RTSP link</button>
                         <p class="menu-label">Snapshots</p>
