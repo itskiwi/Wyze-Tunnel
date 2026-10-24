@@ -39,6 +39,7 @@ jobs:
           mkdir check && tar xzf dist/wyze-tunnel-linux-x86_64.tar.gz -C check --strip-components=1
           check/bin/ffmpeg -hide_banner -version | head -1
           check/mediamtx --help >/dev/null
+          check/go2rtc -version
           test "$(ls check/app/lib)" = lib.amd64
 
       - uses: actions/upload-artifact@v4

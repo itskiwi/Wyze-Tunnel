@@ -40,17 +40,25 @@ class WyzeBridge(Thread):
         if self.streams.total < 1:
             return signal.raise_signal(signal.SIGINT)
         self.mtx.start()
-        self.streams.monitor_streams(self.mtx.health_check)
+        WyzeStream.go2rtc.start()
+        self.streams.monitor_streams(self.health_check)
+
+    def health_check(self) -> None:
+        self.mtx.health_check()
+        WyzeStream.go2rtc.health_check()
 
     def restart(self, fresh_data: bool = False) -> None:
         self.mtx.stop()
+        WyzeStream.go2rtc.stop()
         self.streams.stop_all()
         self._initialize(fresh_data)
 
     def refresh_cams(self) -> None:
         self.mtx.stop()
+        WyzeStream.go2rtc.stop()
         self.streams.stop_all()
         self.streams.streams.clear()  # so cameras hidden since the last start drop out
+        WyzeStream.go2rtc.streams.clear()
         self.api.get_cameras(fresh_data=True)
         self._initialize(False)
 
@@ -106,6 +114,7 @@ class WyzeBridge(Thread):
         if self.streams:
             self.streams.stop_all()
         self.mtx.stop()
+        WyzeStream.go2rtc.stop()
         logger.info("👋 goodbye!")
         sys.exit(0)
 
