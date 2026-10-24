@@ -176,7 +176,7 @@ NEW: `STREAM_AUTH` option to specify multiple users and paths:
 
 Recoding streams has been updated to use MediaMTX with the option to delete older clips. 
 
-Use `RECORD_ALL` or `RECORD_CAM_NAME` to enable recording.
+Pick cameras to record, or record them all, on the web UI's **Recordings** page, along with how many days to keep (7 by default). It shows how much disk the clips use. `RECORD_ALL` or `RECORD_CAM_NAME` still work and keep their own `RECORD_KEEP`.
 
 - `RECORD_PATH` Available variables are `%path` or `{cam_name}`, `%Y` `%m` `%d` `%H` `%M` `%S` `%f` `%s` (time in strftime format). Keep all of `%Y %m %d %H %M %S %f` in it so the web UI's Recordings page can play clips.
 - `RECORD_LENGTH` Length of each clip. Use `s` for seconds , `h` for hours. Defaults to `60s`
