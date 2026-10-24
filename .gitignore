@@ -9,3 +9,26 @@
 *.pyc
 !/app/.env
 !/native/wyze-tunnel.env
+
+# Runtime data a local checkout or test run can leave behind: sign-ins, keys, snapshots, clips and logs.
+**/img/
+**/record/
+**/data/
+**/logs/
+*.log
+*.db
+*.jpg
+*.jpeg
+*.mp4
+*.mkv
+wb_login
+wb_password
+wb_api
+lan_keys.json
+apps.json
+guests.json
+shares.json
+street_watch.json
+auto_backup.json
+alerts.json
+go2rtc.yaml

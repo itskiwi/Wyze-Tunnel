@@ -172,5 +172,5 @@ def _post(url: str, event: str, camera: str, msg: str, img: Optional[str], title
         resp.raise_for_status()
         return True
     except Exception as ex:
-        print(f"[WEBHOOKS] {ex}")
+        logger.error(f"[WEBHOOKS] {redact_url(str(ex))}")
         return False
