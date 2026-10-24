@@ -1,17 +1,10 @@
-import os
-import sys
-import tempfile
 import threading
 import time
-from pathlib import Path
 
-os.environ.setdefault("TOKEN_PATH", tempfile.mkdtemp())
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
-
-import wyzecam  # noqa: E402
-from wyzebridge import wyze_api  # noqa: E402
-from wyzecam.api import WyzeAPIError  # noqa: E402
-from wyzecam.api_models import WyzeCredential  # noqa: E402
+import wyzecam
+from wyzebridge import wyze_api
+from wyzecam.api import WyzeAPIError
+from wyzecam.api_models import WyzeCredential
 
 
 def make_api(monkeypatch, login):
