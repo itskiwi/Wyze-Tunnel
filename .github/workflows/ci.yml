@@ -68,14 +68,14 @@ jobs:
           docker exec os sed -i 's/^VERSION=.*/VERSION=0.0.1/' /opt/wyze-tunnel/app/.env
           # Hold the web port so the new version can't start.
           docker exec os systemctl stop wyze-tunnel
-          docker exec -d os python3 -c "import socket, time; s = socket.socket(); s.bind(('0.0.0.0', 5000)); s.listen(); time.sleep(600)"
+          docker exec -d os python3 -c "import os, socket, time; open('/tmp/hold.pid', 'w').write(str(os.getpid())); s = socket.socket(); s.bind(('0.0.0.0', 5000)); s.listen(); time.sleep(600)"
           sleep 2
           if docker exec os /opt/wyze-tunnel/install.sh --update; then exit 1; fi
           docker exec os grep -q '^VERSION=0.0.1' /opt/wyze-tunnel/app/.env
           docker exec os test -s /opt/wyze-tunnel/.failed-version
           docker exec os /opt/wyze-tunnel/install.sh --update > /tmp/skip.log
           grep -q "didn't start here last time" /tmp/skip.log
-          docker exec os pkill -f 'sleep.600'
+          docker exec os sh -c 'kill $(cat /tmp/hold.pid)'
       - name: Re-run install (update)
         run: docker exec os /src/native/install.sh
       - name: Web UI answers after update
