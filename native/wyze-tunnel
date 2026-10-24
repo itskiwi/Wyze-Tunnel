@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Rescue commands for a native Wyze Tunnel install. Run `wyze-tunnel help`.
+set -eu
+[ "$(id -u)" -eq 0 ] || exec sudo "$0" "$@"
+
+case "${1:-help}" in
+    status)
+        echo "Version: $(sed -n 's/^VERSION=//p' /opt/wyze-tunnel/app/.env)"
+        systemctl --no-pager status wyze-tunnel | head -5
+        systemctl --no-pager list-timers wyze-tunnel-update.timer | head -2 ;;
+    restart) systemctl restart wyze-tunnel && echo "Restarted. Give it 30 seconds, then reload the page." ;;
+    logs) journalctl -u wyze-tunnel -u wyze-tunnel-update -n 100 -f ;;
+    update) /opt/wyze-tunnel/install.sh --update ;;
+    # Reinstalls the latest release over the top; settings and sign-in are kept.
+    repair) /opt/wyze-tunnel/install.sh ;;
+    password) sed -n 's/^WB_PASSWORD=//p' /etc/wyze-tunnel/wyze-tunnel.env ;;
+    uninstall) shift; /opt/wyze-tunnel/uninstall.sh "$@" ;;
+    *)
+        cat <<'HELP'
+Usage: wyze-tunnel <command>
+  status     Is it running, which version, when the next update check is
+  restart    Restart the bridge (fixes most "lost connection" problems)
+  logs       Show the live log (Ctrl+C to stop)
+  update     Install the latest release now, if there is a newer one
+  repair     Reinstall the latest release, keeping your settings and sign-in
+  password   Show the web login password (user: wbadmin)
+  uninstall  Remove Wyze Tunnel (add --purge to delete settings too)
+HELP
+        ;;
+esac

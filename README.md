@@ -73,6 +73,7 @@ Then open `http://<this-machine-ip>:5000` and sign in with your Wyze account. It
 
 - Settings: `/etc/wyze-tunnel/wyze-tunnel.env` (any option from this README, as `NAME=value`), then `sudo systemctl restart wyze-tunnel`
 - Logs: `journalctl -u wyze-tunnel -f`
+- Something wrong? `wyze-tunnel help` lists rescue commands: `status`, `restart`, `logs`, `update`, `repair` (reinstall, keeping settings) and `password`. On a Mac, open a new Terminal window after installing; it also has `start` and `stop` for the VM.
 - Versions: it installs the latest [release](https://github.com/itskiwi/Wyze-Tunnel/releases) for your CPU (x86_64, arm64 or armv7, with ffmpeg and MediaMTX included). Add `WT_REF=main` (or a branch or tag) before `bash` to install that source instead.
 - Updates: it checks for a new release once a day and installs it (or use the ↻ button next to the version in the web UI). Turn off with `sudo systemctl disable --now wyze-tunnel-update.timer`.
 - Logs rotate automatically (journald). With `LOG_FILE=true`, the debug log goes to `/var/lib/wyze-tunnel/logs/debug.log` and rotates at 5 MB.
