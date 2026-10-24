@@ -1,6 +1,8 @@
 import os
+import secrets
 from base64 import urlsafe_b64encode
 from hashlib import sha256
+from pathlib import Path
 from typing import Optional
 
 from werkzeug.security import generate_password_hash
@@ -31,12 +33,14 @@ def get_credential(file_name: str) -> str:
     return ""
 
 
-def clear_local_creds():
-    for file in ["wb_password", "wb_api"]:
-        file_path = f"{TOKEN_PATH}{file}"
-        if os.path.exists(file_path):
-            logger.info(f"[AUTH] Clearing local auth data [{file_path=}]")
-            os.remove(file_path)
+def save_credential(file_name: str, value: str) -> None:
+    file_path = Path(TOKEN_PATH, file_name)
+    file_path.touch(mode=0o600)
+    file_path.write_text(value)
+
+
+# Installs from before random credentials already have cached Wyze data; they keep their old ones.
+LEGACY_INSTALL: bool = any(Path(TOKEN_PATH).glob("*.pickle"))
 
 
 def gen_api_key(email):
@@ -69,18 +73,36 @@ class WbAuth:
 
         logger.info(f"[AUTH] WB_USERNAME={cls.username}")
         logger.info(f"[AUTH] WB_PASSWORD={redact_password(cls._pass)}")
-        logger.info(f"[AUTH] WB_API={cls.api}")
+        logger.info(f"[AUTH] WB_API={redact_password(cls.api)}")
 
     @classmethod
     def _update_credentials(cls, email: str, force: bool = False) -> None:
-        if force or env_bool("FRESH_DATA"):
-            clear_local_creds()
+        if not (password := get_credential("wb_password")):
+            password = cls._new_credential("wb_password", email.partition("@")[0])
+        if password != cls._pass:
+            cls._pass = password
+            cls._hashed_pass = generate_password_hash(password)
 
-        if not get_credential("wb_password"):
-            cls._pass = email.partition("@")[0]
-            cls._hashed_pass = generate_password_hash(cls._pass)
+        cls.api = get_credential("wb_api") or cls._new_credential(
+            "wb_api", gen_api_key(email)
+        )
 
-        cls.api = get_credential("wb_api") or gen_api_key(email)
+        if cls._pass == email.partition("@")[0] or cls.api == gen_api_key(email):
+            logger.warning(
+                "[AUTH] WB_PASSWORD or WB_API is still derived from your Wyze email. "
+                f"Set your own, or edit {TOKEN_PATH}wb_password and wb_api, then restart."
+            )
+
+    @staticmethod
+    def _new_credential(file_name: str, legacy: str) -> str:
+        if LEGACY_INSTALL:
+            value = legacy
+        else:
+            value = secrets.token_urlsafe(16 if file_name == "wb_password" else 30)
+            # Only time the full value is logged; it is saved for later runs.
+            logger.warning(f"[AUTH] Generated {file_name.upper()}: {value}")
+        save_credential(file_name, value)
+        return value
 
 
 def redact_password(password: Optional[str]):
