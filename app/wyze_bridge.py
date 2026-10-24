@@ -50,6 +50,7 @@ class WyzeBridge(Thread):
     def refresh_cams(self) -> None:
         self.mtx.stop()
         self.streams.stop_all()
+        self.streams.streams.clear()  # so cameras hidden since the last start drop out
         self.api.get_cameras(fresh_data=True)
         self._initialize(False)
 

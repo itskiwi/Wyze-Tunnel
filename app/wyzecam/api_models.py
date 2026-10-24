@@ -165,6 +165,10 @@ class WyzeCamera(BaseModel):
         return self.product_model in PRO_CAMS or self.model_name.endswith("Pro")
 
     @property
+    def is_doorbell(self) -> bool:
+        return self.product_model in DOORBELL
+
+    @property
     def is_floodlight(self) -> bool:
         return self.product_model in FLOODLIGHT_CAMS
 
