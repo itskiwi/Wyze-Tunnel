@@ -110,7 +110,7 @@ def create_app():
         if wb.api.mfa and "verification_code" not in wb.api.mfa:
             return {"state": "mfa", "mfa_type": wb.api.mfa["mfa_type"]}
         if wb.api.login_error:
-            return {"state": "error", "error": wb.api.login_error}
+            return {"state": "error", "error": wb.api.login_error, "retry_at": wb.api.login_retry_at}
         return {"state": "signing_in" if wb.api.creds.is_set else "idle"}
 
     @app.route("/")

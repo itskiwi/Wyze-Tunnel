@@ -161,11 +161,20 @@
                 const s = await fetch(`login/status?setup=${setupToken}`).then(r => r.json()).catch(() => ({ state: "signing_in" }));
                 if (s.state === "done") { fail(""); showLogin(s); show("done"); break; }
                 if (s.state === "mfa") { $("#mfaText").textContent = mfaHelp[s.mfa_type] || mfaHelp.Email; show("mfa"); break; }
-                if (s.state === "error") { fail(`Wyze said: ${s.error}. Check your details and try again.`); show("key"); break; }
+                if (s.state === "error") { s.retry_at * 1000 > Date.now() ? rateLimited(s.retry_at * 1000) : fail(`Wyze said: ${s.error}. Check your details and try again.`); show("key"); break; }
                 if (s.state === "idle" && !$("[data-step=wait]").classList.contains("hidden")) { show("key"); break; }
                 await new Promise(r => setTimeout(r, 1000));
             }
             polling = false;
+        }
+
+        // Each sign-in attempt during a Wyze lockout can extend it, so hold the buttons until it ends.
+        function rateLimited(until) {
+            const at = new Date(until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+            fail(`Wyze is limiting sign-in attempts. Try again after ${at}.`);
+            const buttons = document.querySelectorAll("form[data-step=key] button, form[data-step=account] button:not([type=button])");
+            buttons.forEach(b => b.disabled = true);
+            setTimeout(() => { buttons.forEach(b => b.disabled = false); fail(""); }, until - Date.now());
         }
 
         function showLogin(s) {
