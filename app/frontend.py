@@ -1,10 +1,11 @@
 import os
 import secrets
+import subprocess
 import time
 from threading import Thread
 from functools import wraps
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 
 from flask import (
     Flask,
@@ -19,7 +20,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import backup, config, guests, privacy, shares, web_ui, webhooks, wyze_api
+from wyzebridge import backup, config, guests, privacy, shares, street_watch, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
@@ -63,7 +64,8 @@ def create_app():
         # Images and links to the UI stay embeddable; everything else (commands, restarts, login) is same-site only.
         if request.path.startswith(("/static/", "/img/", "/snapshot/", "/thumb/", "/photo/", "/share/")):
             return
-        if request.method == "GET" and request.path in ("/", "/live", "/login", "/cams.m3u8"):
+        # A neighbor opens their Street Watch link from a chat app; sending the form is still same-site only.
+        if request.method == "GET" and (request.path in ("/", "/live", "/login", "/cams.m3u8") or request.path.startswith("/street/")):
             return
         if web_ui.cross_site_request():
             return {"error": "Cross-site request blocked"}, 403
@@ -586,18 +588,109 @@ def create_app():
     def shared_recording(token: str):
         if not (share := shares.get_share(token)):
             return "This link has ended or doesn't exist.", 404
-        return recording_mp4(share["cam"], {"start": share["start"], "duration": share["duration"]})
+        if request.headers.get("Range", "bytes=0-").startswith("bytes=0-"):  # players fetch more ranges of one view
+            shares.count_view(token)
+        args = {"start": share["start"], "duration": share["duration"]}
+        return recording_mp4(share["cam"], args, sound=share.get("sound", True))
 
-    def recording_mp4(cam_name: str, args: dict):
+    def recording_mp4(cam_name: str, args: dict, sound: bool = True):
+        name = f"{cam_name}_{args['start']}.mp4".replace(":", "-")
+        headers = {"Content-Disposition": f'inline; filename="{name}"'}
+        if not sound:
+            url = f"http://{PLAYBACK_ADDR}/get?" + urlencode({"path": cam_name, "format": "mp4", **args})
+            return Response(silent_mp4(url), mimetype="video/mp4", headers=headers)
         resp = mtx_playback("get", stream=True, path=cam_name, format="mp4", **args)
         if not resp.ok:
             return {"error": resp.text.strip()}, resp.status_code
-        name = f"{cam_name}_{args['start']}.mp4".replace(":", "-")
-        return Response(
-            resp.iter_content(64 * 1024),
-            mimetype="video/mp4",
-            headers={"Content-Disposition": f'inline; filename="{name}"'},
+        return Response(resp.iter_content(64 * 1024), mimetype="video/mp4", headers=headers)
+
+    def silent_mp4(url: str):
+        """The clip with its sound track dropped, remuxed as it streams."""
+        cmd = ["ffmpeg", "-loglevel", "error", "-i", url, "-an", "-c", "copy"]
+        cmd += ["-movflags", "frag_keyframe+empty_moov", "-f", "mp4", "pipe:1"]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            while chunk := proc.stdout.read(64 * 1024):
+                yield chunk
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def owner_only(view):
+        @wraps(view)
+        def wrapped_view(*args, **kwargs):
+            if web_ui.current_guest():
+                return {"error": "Only the owner can use Street Watch."}, 403
+            return view(*args, **kwargs)
+
+        return auth_required(wrapped_view)
+
+    @app.route("/street-watch", methods=["GET", "POST"])
+    @owner_only
+    def street_watch_page():
+        if request.method == "POST":
+            street_watch.set_enabled(bool((request.get_json(silent=True) or {}).get("enabled")))
+            return {"status": "saved"}
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return render_template(
+            "street_watch.html",
+            street=street_watch.state(),
+            cameras={uri: cam for uri, cam in cams.items() if cam.get("record")},
+            api=WbAuth.api,
+            version=config.VERSION,
         )
+
+    @app.route("/street-watch/links", methods=["POST"])
+    @owner_only
+    def street_watch_link():
+        try:
+            token = street_watch.add_link((request.get_json(silent=True) or {}).get("name"))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"url": f"street/{token}"}
+
+    @app.route("/street-watch/links/<string:token>", methods=["DELETE"])
+    @owner_only
+    def street_watch_end_link(token: str):
+        street_watch.end_link(token)
+        return {"status": "ended"}
+
+    @app.route("/street-watch/requests/<string:req_id>/<string:action>", methods=["POST"])
+    @owner_only
+    def street_watch_answer(req_id: str, action: str):
+        data = request.get_json(silent=True) or {}
+        try:
+            if action == "approve":
+                if not (stream := wb.streams.get(cam := str(data.get("cam")))):
+                    return {"error": "Pick a camera."}, 400
+                token = street_watch.approve(
+                    req_id, cam, stream.camera.mac, data.get("start"), data.get("duration"), data.get("sound") is True
+                )
+                return {"url": f"share/{token}", "hours": shares.SHARE_HOURS}
+            if action not in ("decline", "revoke"):
+                return {"error": "Unknown action"}, 404
+            getattr(street_watch, action)(req_id)
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"status": "saved"}
+
+    @app.route("/street/<string:token>", methods=["GET", "POST"])
+    def street_request(token: str):
+        """A neighbor's request form. Shows nothing about the cameras, and the same reply whether or not there's footage."""
+        if request.method == "POST":
+            try:
+                name = street_watch.submit(token, request.get_json(silent=True) or {}, request.remote_addr or "")
+            except LookupError:
+                return {"error": "This link has ended or doesn't exist."}, 404
+            except ValueError as ex:
+                return {"error": str(ex)}, 400
+            Thread(target=webhooks.send_webhook, args=("street", "Street Watch", f"{name} sent a footage request."), daemon=True).start()
+            return {"status": "sent"}
+        name = street_watch.link_name(token)
+        resp = make_response(render_template("street_request.html", name=name, hide_nav=True), 200 if name else 404)
+        resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+        resp.headers["Referrer-Policy"] = "no-referrer"
+        return resp
 
     def mtx_playback(endpoint: str, stream: bool = False, **params) -> requests.Response:
         try:
