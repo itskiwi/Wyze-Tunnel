@@ -16,10 +16,11 @@ from threading import Event, Lock, Thread
 
 import requests
 
+# No wheels for 32-bit ARM, and NumPy refuses CPUs older than x86-64-v2 with a RuntimeError: detection is off there.
 try:
     import cv2
     import numpy as np
-except ImportError:  # no wheels for 32-bit ARM, so built-in detection is off there
+except (ImportError, RuntimeError):
     cv2 = None
 
 from wyzebridge.bridge_utils import env_bool, env_cam
