@@ -1,5 +1,5 @@
-name: Docker Wyze Bridge (EDGE branch)
-description: EDGE build. Use the REBUILD button to pull latest image.
+name: Wyze Tunnel (Edge)
+description: Latest code from main, built on every merge. Use REBUILD to pull the newest image.
 slug: docker_wyze_bridge_edge
 url: "https://github.com/itskiwi/Wyze-Tunnel"
 version: edge

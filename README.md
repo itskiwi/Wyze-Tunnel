@@ -91,6 +91,16 @@ docker run -p 8554:8554 -p 8888:8888 -p 5050:5000 -e WB_AUTH=false ghcr.io/itski
 
 You can then use the web interface at `http://localhost:5050` where `localhost` is the hostname or ip of the machine running the bridge.
 
+Image tags (`ghcr.io/itskiwi/wyze-tunnel`):
+
+| Tag | What it is |
+|-----|------------|
+| `latest`, `2.11.2` | Stable releases |
+| `edge` | Latest `main`, rebuilt on every merge |
+| `sha-abc1234` | One exact commit, kept forever, so you can roll back by pinning it |
+
+Add `-hw` (VAAPI) or `-qsv` (Intel QuickSync) to any tag for the amd64 hardware-encoding image, like `latest-hw` or `sha-abc1234-hw`.
+
 See [basic usage](#basic-usage) for additional information or visit the [wiki page](https://github.com/mrlt8/docker-wyze-bridge/wiki/Home-Assistant) for additional information on using the bridge as a Home Assistant Add-on.
 
 ## What's Changed in v2.10.3
@@ -254,7 +264,11 @@ docker image prune # Remove old images
 
 ### 🏠 Home Assistant
 
-Visit the [wiki page](https://github.com/mrlt8/docker-wyze-bridge/wiki/Home-Assistant) for additional information on Home Assistant.
+Add this repository to Home Assistant and pick one add-on:
+
+- **Wyze Tunnel**: stable releases. It updates when a new version is published.
+- **Wyze Tunnel (Edge)**: the latest code from `main`, rebuilt on every merge. Press REBUILD to pull the newest one.
+- **Wyze Tunnel (hardware encoding)**: the Intel/VAAPI image, amd64 only.
 
 [![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fitskiwi%2FWyze-Tunnel)
 

@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   bundles:
@@ -50,4 +51,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         # Creates the tag on this commit when it doesn't exist yet (the Actions-tab route).
-        run: gh release create "$TAG" dist/* --target "$GITHUB_SHA" --generate-notes
+        run: |
+          gh release create "$TAG" dist/* --target "$GITHUB_SHA" --generate-notes
+          # Tags made with this token don't fire other workflows, so start the Docker/Home Assistant build here.
+          gh workflow run docker-image.yml --ref "$TAG"
