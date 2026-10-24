@@ -101,11 +101,53 @@ def mqtt_sub_topic(m_topics: list, callback) -> Optional[paho.mqtt.client.Client
     return client
 
 
-def bridge_status(client: Optional[paho.mqtt.client.Client]):
-    """Set bridge online if MQTT is enabled."""
+BRIDGE_SENSORS = {
+    "cameras_streaming": "mdi:cctv",
+    "cameras_offline": "mdi:cctv-off",
+    "cameras_total": "mdi:video",
+}
+
+
+def bridge_status(client: Optional[paho.mqtt.client.Client], streams: Optional[dict] = None):
+    """Set bridge online if MQTT is enabled, and publish bridge-wide camera counts."""
     if not client:
         return
     client.publish(f"{MQTT_TOPIC}/state", "online", retain=True)
+    if streams is None:
+        return
+    if not BRIDGE_DISCOVERY_SENT and client.is_connected():
+        bridge_discovery(client)
+    states = [s.status() for s in streams.values()]
+    counts = {
+        "cameras_streaming": states.count("connected"),
+        "cameras_offline": states.count("offline"),
+        "cameras_total": len(states),
+    }
+    for sensor, count in counts.items():
+        client.publish(f"{MQTT_TOPIC}/bridge/{sensor}", count, retain=True)
+
+
+BRIDGE_DISCOVERY_SENT = False
+
+
+def bridge_discovery(client: Optional[paho.mqtt.client.Client]):
+    """Home Assistant sensors for the whole bridge, grouped under one Wyze Tunnel device."""
+    global BRIDGE_DISCOVERY_SENT
+    if not client or not MQTT_DISCOVERY:
+        return
+    BRIDGE_DISCOVERY_SENT = True
+    device = {"name": "Wyze Tunnel", "identifiers": "wyze_tunnel", "sw_version": VERSION}
+    for sensor, icon in BRIDGE_SENSORS.items():
+        payload = {
+            "name": " ".join(sensor.split("_")).capitalize(),
+            "uniq_id": f"WYZE_TUNNEL_{sensor.upper()}",
+            "state_topic": f"{MQTT_TOPIC}/bridge/{sensor}",
+            "availability_topic": f"{MQTT_TOPIC}/state",
+            "state_class": "measurement",
+            "icon": icon,
+            "device": device,
+        }
+        client.publish(f"{MQTT_DISCOVERY}/sensor/wyze_tunnel/{sensor}/config", json.dumps(payload), retain=True)
 
 
 @mqtt_enabled
@@ -179,6 +221,7 @@ def _mqtt_discovery(client, cams, msg):
         return
 
     bridge_status(client)
+    bridge_discovery(client)
     for uri, cam in cams.items():
         publish_discovery(uri, cam, False)
 

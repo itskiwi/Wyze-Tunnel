@@ -198,6 +198,21 @@ def prometheus_metrics(cams: dict[str, dict], api_stats: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def ha_dashboard(cams: dict[str, dict]) -> dict:
+    """A Home Assistant dashboard with a live view per camera, using MediaMTX's own player pages."""
+    cards = [
+        {
+            "type": "iframe",
+            "title": cam.get("nickname") or uri,
+            "url": cam.get("webrtc_url") or cam["hls_url"],
+            "aspect_ratio": "16:9",
+        }
+        for uri, cam in cams.items()
+        if cam.get("enabled", True)
+    ]
+    return {"title": "Wyze Tunnel", "views": [{"title": "Cameras", "path": "wyze-tunnel", "cards": cards}]}
+
+
 def boa_snapshot(stream: Stream) -> Optional[dict]:
     """Take photo."""
     stream.send_cmd("take_photo")
