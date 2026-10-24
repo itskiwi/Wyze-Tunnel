@@ -430,7 +430,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (messageData.motion) {
         if (motionIcon.classList.contains("is-hidden")) {
-          sendNotification('Motion', `Motion detected on ${cam}`, "info");
+          if (card.dataset.doorbell === "True") {
+            chime();
+            sendNotification("Someone's at the door", `Motion at ${cam}`, "warning");
+          } else {
+            sendNotification('Motion', `Motion detected on ${cam}`, "info");
+          }
         }
         motionIcon.classList.remove("is-hidden");
       } else {
@@ -805,6 +810,24 @@ document.addEventListener("DOMContentLoaded", () => {
       if (permission === "granted") { return true }
     });
   }
+
+  // Two-tone door chime. Browsers only allow sound after the page has been clicked or tapped once.
+  function chime() {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) { return }
+    const ctx = chime.ctx ||= new Ctx();
+    [[659.25, 0], [523.25, 0.45]].forEach(([freq, at]) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.3, ctx.currentTime + at);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + at + 0.8);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + at);
+      osc.stop(ctx.currentTime + at + 0.8);
+    });
+  }
+  // Unlock audio on the first interaction so a later ring can play.
+  document.addEventListener("pointerdown", () => { chime.ctx ||= new (window.AudioContext || window.webkitAudioContext)(); chime.ctx.resume?.() }, { once: true });
 
   function sendNotification(title, message, type = "primary") {
     if (getCookie("fullscreen")) { return }
