@@ -1,0 +1,193 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Street Watch</h1>
+    <label class="ml-auto flex cursor-pointer items-center gap-2 text-sm">
+        <input id="enabled" type="checkbox" class="h-5 w-5 accent-[rgb(var(--accent))]" {{ 'checked' if street.enabled }} />
+        <span>{{ 'On' if street.enabled else 'Off' }}</span>
+    </label>
+</header>
+
+<section class="surface mx-auto max-w-2xl p-5 text-sm text-zinc-400">
+    <p>Neighbors can ask you for footage through a link you send them. You pick a clip and approve it, or decline.
+        They never see your cameras, and they can't tell whether you have footage until you answer.</p>
+    <ul class="mt-2 list-disc space-y-0.5 pl-5">
+        <li>One clip of up to 10 minutes from one camera. Its link ends after 24 hours, and you can end it sooner.</li>
+        <li>Shared clips have no sound unless you choose to include it.</li>
+        <li>A request covers up to 1 hour in the last 7 days. Each neighbor can have 3 waiting at once.</li>
+        <li>Times in your privacy schedule can't be shared. Requests and this log are deleted after 30 days.</li>
+        <li>Turning Street Watch off ends every request link and every clip link it made.</li>
+    </ul>
+</section>
+<p id="status" class="mx-auto mt-3 max-w-2xl text-sm" role="status"></p>
+
+{% if street.enabled %}
+<section class="surface mx-auto mt-6 max-w-2xl p-5">
+    <h2 class="font-semibold">Request links</h2>
+    <p class="mt-1 text-sm text-zinc-400">Make one link per neighbor and send it to them yourself. The page it opens doesn't show
+        your name, address or cameras.</p>
+    <form id="linkForm" class="mt-3 flex flex-wrap items-end gap-2">
+        <label class="block min-w-0 flex-1 text-sm">
+            <span class="text-zinc-400">Neighbor's name</span>
+            <input class="field mt-1" name="name" required maxlength="32" placeholder="Pat next door" autocomplete="off" />
+        </label>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-link"></i>Make link</button>
+    </form>
+    <p id="linkOut" class="mt-2 text-sm" role="status"></p>
+    <ul class="mt-3 divide-y divide-zinc-800 text-sm">
+        {% for token, link in street.links.items() %}
+        <li class="flex items-center gap-3 py-2" data-token="{{ token }}">
+            <span class="font-medium">{{ link.name }}</span>
+            <button type="button" class="copy-link btn py-1" data-url="street/{{ token }}"><i class="fas fa-copy"></i>Copy link</button>
+            <button type="button" class="end-link btn ml-auto py-1">End</button>
+        </li>
+        {% else %}
+        <li class="py-2 text-zinc-500">No links yet.</li>
+        {% endfor %}
+    </ul>
+</section>
+
+<section class="mx-auto mt-6 max-w-2xl space-y-3">
+    <h2 class="font-semibold">Requests</h2>
+    {% for req in street.requests | reverse %}
+    <article class="surface p-5 text-sm" data-id="{{ req.id }}">
+        <div class="flex flex-wrap items-baseline gap-2">
+            <span class="font-semibold text-zinc-100">{{ req.name }}</span>
+            <span class="text-zinc-500">asked <time data-ts="{{ req.created }}"></time></span>
+            <span class="ml-auto text-zinc-400">{{ {'open': 'Waiting for you', 'approved': 'Shared', 'declined': 'Declined'}[req.status] }}</span>
+        </div>
+        <p class="mt-2 whitespace-pre-line text-zinc-200">{{ req.what }}</p>
+        <p class="mt-2 text-zinc-400">Between <time data-iso="{{ req.start }}"></time> and <time data-iso="{{ req.end }}"></time></p>
+        <p class="text-zinc-400">Reach them at <span class="text-zinc-200">{{ req.contact }}</span></p>
+        {% if req.status == 'open' %}
+        {% if cameras %}
+        <form class="approve mt-4 grid gap-3 sm:grid-cols-2">
+            <label class="block">
+                <span class="text-zinc-400">Camera</span>
+                <select class="field mt-1" name="cam">
+                    {% for uri, cam in cameras.items() %}<option value="{{ uri }}">{{ cam.nickname }}</option>{% endfor %}
+                </select>
+            </label>
+            <label class="block">
+                <span class="text-zinc-400">Clip starts at</span>
+                <input class="field mt-1" name="start" type="datetime-local" step="1" required data-iso="{{ req.start }}" />
+            </label>
+            <label class="block">
+                <span class="text-zinc-400">Length in minutes</span>
+                <input class="field mt-1" name="minutes" type="number" min="1" max="10" value="2" required />
+            </label>
+            <label class="flex items-center gap-2 self-end pb-2">
+                <input name="sound" type="checkbox" class="h-4 w-4" /> Include sound
+            </label>
+            <p class="text-zinc-400 sm:col-span-2">This clip may show people who didn't agree to be filmed.
+                <a class="find underline underline-offset-2" href="recordings">Find it in Recordings</a> first.</p>
+            <div class="flex flex-wrap gap-2 sm:col-span-2">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i>Approve and share</button>
+                <button type="button" class="decline btn">Decline</button>
+            </div>
+        </form>
+        {% else %}
+        <p class="mt-3 text-zinc-400">No cameras are recording, so there's nothing to share.</p>
+        <button type="button" class="decline btn mt-2">Decline</button>
+        {% endif %}
+        {% elif req.status == 'approved' %}
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+            {% if req.live %}
+            <button type="button" class="copy-link btn py-1" data-url="share/{{ req.share }}"><i class="fas fa-copy"></i>Copy clip link</button>
+            <span class="text-zinc-400">Watched {{ req.views }} time{{ '' if req.views == 1 else 's' }}</span>
+            <button type="button" class="revoke btn ml-auto py-1">End link now</button>
+            {% else %}
+            <span class="text-zinc-500">The clip link has ended. It was watched {{ req.views }} time{{ '' if req.views == 1 else 's' }}.</span>
+            {% endif %}
+        </div>
+        {% endif %}
+        <p class="out mt-2" role="status"></p>
+    </article>
+    {% else %}
+    <p class="surface p-5 text-sm text-zinc-500">No requests yet.</p>
+    {% endfor %}
+</section>
+{% endif %}
+
+<section class="surface mx-auto mt-6 max-w-2xl p-5">
+    <h2 class="font-semibold">Activity</h2>
+    <ul class="mt-2 space-y-1 text-sm">
+        {% for e in street.log | reverse %}
+        <li><time class="text-zinc-500" data-ts="{{ e.ts }}"></time> <span class="text-zinc-300">{{ e.text }}</span></li>
+        {% else %}
+        <li class="text-zinc-500">Nothing yet.</li>
+        {% endfor %}
+    </ul>
+</section>
+{% endblock %}
+
+{% block javascript %}
+<script>
+    const post = (url, data, method = "POST") => fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data || {}) })
+        .then((resp) => resp.json().then((body) => resp.ok ? body : Promise.reject(new Error(body.error || resp.statusText))));
+    const base = location.origin + location.pathname.replace(/street-watch$/, "");
+    const say = (el, ok, text) => { el.className = `${el.className.replace(/ ?text-\S+/g, "")} ${ok ? "text-emerald-300" : "text-rose-300"}`; el.textContent = text; };
+    const pad = (n) => String(n).padStart(2, "0");
+    const localInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
+    document.querySelectorAll("time[data-ts]").forEach((t) => t.textContent = new Date(t.dataset.ts * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }));
+    document.querySelectorAll("time[data-iso]").forEach((t) => t.textContent = new Date(t.dataset.iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }));
+    document.querySelectorAll("input[data-iso]").forEach((i) => i.value = localInput(new Date(i.dataset.iso)));
+
+    document.getElementById("enabled").addEventListener("change", (e) => {
+        if (!e.target.checked && !confirm("Turn Street Watch off? Every request link and every clip link it made stops working.")) {
+            e.target.checked = true;
+            return;
+        }
+        post("street-watch", { enabled: e.target.checked }).then(() => location.reload())
+            .catch((err) => say(document.getElementById("status"), false, err.message));
+    });
+    document.querySelectorAll(".copy-link").forEach((btn) => btn.addEventListener("click", () => {
+        navigator.clipboard.writeText(base + btn.dataset.url).then(() => btn.lastChild.textContent = "Copied");
+    }));
+    document.querySelectorAll(".end-link").forEach((btn) => btn.addEventListener("click", () => {
+        const li = btn.closest("li");
+        fetch(`street-watch/links/${encodeURIComponent(li.dataset.token)}`, { method: "DELETE" }).then((resp) => resp.ok && location.reload());
+    }));
+    const linkForm = document.getElementById("linkForm");
+    linkForm?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const out = document.getElementById("linkOut");
+        post("street-watch/links", { name: linkForm.name.value })
+            .then((body) => {
+                out.className = "mt-2 text-sm text-zinc-200";
+                out.innerHTML = `<code class="select-all break-all"></code><span class="mt-1 block text-zinc-400">Send this to them. It's also in the list below after a reload.</span>`;
+                out.firstChild.textContent = base + body.url;
+                linkForm.reset();
+            })
+            .catch((err) => say(out, false, err.message));
+    });
+
+    document.querySelectorAll("article[data-id]").forEach((card) => {
+        const id = card.dataset.id, out = card.querySelector(".out");
+        const act = (action, data) => post(`street-watch/requests/${id}/${action}`, data);
+        card.querySelector(".decline")?.addEventListener("click", () => act("decline").then(() => location.reload()).catch((err) => say(out, false, err.message)));
+        card.querySelector(".revoke")?.addEventListener("click", () => act("revoke").then(() => location.reload()).catch((err) => say(out, false, err.message)));
+        const form = card.querySelector("form.approve");
+        if (!form) return;
+        const find = form.querySelector(".find");
+        const syncFind = () => find.href = `recordings?cam=${encodeURIComponent(form.cam.value)}`;
+        form.cam.addEventListener("change", syncFind);
+        syncFind();
+        form.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const data = { cam: form.cam.value, start: new Date(form.start.value).toISOString(), duration: form.minutes.value * 60, sound: form.sound.checked };
+            act("approve", data)
+                .then((body) => {
+                    out.className = "out mt-2 text-zinc-200";
+                    out.innerHTML = `<code class="select-all break-all"></code><span class="mt-1 block text-zinc-400"></span>`;
+                    out.firstChild.textContent = base + body.url;
+                    out.lastChild.textContent = `Send this to them. It works for ${body.hours} hours.`;
+                    form.remove();
+                })
+                .catch((err) => say(out, false, err.message));
+        });
+    });
+</script>
+{% endblock %}
