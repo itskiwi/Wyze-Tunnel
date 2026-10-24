@@ -101,7 +101,9 @@ jobs:
         shell: pwsh
         run: |
           for ($i = 0; $i -lt 40; $i++) {
-            try { Invoke-WebRequest http://127.0.0.1:5000/login -UseBasicParsing | Out-Null; exit 0 } catch { Start-Sleep 3 }
+            curl.exe -fsS -o NUL --max-time 10 http://127.0.0.1:5000/login
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Start-Sleep 3
           }
           exit 1
       - name: Bridge logs
