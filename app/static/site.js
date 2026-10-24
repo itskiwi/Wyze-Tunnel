@@ -743,28 +743,16 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
   }
-  // Change default video format for WebUI
+  // Snapshot / Live / Auto-play and the video format, remembered on this device
   document.querySelectorAll(".preview-toggle [data-action]").forEach((e) => {
     e.addEventListener("click", () => {
-      let videoCookie = getCookie("show_video")
-      setCookie("show_video", "1");
-      switch (e.dataset.action) {
-        case "snapshot":
-          setCookie("show_video", "");
-          break;
-        case "autoplay":
-          let icon = e.querySelector("i.fas").classList;
-          let playCookie = !!getCookie("autoplay");
-          setCookie("autoplay", !playCookie);
-          if (playCookie) { icon.replace("fa-square-check", "fa-square"); return; }
-          icon.replace("fa-square", "fa-square-check")
-          if (videoCookie) { autoplay(); return; }
-          break;
-        case "webrtc":
-        case "hls":
-        case "kvs":
-          setCookie("video", e.dataset.action);
-          break;
+      const { action } = e.dataset;
+      const days = 3650;
+      if (["webrtc", "hls", "kvs"].includes(action)) {
+        setCookie("video", action, days);
+      } else {
+        setCookie("show_video", action === "snapshot" ? "" : "1", days);
+        setCookie("autoplay", action === "autoplay" ? "1" : "", days);
       }
       window.location = window.location.pathname;
     })

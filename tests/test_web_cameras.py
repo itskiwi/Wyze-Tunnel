@@ -50,3 +50,22 @@ def test_rename_camera(setup):
     assert client.post("/cameras/name", json={"mac": "AA", "name": "x" * 65}).status_code == 400
     client.post("/cameras/name", json={"mac": "AA", "name": ""})
     assert wyze_api.display_name(front) == "Front"
+
+
+@pytest.mark.parametrize("cookies, checked", [
+    ({}, "snapshot"),
+    ({"show_video": "1"}, "live"),
+    ({"show_video": "1", "autoplay": "1"}, "autoplay"),
+])
+def test_live_page_preview_switch(setup, monkeypatch, cookies, checked):
+    import re
+    from wyzebridge import web_ui
+
+    client, _, _ = setup
+    cams = {"front": {"nickname": "Front", "enabled": True, "connected": True, "on_demand": False}}
+    monkeypatch.setattr(web_ui, "all_cams", lambda *_: {"enabled": 1, "available": 1, "total": 1, "cameras": cams})
+    for name, value in cookies.items():
+        client.set_cookie(name, value)
+    html = client.get("/live", headers={"Authorization": "Basic dTpw"}).text
+    on = re.findall(r'data-action="(snapshot|live|autoplay)" role="radio" aria-checked="true"', html)
+    assert on == [checked]
