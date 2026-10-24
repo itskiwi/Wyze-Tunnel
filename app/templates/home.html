@@ -20,6 +20,7 @@
     <div class="mt-3 flex flex-wrap gap-2">
         {% if online %}<span class="chip chip-ok">{{ online }} live</span>{% endif %}
         {% if offline %}<a href="health" class="chip chip-bad">{{ offline }} offline</a>{% endif %}
+        <a href="search" class="chip bg-zinc-800 text-zinc-300"><i class="fas fa-magnifying-glass mr-1"></i>Search footage</a>
     </div>
     {% endif %}
 </header>
@@ -118,7 +119,7 @@
         const moments = [];
         for (const e of events) {
             const last = moments.at(-1);
-            if (last && last.uri === e.uri && last.first - e.ts <= GROUP_SECONDS && dayKey(last.first) === dayKey(e.ts)) {
+            if (last && last.uri === e.uri && last.label === e.label && last.first - e.ts <= GROUP_SECONDS && dayKey(last.first) === dayKey(e.ts)) {
                 last.first = e.ts;
                 last.count++;
             } else {
@@ -163,8 +164,9 @@
             t.dateTime = new Date(m.ts * 1000).toISOString();
             if (m.ts > seen && seen) row.querySelector("[data-dot]").classList.replace("bg-zinc-600", "bg-accent");
             row.querySelector("[data-name]").textContent = m.name;
-            row.querySelector("[data-what]").textContent = m.count === 1 ? "Motion"
-                : `Motion ${m.count} times, ${time(m.first)} to ${time(m.ts)}`;
+            const what = m.label ? m.label[0].toUpperCase() + m.label.slice(1) : "Motion";  // spotted by detection
+            row.querySelector("[data-what]").textContent = m.count === 1 ? what
+                : `${what} ${m.count} times, ${time(m.first)} to ${time(m.ts)}`;
             const link = row.querySelector("a"), records = recording.includes(m.uri);
             link.href = records ? `recordings?cam=${encodeURIComponent(m.uri)}&t=${m.first}` : `live#${encodeURIComponent(m.uri)}`;
             row.querySelector("[data-action]").textContent = records ? "Play the clip" : "See the camera";

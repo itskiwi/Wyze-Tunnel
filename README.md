@@ -182,6 +182,17 @@ Use `RECORD_ALL` or `RECORD_CAM_NAME` to enable recording.
 - `RECORD_LENGTH` Length of each clip. Use `s` for seconds , `h` for hours. Defaults to `60s`
 - `RECORD_KEEP` Delete older clips. Use `s` for seconds , `h` for hours. Set to 0s to disable automatic deletion. Defaults to `0s`
 
+### Search footage by what's in it
+
+The web UI's **Search footage** page (linked from the home screen and Recordings) finds the moments a person, car or animal showed up and plays that part of the recording.
+
+- `DETECT_ALL=true` or `DETECT_CAM_NAME=true` spots people, cars, bikes and animals on cameras that are recording, on this computer. It reads keyframes only, so it is light enough for a Raspberry Pi. The model (MobileNet-SSD, 23 MB) downloads on first use. Not available on 32-bit ARM.
+- `FRIGATE_URL` Already run [Frigate](https://frigate.video)? Point this at it (its unauthenticated API port, like `http://frigate:5000`) to search its detections and play its clips instead, packages included if your Frigate model finds them. Name cameras the same in both (`front_door` matches `front-door`).
+- `DETECT_SCORE` How sure it must be, from 0 to 1. Defaults to `0.6`
+- `DETECT_KEEP` How long to keep search results. Defaults to `RECORD_KEEP`, or 30 days.
+
+Turn on **A person is spotted** under Alerts to get a phone alert when it sees someone.
+
 [View previous changes](https://github.com/mrlt8/docker-wyze-bridge/releases)
 
 ## FAQ
