@@ -105,7 +105,7 @@
                 <figure class="image relative aspect-video">
                     {% if show_video and (camera.on_demand or camera.enabled) %}
                     {% set is_webrtc = webrtc and (video_format == "webrtc" or camera.webrtc and video_format == "kvs") %}
-                    <video data-cam="{{ cam_uri }}" {% if not is_webrtc %}data-src="{{ camera.hls_url }}stream.m3u8" {% endif %}
+                    <video data-cam="{{ cam_uri }}" {% if not is_webrtc %}data-src="{{ camera.hls_page_url }}stream.m3u8" {% endif %}
                         class="{% if is_webrtc %}webrtc{% else %}hls{% endif %} loading-preview refresh_img placeholder h-full w-full object-contain {{ 'connected' if camera.connected }}"
                         muted playsinline {{ "autoplay" if autoplay and camera.connected else "preload=none" }}
                         poster="{{ camera.img_url or 'static/loading.svg' }}">
