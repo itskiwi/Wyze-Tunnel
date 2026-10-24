@@ -2,7 +2,6 @@ import base64
 import contextlib
 import enum
 import errno
-import fcntl
 import hashlib
 import logging
 import os
@@ -831,5 +830,7 @@ class WyzeIOTCSession:
 
 
 def set_non_blocking(fd):
+    import fcntl  # POSIX only; the TUTK path never runs on Windows
+
     flags = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)

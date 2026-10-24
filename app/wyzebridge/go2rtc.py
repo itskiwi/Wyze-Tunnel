@@ -9,6 +9,7 @@ Two kinds of source, both pulled by a small ffmpeg relay into MediaMTX:
 import ctypes
 import os
 import signal
+import sys
 from pathlib import Path
 from subprocess import DEVNULL, PIPE, Popen
 from typing import Optional
@@ -93,14 +94,14 @@ def relay_cmd(src: str, uri: str) -> list[str]:
 
 
 def _die_with_parent():
-    # Linux only (all installs run on Linux): stop ffmpeg if the relay process is killed.
+    # Linux only: stop ffmpeg if the relay process is killed.
     ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGTERM)
 
 
 def relay(src: str, uri: str, on_frames, should_stop) -> None:
     """Run the relay until it ends or should_stop(); call on_frames() once video flows."""
     flowing = False
-    with Popen(relay_cmd(src, uri), stdout=PIPE, stdin=DEVNULL, text=True, preexec_fn=_die_with_parent) as ff:
+    with Popen(relay_cmd(src, uri), stdout=PIPE, stdin=DEVNULL, text=True, preexec_fn=_die_with_parent if sys.platform == "linux" else None) as ff:
         for line in iter(ff.stdout.readline, ""):  # readline: don't wait for a full buffer
             # With stream copy, ffmpeg reports no frame count, only how much time it has written.
             if not flowing and line.startswith("out_time_us=") and line.strip()[12:] not in ("0", "N/A"):
