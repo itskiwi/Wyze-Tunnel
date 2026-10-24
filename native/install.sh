@@ -99,6 +99,9 @@ if [ ! -f "$CONF_DIR/wyze-tunnel.env" ]; then
 fi
 WB_PASSWORD=$(sed -n 's/^WB_PASSWORD=//p' "$CONF_DIR/wyze-tunnel.env")
 
+install -m 755 "$SRC/native/uninstall.sh" "$PREFIX/uninstall.sh"
+import_docker
+
 install -m 644 "$SRC/native/wyze-tunnel.service" /etc/systemd/system/wyze-tunnel.service
 systemctl daemon-reload
 systemctl enable wyze-tunnel >/dev/null
@@ -116,8 +119,37 @@ cat <<MSG
 
   It starts automatically on boot. Logs: journalctl -u wyze-tunnel -f
   Advanced settings: $CONF_DIR/wyze-tunnel.env
-
+  Uninstall: sudo $PREFIX/uninstall.sh
 MSG
+if [ -n "$DOCKER_BRIDGE" ]; then
+    cat <<MSG
+
+  Moved over from your Docker container "$DOCKER_BRIDGE" (sign-in and snapshots).
+  It uses the same ports, so stop it and keep it from coming back:
+      docker stop $DOCKER_BRIDGE && docker update --restart=no $DOCKER_BRIDGE
+  then: sudo systemctl restart wyze-tunnel
+MSG
+fi
+echo
+}
+
+# Existing Docker users: copy the container's sign-in (/tokens) and snapshots (/img) into the
+# service's state dir, once, so they don't have to sign in again.
+import_docker() {
+    DOCKER_BRIDGE=
+    command -v docker >/dev/null || return 0
+    local cid state=/var/lib/private/wyze-tunnel
+    cid=$(docker ps -a --format '{{.ID}} {{.Image}}' 2>/dev/null | awk '$2 ~ /wyze-bridge|wyze-tunnel/ {print $1; exit}')
+    [ -n "$cid" ] || return 0
+    DOCKER_BRIDGE=$(docker inspect -f '{{.Name}}' "$cid" | sed 's|^/||')
+    [ -z "$(ls -A "$state/tokens" 2>/dev/null)" ] || return 0
+    echo "==> Importing sign-in and snapshots from Docker container $DOCKER_BRIDGE"
+    install -d -m 700 /var/lib/private
+    mkdir -p "$state/tokens" "$state/img"
+    docker cp "$cid:/tokens/." "$state/tokens/" 2>/dev/null || true
+    docker cp "$cid:/img/." "$state/img/" 2>/dev/null || true
+    # Match the state dir's owner (systemd's dynamic user after a first run, root before).
+    chown -R --reference="$state" "$state"
 }
 
 main "$@"

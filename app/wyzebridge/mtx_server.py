@@ -241,6 +241,6 @@ def parse_auth(auth: str) -> list[dict[str, str]]:
         else:
             paths = "all"
             data["permissions"].append({"action": "read"})
-        logger.info(f"[MTX] Auth [{data['user']}:{data['pass']}] {paths=}")
+        logger.info(f"[MTX] Auth [{data['user']}:{data['pass'][:1]}***] {paths=}")
         entries.append(data)
     return entries
