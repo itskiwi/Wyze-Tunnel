@@ -72,6 +72,7 @@ async function setup() {
     const code = await invoke("install");
     if (code === 0) { $("log").hidden = true; return showWhenUp(true); }
     if (code === 3) return say("Windows needs to restart to finish turning on WSL. Restart your PC, then open Wyze Tunnel again.");
+    if (code === 4) return say("Virtualization is turned off in your PC's BIOS. Restart, open the BIOS (usually Del or F2 while starting), turn on \"SVM Mode\" or \"Intel Virtualization Technology\", save, then open Wyze Tunnel again.");
     say(`Setup didn't finish (error ${code}). Check your internet connection and try again.`);
   } catch (e) {
     say(`Setup didn't finish: ${e}`);
