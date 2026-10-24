@@ -38,6 +38,7 @@
             <input class="field w-full pl-8 md:w-24" id="select_refresh_period" type="number" min="0" max="1200"
                 value="{{refresh_period}}" aria-label="Refresh period in seconds" />
         </label>
+        <button class="theme-toggle btn" aria-label="Switch theme"><i class="fas fa-circle-half-stroke"></i></button>
         <details class="dropdown relative">
             <summary class="btn cursor-pointer list-none text-rose-300 hover:text-rose-200">
                 <i class="fas fa-power-off"></i><span>Restart</span>
@@ -114,10 +115,10 @@
                     {% endif %}
                     {% if not show_video %}
                     <div class="cam-overlay absolute inset-x-0 bottom-0 flex items-center justify-end gap-2 bg-gradient-to-t from-black/70 to-transparent p-3">
-                        <button class="update-preview btn bg-black/60" data-cam="{{cam_uri}}" title="Update preview">
+                        <button class="update-preview btn bg-black/60 text-[#fff]" data-cam="{{cam_uri}}" title="Update preview">
                             <i class="fas fa-arrows-rotate"></i>
                         </button>
-                        <span class="age rounded-md bg-black/60 px-2 py-0.5 text-xs text-zinc-200" data-age={{camera.img_time}}></span>
+                        <span class="age rounded-md bg-black/60 px-2 py-0.5 text-xs text-[#e4e4e7]" data-age={{camera.img_time}}></span>
                     </div>
                     {% endif %}
                 </figure>
