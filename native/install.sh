@@ -67,8 +67,8 @@ echo "==> Downloading MediaMTX v$MTX_TAG ($MTX_ARCH)"
 curl -fsSL "https://github.com/bluenviron/mediamtx/releases/download/v${MTX_TAG}/mediamtx_v${MTX_TAG}_linux_${MTX_ARCH}.tar.gz" \
     | tar xzf - -C "$PREFIX" mediamtx mediamtx.yml
 
-IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}')
-IP=${IP:-$(hostname -I 2>/dev/null | awk '{print $1}')}
+IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") print $(i + 1)}' || true)
+IP=${IP:-$(hostname -I 2>/dev/null | awk '{print $1}' || true)}
 
 mkdir -p "$CONF_DIR"
 if [ ! -f "$CONF_DIR/wyze-tunnel.env" ]; then
