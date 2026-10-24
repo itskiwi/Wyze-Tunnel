@@ -17,6 +17,7 @@
         <span class="tab"><i class="fas fa-users-viewfinder"></i><span>{{ cam_data.total }} cameras</span></span>
         {% endif %}
     </nav>
+    <a href="cameras" class="tab"><i class="fas fa-eye"></i><span>Cameras</span></a>
     <a href="alerts" class="tab"><i class="fas fa-bell"></i><span>Alerts</span></a>
     <a href="health" class="tab"><i class="fas fa-heart-pulse"></i><span>Health</span></a>
     {% if cam_data.cameras and cam_data.cameras.values()|selectattr("record")|list %}
