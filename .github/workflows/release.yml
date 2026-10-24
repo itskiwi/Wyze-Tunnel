@@ -81,6 +81,7 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq cloud-guest-utils
           sudo box/build-image.sh ${{ matrix.board }} dist/wyze-tunnel-linux-${{ matrix.cpu }}.tar.gz images
+          sudo chown -R "$USER" images
           cd images && sha256sum *.img.xz | tee wyze-tunnel-box-${{ matrix.board }}.img.xz.sha256
 
       - name: Boot the PC image and open the web page
