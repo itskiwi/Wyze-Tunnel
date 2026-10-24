@@ -81,3 +81,16 @@ def test_share_link_plays_without_login_until_it_ends(tmp_path, monkeypatch):
     assert client.get("/share/nope").status_code == 404
     with mock.patch("wyzebridge.shares.time.time", return_value=2**40):
         assert client.get("/" + url).status_code == 404
+
+
+def test_live_hls_goes_through_the_bridge_login(monkeypatch):
+    from wyzebridge import web_ui
+
+    frontend, client = make_client()
+    assert client.get("/hls/cam1/stream.m3u8").status_code == 401
+    monkeypatch.setattr(web_ui.WbAuth, "enabled", False)
+    with mock.patch.object(frontend.requests, "get", return_value=fake_resp(200, b"#EXTM3U")) as get:
+        resp = client.get("/hls/cam1/seg0.mp4?_HLS_msn=3")
+    assert resp.data == b"#EXTM3U"
+    assert get.call_args.args[0] == "http://127.0.0.1:8888/cam1/seg0.mp4"
+    assert get.call_args.kwargs["params"]["_HLS_msn"] == "3"
