@@ -46,6 +46,14 @@ jobs:
         run: docker exec os /src/native/install.sh
       - name: Web UI answers
         run: timeout 120 sh -c 'until docker exec os curl -fsS -o /dev/null http://127.0.0.1:5000/login; do sleep 3; done'
+      - name: Stops quickly
+        run: |
+          start=$(date +%s)
+          docker exec os systemctl restart wyze-tunnel
+          took=$(( $(date +%s) - start ))
+          echo "restart took ${took}s"
+          [ "$took" -lt 20 ]
+          timeout 120 sh -c 'until docker exec os curl -fsS -o /dev/null http://127.0.0.1:5000/login; do sleep 3; done'
       - name: Auto-update is set up
         run: |
           docker exec os systemctl is-enabled wyze-tunnel-update.timer wyze-tunnel-update.path

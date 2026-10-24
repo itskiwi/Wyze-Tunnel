@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-zinc-950 antialiased">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Ask for footage</title>
+    <link rel="stylesheet" href="../static/tailwind.css" />
+    <link rel="stylesheet" href="../static/site.css" />
+</head>
+
+<body class="flex min-h-full items-start justify-center px-4 py-10 font-sans text-[15px] text-zinc-100">
+    <main class="surface w-full max-w-md p-6">
+        {% if name %}
+        <h1 class="font-display text-2xl font-extrabold text-zinc-50">Ask for footage</h1>
+        <p class="mt-1 text-sm text-zinc-400">Hi {{ name }}. Say what happened and when. Your neighbor will look, and if they have
+            something they'll send you a link to the clip.</p>
+        <form id="ask" class="mt-5 space-y-4 text-sm">
+            <label class="block">
+                <span class="text-zinc-400">What happened</span>
+                <textarea class="field mt-1" name="what" rows="3" required maxlength="500" placeholder="A package was taken from my porch."></textarea>
+            </label>
+            <div class="grid gap-3 sm:grid-cols-2">
+                <label class="block">
+                    <span class="text-zinc-400">From</span>
+                    <input class="field mt-1" name="start" type="datetime-local" required />
+                </label>
+                <label class="block">
+                    <span class="text-zinc-400">To</span>
+                    <input class="field mt-1" name="end" type="datetime-local" required />
+                </label>
+            </div>
+            <p class="text-zinc-500">Up to 1 hour, in the last 7 days.</p>
+            <label class="block">
+                <span class="text-zinc-400">How to reach you</span>
+                <input class="field mt-1" name="contact" required maxlength="200" placeholder="Phone or email" autocomplete="off" />
+            </label>
+            <button type="submit" class="btn btn-primary w-full justify-center">Send request</button>
+            <p id="out" role="status"></p>
+        </form>
+        {% else %}
+        <h1 class="font-display text-2xl font-extrabold text-zinc-50">Link not found</h1>
+        <p class="mt-1 text-sm text-zinc-400">This link has ended or doesn't exist.</p>
+        {% endif %}
+    </main>
+    {% if name %}
+    <script>
+        const form = document.getElementById("ask"), out = document.getElementById("out");
+        form.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const iso = (v) => new Date(v).toISOString();
+            const data = { what: form.what.value, contact: form.contact.value, start: iso(form.start.value), end: iso(form.end.value) };
+            fetch(location.pathname, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })
+                .then((resp) => resp.json().then((body) => resp.ok ? body : Promise.reject(new Error(body.error || resp.statusText))))
+                .then(() => form.replaceChildren(Object.assign(document.createElement("p"), {
+                    className: "text-zinc-200", textContent: "Sent. If there's a clip, you'll get a link to it.",
+                })))
+                .catch((err) => { out.className = "text-rose-300"; out.textContent = err.message; });
+        });
+    </script>
+    {% endif %}
+</body>
+
+</html>
