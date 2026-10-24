@@ -663,9 +663,26 @@ def create_app():
             "search.html",
             cameras={uri: cam["nickname"] for uri, cam in cams.items()},
             enabled=detect.enabled(),
+            settings=detect.load_settings(),
+            env_frigate=bool(detect.FRIGATE_URL),
+            can_detect=detect.cv2 is not None,
+            keep_days=max(1, detect.KEEP.days),
             api=WbAuth.api,
             version=config.VERSION,
         )
+
+    @app.route("/search/settings", methods=["POST"])
+    @auth_required
+    def search_settings():
+        """Save which cameras to watch and the Frigate address, then restart cameras so it takes effect."""
+        if web_ui.current_guest():
+            return {"error": "Only the owner can change this."}, 403
+        try:
+            detect.save_settings(request.get_json(silent=True) or {}, list(wb.streams.streams))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        Thread(target=wb.restart, daemon=True).start()
+        return {"status": "saved"}
 
     @app.route("/api/detections")
     @auth_required

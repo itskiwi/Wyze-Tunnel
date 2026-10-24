@@ -16,6 +16,38 @@
     {% endif %}
 </header>
 
+{% if not current_guest() %}
+<details id="setup" class="surface mb-5 p-5" {{ 'open' if not enabled }}>
+    <summary class="cursor-pointer font-semibold">{{ 'Settings' if enabled else 'Find the moments a person, car or animal showed up' }}</summary>
+    <form id="setupForm" class="mt-3 space-y-4">
+        {% if can_detect %}
+        <fieldset>
+            <legend class="text-sm text-zinc-400">Watch these cameras. Each one also records, keeping {{ keep_days }} days, so you can play every moment. It all stays on this computer.</legend>
+            {% for uri, name in cameras.items() %}
+            <label class="mt-2 flex items-center gap-3">
+                <input type="checkbox" name="cams" value="{{ uri }}" class="h-4 w-4 accent-accent" {{ 'checked' if uri in settings.get('cams', []) }} />
+                <span>{{ name }}</span>
+            </label>
+            {% else %}
+            <p class="mt-2 text-sm text-zinc-500">No cameras yet.</p>
+            {% endfor %}
+        </fieldset>
+        {% else %}
+        <p class="text-sm text-zinc-400">This device can't run the built-in spotting. You can still use Frigate below.</p>
+        {% endif %}
+        <label class="block">
+            <span class="text-sm text-zinc-400">Already run Frigate? Its address (optional). Frigate's detections are used instead, packages included if it finds them.</span>
+            <input class="field mt-1" name="frigate_url" value="{{ settings.get('frigate_url', '') }}" autocomplete="off"
+                placeholder="{{ 'Set by FRIGATE_URL' if env_frigate else 'http://192.168.1.20:5000' }}" />
+        </label>
+        <div class="flex flex-wrap items-center gap-3">
+            <button class="btn btn-primary" type="submit">Save</button>
+            <span id="setupStatus" class="text-sm text-zinc-400" role="status"></span>
+        </div>
+    </form>
+</details>
+{% endif %}
+
 {% if enabled %}
 <div id="labels" class="seg mb-5 max-w-full overflow-x-auto" role="group" aria-label="What was seen"></div>
 <div id="playerBox" class="mb-5 hidden overflow-hidden rounded-3xl bg-black">
@@ -25,19 +57,26 @@
 <ul id="hits" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></ul>
 <p id="status" class="mt-6 text-center text-sm text-zinc-500" role="status">Loading…</p>
 <div class="mt-4 text-center"><button id="more" class="btn hidden" type="button">Show older</button></div>
-{% else %}
-<div class="mx-auto mt-16 max-w-md text-center text-zinc-400">
-    <i class="fas fa-magnifying-glass text-3xl"></i>
-    <p class="mt-3">Find the moments a person, car or animal showed up, then play that part of the recording.</p>
-    <p class="mt-3 text-sm">Turn it on with <code>DETECT_ALL=true</code> (or <code>DETECT_&lt;CAMERA_NAME&gt;=true</code>).
-        It watches cameras that are recording, on this computer, and nothing is sent to the cloud.</p>
-    <p class="mt-3 text-sm">Already run Frigate? Set <code>FRIGATE_URL</code> to its address, like <code>http://frigate:5000</code>,
-        to search its detections here instead, packages included if your Frigate model finds them.</p>
-</div>
 {% endif %}
 {% endblock %}
 
 {% block javascript %}
+<script>
+    if (location.hash === "#setup") document.getElementById("setup")?.setAttribute("open", "");
+    document.getElementById("setupForm")?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const form = e.target, out = document.getElementById("setupStatus");
+        const body = { cams: [...form.querySelectorAll("[name=cams]:checked")].map((c) => c.value), frigate_url: form.frigate_url.value };
+        out.textContent = "Saving…";
+        fetch("search/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+            .then((resp) => resp.json().then((r) => resp.ok ? r : Promise.reject(new Error(r.error || resp.statusText))))
+            .then(() => {
+                out.textContent = "Saved. Cameras reconnect for a moment; the first time, a 23 MB model downloads.";
+                setTimeout(() => location.reload(), 8000);
+            })
+            .catch((err) => { out.textContent = err.message; });
+    });
+</script>
 {% if enabled %}
 <script>
     const cameras = {{ cameras|tojson }};
