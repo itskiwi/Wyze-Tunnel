@@ -40,11 +40,11 @@
             {% if cam.status == 3 and cam.start_time %}<dt>Streaming for</dt><dd>{{ ((now - cam.start_time) / 60)|int }} min</dd>{% endif %}
         </dl>
         {% if tips %}
-        <ul class="mt-3 space-y-1 text-sm text-amber-200">
-            {% for tip in tips %}<li class="flex gap-2"><i class="fas fa-lightbulb mt-0.5 text-amber-400"></i><span>{{ tip }}</span></li>{% endfor %}
+        <ul class="mt-3 space-y-2 border-t border-white/5 pt-3 text-sm text-amber-200">
+            {% for tip in tips %}<li>{{ tip }}</li>{% endfor %}
         </ul>
         {% else %}
-        <p class="mt-3 text-sm text-emerald-300"><i class="fas fa-check"></i> Looks good.</p>
+        <p class="mt-3 border-t border-white/5 pt-3 text-sm text-zinc-400">No problems found.</p>
         {% endif %}
     </article>
     {% else %}
