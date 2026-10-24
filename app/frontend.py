@@ -39,6 +39,16 @@ def create_app():
 
         return wrapped_view
 
+    @app.before_request
+    def block_cross_site():
+        # Images and links to the UI stay embeddable; everything else (commands, restarts, login) is same-site only.
+        if request.path.startswith(("/static/", "/img/", "/snapshot/", "/thumb/", "/photo/")):
+            return
+        if request.method == "GET" and request.path in ("/", "/login", "/cams.m3u8"):
+            return
+        if web_ui.cross_site_request():
+            return {"error": "Cross-site request blocked"}, 403
+
     @app.route("/login", methods=["GET", "POST"])
     def wyze_login():
         if wb.api.auth:

@@ -285,8 +285,11 @@ document.addEventListener("DOMContentLoaded", () => {
   checkAPI.addEventListener("click", () => {
     let icon = checkAPI.getElementsByClassName("fa-arrows-rotate")[0].classList;
     icon.add("fa-spin");
-    fetch("https://api.github.com/repos/mrlt8/docker-wyze-bridge/releases/latest")
-      .then((response) => response.json())
+    fetch("https://api.github.com/repos/itskiwi/Wyze-Tunnel/releases/latest")
+      .then((response) => {
+        if (!response.ok) throw new Error(response.status === 404 ? "No releases published yet" : `GitHub returned ${response.status}`);
+        return response.json();
+      })
       .then((data) => {
         let apiVersion = data.tag_name.replace(/[^0-9\.]/g, "");
         if (apiVersion.localeCompare(checkAPI.dataset.version, undefined, { numeric: true }) === 1) {

@@ -1,1 +1,1 @@
-FROM mrlt8/wyze-bridge:dev
+FROM ghcr.io/itskiwi/wyze-tunnel:dev
