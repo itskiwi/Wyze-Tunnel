@@ -773,6 +773,17 @@ def create_app():
         resp.headers["Referrer-Policy"] = "no-referrer"
         return resp
 
+    @app.route("/hls/<path:path>")
+    @auth_required
+    def hls_proxy(path: str):
+        """Live HLS behind the web login; MediaMTX only lets 127.0.0.1 in without the API key."""
+        scheme = "https" if config.LLHLS else "http"
+        try:  # on-demand cameras take a few seconds to start; MediaMTX waits up to 30s
+            resp = requests.get(f"{scheme}://127.0.0.1:8888/{path}", params=request.args, stream=True, timeout=35, verify=False)
+        except requests.RequestException as ex:
+            return str(ex), 503
+        return Response(resp.iter_content(64 * 1024), resp.status_code, content_type=resp.headers.get("Content-Type"))
+
     def mtx_playback(endpoint: str, stream: bool = False, **params) -> requests.Response:
         try:
             return requests.get(
