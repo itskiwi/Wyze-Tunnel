@@ -360,9 +360,22 @@ def create_app():
             return {"status": "saved"}
         hidden = wyze_api.load_hidden_cams()
         return [
-            {"mac": c.mac, "nickname": c.nickname, "model": c.model_name, "hidden": c.mac in hidden}
+            {"mac": c.mac, "nickname": wyze_api.display_name(c), "model": c.model_name, "hidden": c.mac in hidden}
             for c in cams
         ]
+
+    @app.route("/cameras/name", methods=["POST"])
+    @auth_required
+    def camera_name():
+        """Rename a camera in Wyze Tunnel. An empty name goes back to the name from the Wyze app."""
+        data = request.get_json(silent=True) or {}
+        mac, name = data.get("mac"), str(data.get("name") or "").strip()
+        if mac not in {cam.mac for cam in wb.api.get_cameras() or []}:
+            return {"error": "Unknown camera."}, 400
+        if len(name) > 64:
+            return {"error": "Keep the name under 64 characters."}, 400
+        wyze_api.save_cam_name(mac, name)
+        return {"status": "saved"}
 
     @app.route("/alerts", methods=["GET", "POST"])
     @auth_required

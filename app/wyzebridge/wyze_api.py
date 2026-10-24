@@ -458,6 +458,33 @@ def save_hidden_cams(macs: set[str]) -> None:
         json.dump(sorted(macs), f)
 
 
+CAM_NAMES_FILE = TOKEN_PATH + "cam_names.json"
+
+
+def load_cam_names() -> dict[str, str]:
+    """Names set in the web UI, by MAC. They only change what's shown, not the stream address."""
+    try:
+        with open(CAM_NAMES_FILE) as f:
+            names = json.load(f)
+        return names if isinstance(names, dict) else {}
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def save_cam_name(mac: str, name: str) -> None:
+    names = load_cam_names()
+    if name:
+        names[mac] = name
+    else:
+        names.pop(mac, None)
+    with open(CAM_NAMES_FILE, "w") as f:
+        json.dump(names, f)
+
+
+def display_name(cam: WyzeCamera) -> str:
+    return load_cam_names().get(cam.mac) or cam.nickname or cam.mac
+
+
 def filter_cams(cams: list[WyzeCamera]) -> list[WyzeCamera]:
     if hidden := load_hidden_cams():
         # Never hide everything: the bridge shuts down with zero streams.
