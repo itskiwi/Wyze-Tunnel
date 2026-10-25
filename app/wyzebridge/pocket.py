@@ -12,7 +12,7 @@ from typing import Optional
 
 import segno
 from flask import request
-from wyzebridge import config, guests
+from wyzebridge import config, guests, webhooks
 from wyzebridge.go2rtc import GO2RTC_BIN
 from wyzebridge.logging import logger
 
@@ -103,6 +103,8 @@ class Away:
     @classmethod
     def health_check(cls) -> None:
         """Starts the helper when away access is on, and again if it ever exits."""
+        if cls.running():
+            cls.check_sign_in()
         if not cls.on() or not cls.available() or cls.running():
             return
         if cls.proc:
@@ -111,6 +113,16 @@ class Away:
         # It exits when our end of its stdin closes, so it never outlives the bridge.
         args = [AWAY_BIN, "-dir", str(AWAY_DIR), "-port", str(AWAY_PORT), "-status", str(AWAY_DIR / "status.json"), "-funnel"]
         cls.proc = Popen(args, stdin=PIPE, stdout=DEVNULL)
+
+    @classmethod
+    def check_sign_in(cls) -> None:
+        """One alert when Tailscale signs this computer out (its key expires every 180 days by default)."""
+        state, flag = cls.status()["state"], AWAY_DIR / "signed-in"
+        if state == "Running":
+            flag.touch()
+        elif state == "NeedsLogin" and flag.exists():
+            flag.unlink()
+            webhooks.send_webhook("away", "Wyze Tunnel", "Phones can't reach your cameras away from home until you sign in to Tailscale again. Open Login, then Pair a phone.")
 
     @classmethod
     def status(cls) -> dict:
