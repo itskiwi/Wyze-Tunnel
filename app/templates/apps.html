@@ -4,12 +4,13 @@
 {% block content %}
 <header class="mx-auto mb-6 max-w-2xl pt-2">
     <h1 class="page-title">Connect apps</h1>
-    <p class="mt-1 text-sm text-zinc-400">Let Home Assistant, Claude and your other apps see your cameras. Each app gets its own key,
+    <p class="mt-1 text-sm text-zinc-400">Let Apple Home, Home Assistant, Claude and your other apps see your cameras. Each app gets its own key,
         and you can take it back any time.</p>
 </header>
 
 <div class="mx-auto grid max-w-2xl gap-3 sm:grid-cols-2" role="tablist" aria-label="What do you want to connect?">
     {% for id, icon, title, text in [
+        ("homekit", "fa-house-signal", "Apple Home", "Cameras in the Home app on iPhone, iPad and Mac"),
         ("ha", "fa-house", "Home Assistant", "Cameras, motion and controls on your dashboards"),
         ("ai", "fa-comment-dots", "Claude and AI apps", "Ask about your cameras in a chat"),
         ("rec", "fa-film", "Recorders", "Frigate, Blue Iris, Agent DVR"),
@@ -22,6 +23,46 @@
     </button>
     {% endfor %}
 </div>
+
+<section id="panel-homekit" role="tabpanel" class="panel surface mx-auto mt-4 max-w-2xl p-5" hidden>
+    <h2 class="font-display text-xl font-extrabold text-zinc-50">Add cameras to Apple Home</h2>
+    <p class="mt-1 text-sm text-zinc-400">Turn a camera on here, then scan its code in the Home app. Your iPhone needs to be on the same
+        Wi-Fi as this computer while you add it.</p>
+    {% if not homekit_ready %}
+    <p class="mt-4 text-sm text-zinc-300"><i class="fas fa-circle-info"></i> Apple Home needs go2rtc, which isn't installed with this copy of Wyze Tunnel.</p>
+    {% else %}
+    <ol class="mt-4 grid gap-2 text-sm text-zinc-400 sm:grid-cols-3">
+        <li class="flex gap-2"><span class="step">1</span><span>Turn on a camera below</span></li>
+        <li class="flex gap-2"><span class="step">2</span><span>In the Home app, tap <strong class="text-zinc-200">+</strong> then <strong class="text-zinc-200">Add Accessory</strong></span></li>
+        <li class="flex gap-2"><span class="step">3</span><span>Scan the code, then tap <strong class="text-zinc-200">Add Anyway</strong> when it says it isn't certified</span></li>
+    </ol>
+    <ul class="mt-4 divide-y divide-zinc-800">
+        {% for cam in homekit %}
+        <li class="py-3">
+            <label class="flex items-center gap-3">
+                <span class="min-w-0 flex-1 truncate font-medium text-zinc-100">{{ cam.name }}</span>
+                {% if cam.on %}<span class="chip {{ 'chip-ok' if cam.paired else 'bg-zinc-800 text-zinc-300' }}">{{ 'In Apple Home' if cam.paired else 'Ready to add' }}</span>{% endif %}
+                <input type="checkbox" role="switch" class="hk-toggle h-5 w-5 accent-accent" data-uri="{{ cam.uri }}" {{ 'checked' if cam.on }}
+                    aria-label="Show {{ cam.name }} in Apple Home" />
+            </label>
+            {% if cam.on and not cam.paired %}
+            <div class="mt-3 flex flex-wrap items-center gap-4">
+                <div class="w-36 overflow-hidden rounded-xl [&>svg]:h-auto [&>svg]:w-full" role="img" aria-label="Apple Home setup code for {{ cam.name }}">{{ cam.qr | safe }}</div>
+                <div>
+                    <p class="text-sm text-zinc-400">Or type this code</p>
+                    <p class="font-mono text-2xl tracking-wider text-zinc-50">{{ cam.code }}</p>
+                </div>
+            </div>
+            {% endif %}
+        </li>
+        {% else %}
+        <li class="py-2 text-sm text-zinc-500">No cameras yet.</li>
+        {% endfor %}
+    </ul>
+    <p class="mt-3 text-xs text-zinc-500">Turning a camera on or off reconnects live views for a few seconds. To take one out of Apple Home,
+        remove it in the Home app, then turn it off here.</p>
+    {% endif %}
+</section>
 
 <section id="panel-ha" role="tabpanel" class="panel surface mx-auto mt-4 max-w-2xl p-5" hidden>
     <h2 class="font-display text-xl font-extrabold text-zinc-50">Connect Home Assistant</h2>
@@ -216,7 +257,7 @@
         history.replaceState(null, "", `#${id}`);
     };
     pickers.forEach((p) => p.addEventListener("click", () => open(p.dataset.panel)));
-    if (["#ha", "#ai", "#rec", "#other"].includes(location.hash)) open(location.hash.slice(1));
+    if (["#homekit", "#ha", "#ai", "#rec", "#other"].includes(location.hash)) open(location.hash.slice(1));
 
     document.addEventListener("click", (e) => {
         const btn = e.target.closest(".copy");
@@ -329,6 +370,12 @@
             out.hidden = false;
         }).catch((err) => say(false, err.message));
     });
+
+    document.querySelectorAll(".hk-toggle").forEach((box) => box.addEventListener("change", () => {
+        box.disabled = true;
+        post(`apps/homekit/${box.dataset.uri}`, { on: box.checked }).then(() => location.reload())
+            .catch((err) => { box.checked = !box.checked; box.disabled = false; say(false, err.message); });
+    }));
 
     document.querySelectorAll(".remove").forEach((btn) => btn.addEventListener("click", () => {
         if (!confirm(`Remove ${btn.dataset.name}? It stops working right away.`)) return;
