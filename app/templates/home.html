@@ -71,6 +71,23 @@
     {% endif %}
 
     <section class="min-w-0 lg:col-start-1 lg:row-start-1" aria-label="Timeline">
+        {% set left = steps|rejectattr('done')|list %}
+        {% if left %}
+        <div id="checklist" class="surface mb-6 p-5">
+            <div class="flex items-baseline gap-3">
+                <h2 class="font-display text-lg font-extrabold text-zinc-50">Finish setting up</h2>
+                <span class="font-mono text-xs text-zinc-500">{{ steps|length - left|length }} of {{ steps|length }} done</span>
+                <button class="ml-auto text-sm text-zinc-400 hover:text-zinc-200" type="button" onclick="try { localStorage.setItem('checklistHidden', '1') } catch { } this.closest('#checklist').remove()">Hide</button>
+            </div>
+            <ul class="mt-3 space-y-1.5">
+                {% for step in steps %}
+                <li><a href="{{ step.href }}" class="flex items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-white/5 {{ 'text-zinc-500 line-through' if step.done else 'text-zinc-100' }}">
+                    <i class="fas {{ 'fa-circle-check text-accent' if step.done else 'fa-circle text-zinc-600' }}" aria-hidden="true"></i>{{ step.title }}<span class="sr-only">{{ ', done' if step.done }}</span></a></li>
+                {% endfor %}
+            </ul>
+        </div>
+        <script>try { localStorage.getItem("checklistHidden") && document.getElementById("checklist").remove() } catch { }</script>
+        {% endif %}
         <div id="timeline"></div>
         <div id="timeline-empty" class="surface hidden p-6 text-zinc-400">
             {% if not cameras %}

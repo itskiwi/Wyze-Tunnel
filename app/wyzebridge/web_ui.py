@@ -209,6 +209,20 @@ def _int(value, default: int = -1) -> int:
         return default
 
 
+def setup_steps(cams: dict[str, dict]) -> list[dict]:
+    """The first-week checklist on Home: what's set up and where to do the rest."""
+    from wyzebridge import backup, recording, webhooks
+
+    rec = recording.load_settings()
+    return [
+        {"title": "Watch a camera", "href": "live", "done": any(c.get("connected") for c in cams.values())},
+        {"title": "Get alerts on your phone", "href": "alerts", "done": bool(webhooks.ALERTS.get("topic") or webhooks.ALERTS.get("chat_url"))},
+        {"title": "Record a camera", "href": "recordings#setup", "done": bool(rec.get("all") or rec.get("cams"))},
+        {"title": "Pair your phone", "href": "account#phone", "done": any(g["expires"] == 0 for g in guests.list_guests())},
+        {"title": "Back up your settings every day", "href": "account#backup", "done": bool(backup.load_auto().get("folder"))},
+    ]
+
+
 def bridge_issues(cams: dict[str, dict]) -> list[dict]:
     """Problems worth fixing, by camera. Feeds /api/health and the Health page."""
     issues = []
