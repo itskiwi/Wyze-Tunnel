@@ -136,6 +136,10 @@ class MtxServer:
                 mtx.set(f"paths.{uri}.runOnDemand", event_cmd("start"))
                 mtx.set(f"paths.{uri}.runOnUnDemand", event_cmd("stop"))
 
+    def remove_path(self, uri: str):
+        with MtxInterface() as mtx:
+            mtx.set("paths", {k: v for k, v in (mtx.get("paths") or {}).items() if k != uri})
+
     def add_source(self, uri: str, value: str):
         with MtxInterface() as mtx:
             mtx.set(f"paths.{uri}.source", value)
@@ -211,12 +215,12 @@ class MtxServer:
 
 
 def path_bytes() -> dict:
-    """Bytes from and to each camera since its stream last started, from MediaMTX's local API."""
+    """Bytes from and to each camera since its stream last started, and whether it's live now, from MediaMTX's local API."""
     try:
         items = requests.get(f"http://{API_ADDR}/v3/paths/list", timeout=3).json()["items"]
     except (requests.RequestException, ValueError, KeyError):
         return {}
-    return {p["name"]: {"in": p.get("bytesReceived", 0), "out": p.get("bytesSent", 0)} for p in items}
+    return {p["name"]: {"in": p.get("bytesReceived", 0), "out": p.get("bytesSent", 0), "ready": p.get("ready", False)} for p in items}
 
 
 def mtx_version() -> str:

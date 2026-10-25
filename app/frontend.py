@@ -22,11 +22,12 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, floorplan, go2rtc, guests, homekit, integrations, masks, network, pocket, privacy, recording, shares, street_watch, timelapse, visitors, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, detect, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, pocket, privacy, recording, shares, street_watch, timelapse, visitors, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
-from wyzebridge.bridge_utils import env_cam
+from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
+from wyzebridge.logging import logger
 from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED, path_bytes
 from wyzebridge.web_ui import url_for
 from wyzebridge.wyze_events import EVENT_LOG
@@ -84,7 +85,7 @@ def create_app():
         if request.path.startswith(("/static/", "/img/", "/snapshot/", "/thumb/", "/photo/", "/share/")):
             return
         # A neighbor opens their Street Watch link from a chat app; sending the form is still same-site only.
-        if request.method == "GET" and (request.path in ("/", "/live", "/login", "/cams.m3u8") or request.path.startswith("/street/")):
+        if request.method == "GET" and (request.path in ("/", "/live", "/login", "/cams.m3u8") or request.path.startswith(("/street/", "/phone-cam/"))):
             return
         if web_ui.cross_site_request():
             return {"error": "Cross-site request blocked"}, 403
@@ -651,10 +652,7 @@ def create_app():
         if web_ui.current_guest():
             return {"error": "Only the owner can pair a phone."}, 403
         path = url_for("pair_phone", code=pocket.new_code())
-        host, _, port = request.host.rpartition(":") if request.host.count(":") == 1 else (request.host, "", "")
-        port = f":{port}" if port else ""
-        if host in ("localhost", "127.0.0.1", "[::1]"):
-            host = pocket.lan_ip()
+        host, port = phone_host()
         codes = {"home": f"{request.scheme}://{host}{port}{path}"}
         if public := pocket.Away.status()["public"]:
             codes["anywhere"] = public + path  # the phone's cookie belongs to this address, so it works anywhere
@@ -662,6 +660,14 @@ def create_app():
             # The bundled Tailscale serves the web UI on port 80.
             codes["anywhere"] = f"http://{ts_host}{'' if ts_host == pocket.Away.status()['host'] else port}{path}"
         return {k: {"url": url, "qr": pocket.qr_svg(url)} for k, url in codes.items()}
+
+    def phone_host() -> tuple[str, str]:
+        """This page's host and ":port", with localhost swapped for the home network address a phone can reach."""
+        host, _, port = request.host.rpartition(":") if request.host.count(":") == 1 else (request.host, "", "")
+        port = f":{port}" if port else ""
+        if host in ("localhost", "127.0.0.1", "[::1]"):
+            host = pocket.lan_ip()
+        return host, port
 
     @app.route("/away", methods=["GET", "POST"])
     @owner_only
@@ -681,6 +687,71 @@ def create_app():
         resp = redirect(url_for("index", pocket=1))
         resp.set_cookie(pocket.COOKIE, cookie, max_age=pocket.COOKIE_SECONDS, httponly=True, samesite="Lax", secure=request.is_secure)
         return resp
+
+    @app.route("/phone-cams", methods=["GET", "POST"])
+    @owner_only
+    def phone_cams_page():
+        if request.method == "POST":
+            try:
+                cam = phone_cams.add((request.get_json(silent=True) or {}).get("name"), set(wb.streams.streams))
+            except ValueError as ex:
+                return {"error": str(ex)}, 400
+            wb.add_phone_path(cam["uri"])
+            return {"uri": cam["uri"]}
+        host, port = phone_host()
+        live = {uri for uri, p in path_bytes().items() if p.get("ready")}
+        cams = []
+        for cam in phone_cams.list_cams():
+            url = f"{request.scheme}://{host}{port}{url_for('phone_cam', token=cam['token'])}"
+            cams.append(cam | {"url": url, "qr": pocket.qr_svg(url), "live": cam["uri"] in live})
+        return render_template(
+            "phone_cams.html",
+            cams=cams,
+            # Phones only share a camera with https pages. The QR link uses this page's scheme.
+            secure=request.is_secure,
+            api=WbAuth.api,
+            version=config.VERSION,
+        )
+
+    @app.route("/phone-cams/<string:uri>", methods=["DELETE"])
+    @owner_only
+    def remove_phone_cam(uri: str):
+        if uri not in phone_cams.uris():  # never a Wyze camera's path
+            return {"error": "No phone camera by that name."}, 404
+        phone_cams.remove(uri)
+        wb.mtx.remove_path(uri)  # also drops a phone that's still sending
+        return {"status": "removed"}
+
+    @app.route("/phone-cam/<string:token>")
+    def phone_cam(token: str):
+        """The page the phone opens. The secret link is its only login, and it can only send video to its own camera."""
+        cam = phone_cams.by_token(token)
+        resp = make_response(render_template("phone_cam.html", name=cam and cam["name"]), 200 if cam else 404)
+        resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+        resp.headers["Referrer-Policy"] = "no-referrer"
+        return resp
+
+    @app.route("/phone-cam/<string:token>/whip", methods=["POST"])
+    def phone_cam_whip(token: str):
+        """Hand the phone's WebRTC offer to MediaMTX. Through here it stays on the page's own (https) address,
+        and MediaMTX only takes video from this computer, so nobody without a link can send to a camera."""
+        if not (cam := phone_cams.by_token(token)):
+            return {"error": "This camera was removed. Ask for a new link."}, 404
+        scheme = "https" if env_bool("MTX_WEBRTCENCRYPTION") else "http"
+        try:
+            resp = requests.post(
+                f"{scheme}://127.0.0.1:8889/{cam['uri']}/whip",
+                data=request.get_data(),
+                headers={"Content-Type": "application/sdp"},
+                timeout=15,
+                verify=False,
+            )
+        except requests.RequestException:
+            return {"error": "Wyze Tunnel's video server isn't answering. Try again in a minute."}, 503
+        if resp.status_code != 201:
+            logger.warning(f"[PHONE] /{cam['uri']} refused: {resp.status_code} {resp.text.strip()[:200]}")
+            return {"error": "Wyze Tunnel couldn't take the video. Restart Wyze Tunnel and try again."}, 502
+        return Response(resp.content, 201, content_type="application/sdp")
 
     @app.route("/settings/backup", methods=["GET", "POST"])
     @owner_only
@@ -755,6 +826,8 @@ def create_app():
     @auth_required
     def recordings_page():
         cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        timelapse_from = {uri: cam["nickname"] for uri, cam in cams.items()}  # a timelapse needs snapshots, which phones don't make
+        cams |= {c["uri"]: {"nickname": c["name"], "record": recording.wanted(c["uri"])} for c in phone_cams.list_cams()}
         # Cameras recording for another reason can't be switched off here, so the page says why.
         locked = {uri: "Always on in your config" for uri in cams if env_cam("record", uri)}
         locked.update({uri: "On for Search footage" for uri in cams if uri not in locked and detect.wanted(uri)})
@@ -773,6 +846,7 @@ def create_app():
             folder_example=backup.FOLDER_EXAMPLE,
             timelapses=timelapse.videos(),
             timelapse_cams=timelapse.load_cams(),
+            timelapse_from=timelapse_from,
             selected=request.args.get("cam"),
             playback=PLAYBACK_ENABLED,
             api=WbAuth.api,
@@ -786,7 +860,7 @@ def create_app():
         if web_ui.current_guest():
             return {"error": "Only the owner can change this."}, 403
         try:
-            recording.save_settings(request.get_json(silent=True) or {}, list(wb.streams.streams))
+            recording.save_settings(request.get_json(silent=True) or {}, list(wb.streams.streams) + phone_cams.uris())
         except ValueError as ex:
             return {"error": str(ex)}, 400
         Thread(target=wb.restart, daemon=True).start()
@@ -849,7 +923,7 @@ def create_app():
             start = datetime.fromisoformat(request.args.get("start", "").replace("Z", "+00:00"))
         except ValueError:
             return {"error": "start must be a date and time"}, 400
-        if not wb.streams.get(cam_name):
+        if not wb.streams.get(cam_name) and cam_name not in phone_cams.uris():
             return {"error": "Camera not found"}, 404
         thumb = Path(config.IMG_PATH, "clip-thumbs", cam_name, f"{int(start.timestamp())}.jpg")
         if not thumb.exists():
@@ -868,7 +942,7 @@ def create_app():
     @auth_required
     def share_recording(cam_name: str):
         """A link anyone can open for 24 hours to watch one clip."""
-        if not wb.streams.get(cam_name):
+        if not wb.streams.get(cam_name) and cam_name not in phone_cams.uris():
             return {"error": "Camera not found"}, 404
         data = request.get_json(silent=True) or {}
         try:
