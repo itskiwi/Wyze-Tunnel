@@ -154,36 +154,43 @@ def camera_control(sess: WyzeIOTCSession, camera_info: Queue, camera_cmd: Queue)
             update_params(sess)
             continue
 
-        if topic == "caminfo":
-            resp = sess.camera.camera_info or {}
-            if boa:
-                resp["boa_info"] = {
-                    "last_alarm": boa["last_alarm"],
-                    "last_photo": boa["last_photo"],
-                }
-        elif topic == "cruise_point":
-            resp = pan_to_cruise_point(sess, cmd)
-        elif topic in {"bitrate", "fps"} and payload:
-            resp = update_bit_fps(sess, topic, payload)
-        else:
-            # Use K10050GetVideoParam if newer firmware
-            if topic == "bitrate" and fw_check(sess.camera.firmware_ver, REQ_K10050):
-                cmd = "_bitrate"
-            elif topic == "motion_detection" and payload:
-                if sess.camera.product_model in (
-                    "WYZEDB3",
-                    "WVOD1",
-                    "HL_WCO2",
-                    "WYZEC1",
-                ):
-                    cmd = "K10202SetMotionAlarm", cmd[1]
-                else:
-                    cmd = "K10206SetMotionAlarm", cmd[1]
-            resp = send_tutk_msg(sess, cmd)
-            if boa and cmd == "take_photo":
-                pull_last_image(boa, "photo")
-
+        resp = handle_cmd(sess, cmd, boa)
         camera_info.put({topic: resp})
+
+
+def handle_cmd(sess: WyzeIOTCSession, cmd: tuple | str, boa: Optional[dict] = None) -> Any:
+    """Run one command from the web UI, MQTT or the API. sess can also be a go2rtc.LanSession."""
+    topic, payload = cmd if isinstance(cmd, tuple) else (cmd, None)
+    if topic == "caminfo":
+        resp = sess.camera.camera_info or {}
+        if boa:
+            resp["boa_info"] = {
+                "last_alarm": boa["last_alarm"],
+                "last_photo": boa["last_photo"],
+            }
+    elif topic == "cruise_point":
+        resp = pan_to_cruise_point(sess, cmd)
+    elif topic in {"bitrate", "fps"} and payload:
+        resp = update_bit_fps(sess, topic, payload)
+    else:
+        # Use K10050GetVideoParam if newer firmware
+        if topic == "bitrate" and fw_check(sess.camera.firmware_ver, REQ_K10050):
+            cmd = "_bitrate"
+        elif topic == "motion_detection" and payload:
+            if sess.camera.product_model in (
+                "WYZEDB3",
+                "WVOD1",
+                "HL_WCO2",
+                "WYZEC1",
+            ):
+                cmd = "K10202SetMotionAlarm", cmd[1]
+            else:
+                cmd = "K10206SetMotionAlarm", cmd[1]
+        resp = send_tutk_msg(sess, cmd)
+        if boa and cmd == "take_photo":
+            pull_last_image(boa, "photo")
+
+    return resp
 
 
 def update_params(sess: WyzeIOTCSession):
@@ -341,7 +348,7 @@ def _error_response(cmd, error, log=True):
 
 def bitrate_check(sess: WyzeIOTCSession, res: dict, topic: str):
     key = "bitrate" if topic in res else "3"
-    if (bitrate := res.get(key)) and int(bitrate) != sess.preferred_bitrate:
+    if (bitrate := res.get(key)) and sess.preferred_bitrate and int(bitrate) != sess.preferred_bitrate:
         logger.info(f"{bitrate=} does not match {sess.preferred_bitrate}")
         sess.update_frame_size_rate()
 

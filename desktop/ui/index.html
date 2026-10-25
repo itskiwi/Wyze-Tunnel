@@ -87,10 +87,10 @@ listen("log", ({ payload }) => {
   log.scrollTop = log.scrollHeight;
 });
 $("go").onclick = () => setup();
-// Tray item on Windows: the WSL setup adds controls (PTZ, siren) and cameras go2rtc can't reach.
+// Tray item on Windows, shown while a camera needs the Wyze SDK: away from home (relay) or on old firmware.
 listen("full-setup", () => {
   $("title").textContent = "Full camera support";
-  say("This sets up a small Linux system (WSL) for camera controls and older cameras. Windows asks for permission and may need a restart.");
+  say("This sets up a small Linux system (WSL) for cameras away from home and older cameras. Windows asks for permission and may need a restart.");
   $("login").hidden = $("open").hidden = true;
   $("go").textContent = "Set up";
   $("go").hidden = $("go").disabled = false;
