@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from flask import Blueprint, request, send_from_directory
-from wyzebridge import config, integrations, web_ui
+from wyzebridge import config, integrations, web_ui, webhooks
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.wyze_events import EVENT_LOG
@@ -69,6 +69,16 @@ def blueprint(wb, auth_required) -> Blueprint:
             return {"error": f"No camera called {cam}"}, 404
         return wb.streams.send_cmd(cam, str(cmd).lower(), "" if value is None else value), 200
 
+    def set_mode(mode) -> tuple[dict, int]:
+        """Home, Away or Normal (schedule), for phone shortcuts and location automations."""
+        if web_ui.api_scope() != "control":
+            return {"error": "This token can only view."}, 403
+        try:
+            webhooks.set_alert_mode(str(mode).lower())
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"mode": webhooks.ALERTS.get("mode", "schedule")}, 200
+
     def snapshot_file(cam: str) -> str:
         """A fresh picture when the camera is streaming, else the latest one from the Wyze cloud."""
         img = f"{cam}.{env_bool('IMG_TYPE', 'jpg')}"
@@ -118,6 +128,17 @@ def blueprint(wb, auth_required) -> Blueprint:
     def get_health():
         return health()
 
+    @api.get("/mode")
+    @auth_required
+    def get_mode():
+        return {"mode": webhooks.ALERTS.get("mode", "schedule"), "modes": list(webhooks.ALERT_MODES)}
+
+    @api.post("/mode")
+    @auth_required
+    def post_mode():
+        body = request.get_json(silent=True)
+        return set_mode(body.get("mode") if isinstance(body, dict) else None)
+
     # MCP over Streamable HTTP, plain JSON replies (no server-sent stream).
     tools = [
         {
@@ -143,6 +164,16 @@ def blueprint(wb, auth_required) -> Blueprint:
             "name": "bridge_health",
             "description": "Whether Wyze Tunnel is healthy, with any camera problems (offline, weak Wi-Fi, full SD card).",
             "inputSchema": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "set_mode",
+            "description": "Switch alerts to home (no motion alerts), away (alerts even in quiet hours) or schedule "
+            "(normal, quiet hours apply). Needs a control token.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"mode": {"type": "string", "enum": ["home", "away", "schedule"]}},
+                "required": ["mode"],
+            },
         },
         {
             "name": "send_command",
@@ -179,6 +210,9 @@ def blueprint(wb, auth_required) -> Blueprint:
                 return text({"error": "No picture yet."}, True)
             data = base64.b64encode(Path(config.IMG_PATH, img).read_bytes()).decode()
             return {"content": [{"type": "image", "data": data, "mimeType": "image/jpeg"}], "isError": False}
+        if name == "set_mode":
+            result, code = set_mode(args.get("mode"))
+            return text(result, code != 200)
         if name == "send_command":
             result, code = command(str(args.get("camera")), str(args.get("command")), args.get("value"))
             return text(result, code != 200)
@@ -206,7 +240,7 @@ def blueprint(wb, auth_required) -> Blueprint:
         elif method == "ping":
             result = {}
         elif method == "tools/list":
-            visible = tools if web_ui.api_scope() == "control" else tools[:-1]
+            visible = tools if web_ui.api_scope() == "control" else tools[:-2]
             result = {"tools": visible}
         elif method == "tools/call":
             result = call_tool(str(params.get("name")), params.get("arguments") or {})
