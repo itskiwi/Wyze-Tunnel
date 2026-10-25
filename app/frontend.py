@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, floorplan, guests, integrations, masks, network, pocket, privacy, recording, shares, street_watch, timelapse, visitors, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, detect, floorplan, go2rtc, guests, homekit, integrations, masks, network, pocket, privacy, recording, shares, street_watch, timelapse, visitors, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_cam
 from wyzebridge.diagnostics import build_report
@@ -30,6 +30,7 @@ from wyzebridge.ffmpeg import probe_stream, stream_warnings
 from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED, path_bytes
 from wyzebridge.web_ui import url_for
 from wyzebridge.wyze_events import EVENT_LOG
+from wyzebridge.wyze_stream import WyzeStream
 from wyzecam.api import API_STATS
 
 
@@ -682,6 +683,21 @@ def create_app():
         Thread(target=wb.refresh_cams, daemon=True).start()
         return {"status": "restored", "restored": restored}
 
+    @app.route("/settings/from-docker-wyze-bridge", methods=["POST"])
+    @owner_only
+    def settings_from_dwb():
+        try:
+            out = backup.from_docker_wyze_bridge(str((request.get_json(silent=True) or {}).get("text") or ""))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        if os.name == "nt":
+            out["where"] = r"Save it as %LOCALAPPDATA%\Wyze Tunnel\wyze-tunnel.env, then choose Stop and then Start in the tray menu."
+        elif os.path.exists("/.dockerenv"):
+            out["where"] = "On Docker you can keep your compose file as it is. Just change the image to ghcr.io/itskiwi/wyze-tunnel."
+        else:
+            out["where"] = "Add these lines to /etc/wyze-tunnel/wyze-tunnel.env, then run: wyze-tunnel restart"
+        return out
+
     @app.route("/alerts/mode", methods=["POST"])
     @auth_required
     def alerts_mode():
@@ -954,7 +970,30 @@ def create_app():
             hook_events=integrations.HOOK_EVENTS,
             api=WbAuth.api,
             version=config.VERSION,
+            homekit=homekit_cams(),
+            homekit_ready=go2rtc.go2rtc_available(),
         )
+
+    def homekit_cams() -> list[dict]:
+        homekit.keep_pairings(go2rtc.GO2RTC_CONFIG)  # so a camera just added in the Home app shows as added
+        saved = homekit.cameras()
+        cams = []
+        for uri, name in WyzeStream.go2rtc.names.items():
+            cam = {"uri": uri, "name": name, "on": uri in saved}
+            if hk := saved.get(uri):
+                cam |= {"paired": bool(hk["pairings"]), "code": homekit.pin_text(hk["pin"]), "qr": homekit.qr_svg(uri, hk["pin"])}
+            cams.append(cam)
+        return cams
+
+    @app.route("/apps/homekit/<string:uri>", methods=["POST"])
+    @owner_only
+    def set_homekit(uri: str):
+        if uri not in WyzeStream.go2rtc.names:
+            return {"error": "No camera with that name."}, 404
+        homekit.keep_pairings(go2rtc.GO2RTC_CONFIG)
+        homekit.set_enabled(uri, bool((request.get_json(silent=True) or {}).get("on")))
+        WyzeStream.go2rtc.restart()
+        return {"status": "saved"}
 
     @app.route("/apps/tokens", methods=["POST"])
     @owner_only

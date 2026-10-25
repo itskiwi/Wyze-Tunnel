@@ -4,15 +4,17 @@
 {% block content %}
 <header class="mx-auto mb-6 max-w-2xl pt-2">
     <h1 class="page-title">Connect apps</h1>
-    <p class="mt-1 text-sm text-zinc-400">Let Home Assistant, Claude and your other apps see your cameras. Each app gets its own key,
+    <p class="mt-1 text-sm text-zinc-400">Let Apple Home, Home Assistant, Claude and your other apps see your cameras. Each app gets its own key,
         and you can take it back any time.</p>
 </header>
 
 <div class="mx-auto grid max-w-2xl gap-3 sm:grid-cols-2" role="tablist" aria-label="What do you want to connect?">
     {% for id, icon, title, text in [
+        ("homekit", "fa-house-signal", "Apple Home", "Cameras in the Home app on iPhone, iPad and Mac"),
         ("ha", "fa-house", "Home Assistant", "Cameras, motion and controls on your dashboards"),
         ("ai", "fa-comment-dots", "Claude and AI apps", "Ask about your cameras in a chat"),
         ("phone", "fa-mobile-screen", "Phone shortcuts", "Say \"Hey Siri, I'm leaving\", or switch to Away when you leave home"),
+        ("rec", "fa-film", "Recorders", "Frigate, Blue Iris, Agent DVR"),
         ("other", "fa-code", "Other apps", "Node-RED, scripts, automations")] %}
     <button type="button" role="tab" aria-selected="false" aria-controls="panel-{{ id }}" data-panel="{{ id }}"
         class="pick surface p-4 text-left ring-2 ring-transparent transition hover:ring-zinc-700 aria-selected:ring-accent">
@@ -22,6 +24,46 @@
     </button>
     {% endfor %}
 </div>
+
+<section id="panel-homekit" role="tabpanel" class="panel surface mx-auto mt-4 max-w-2xl p-5" hidden>
+    <h2 class="font-display text-xl font-extrabold text-zinc-50">Add cameras to Apple Home</h2>
+    <p class="mt-1 text-sm text-zinc-400">Turn a camera on here, then scan its code in the Home app. Your iPhone needs to be on the same
+        Wi-Fi as this computer while you add it.</p>
+    {% if not homekit_ready %}
+    <p class="mt-4 text-sm text-zinc-300"><i class="fas fa-circle-info"></i> Apple Home needs go2rtc, which isn't installed with this copy of Wyze Tunnel.</p>
+    {% else %}
+    <ol class="mt-4 grid gap-2 text-sm text-zinc-400 sm:grid-cols-3">
+        <li class="flex gap-2"><span class="step">1</span><span>Turn on a camera below</span></li>
+        <li class="flex gap-2"><span class="step">2</span><span>In the Home app, tap <strong class="text-zinc-200">+</strong> then <strong class="text-zinc-200">Add Accessory</strong></span></li>
+        <li class="flex gap-2"><span class="step">3</span><span>Scan the code, then tap <strong class="text-zinc-200">Add Anyway</strong> when it says it isn't certified</span></li>
+    </ol>
+    <ul class="mt-4 divide-y divide-zinc-800">
+        {% for cam in homekit %}
+        <li class="py-3">
+            <label class="flex items-center gap-3">
+                <span class="min-w-0 flex-1 truncate font-medium text-zinc-100">{{ cam.name }}</span>
+                {% if cam.on %}<span class="chip {{ 'chip-ok' if cam.paired else 'bg-zinc-800 text-zinc-300' }}">{{ 'In Apple Home' if cam.paired else 'Ready to add' }}</span>{% endif %}
+                <input type="checkbox" role="switch" class="hk-toggle h-5 w-5 accent-accent" data-uri="{{ cam.uri }}" {{ 'checked' if cam.on }}
+                    aria-label="Show {{ cam.name }} in Apple Home" />
+            </label>
+            {% if cam.on and not cam.paired %}
+            <div class="mt-3 flex flex-wrap items-center gap-4">
+                <div class="w-36 overflow-hidden rounded-xl [&>svg]:h-auto [&>svg]:w-full" role="img" aria-label="Apple Home setup code for {{ cam.name }}">{{ cam.qr | safe }}</div>
+                <div>
+                    <p class="text-sm text-zinc-400">Or type this code</p>
+                    <p class="font-mono text-2xl tracking-wider text-zinc-50">{{ cam.code }}</p>
+                </div>
+            </div>
+            {% endif %}
+        </li>
+        {% else %}
+        <li class="py-2 text-sm text-zinc-500">No cameras yet.</li>
+        {% endfor %}
+    </ul>
+    <p class="mt-3 text-xs text-zinc-500">Turning a camera on or off reconnects live views for a few seconds. To take one out of Apple Home,
+        remove it in the Home app, then turn it off here.</p>
+    {% endif %}
+</section>
 
 <section id="panel-ha" role="tabpanel" class="panel surface mx-auto mt-4 max-w-2xl p-5" hidden>
     <h2 class="font-display text-xl font-extrabold text-zinc-50">Connect Home Assistant</h2>
@@ -124,6 +166,20 @@
         <p class="text-sm text-zinc-400">Home turns off motion alerts. Away sends them even in quiet hours. Use <b>schedule</b> to go back to normal.
             This only works where your phone can reach Wyze Tunnel, so set up remote access first if you want it to work away from home.</p>
     </div>
+</section>
+
+<section id="panel-rec" role="tabpanel" class="panel surface mx-auto mt-4 max-w-2xl p-5" hidden>
+    <h2 class="font-display text-xl font-extrabold text-zinc-50">Record with another app</h2>
+    <p class="mt-1 text-sm text-zinc-400">Already use a recorder? Wyze Tunnel hands it every camera, with the stream login filled in.
+        Cameras that are turned off aren't included.</p>
+    <div class="seg mt-4" role="radiogroup" aria-label="Which recorder?">
+        {% for value, label in [("frigate", "Frigate"), ("blueiris", "Blue Iris"), ("agent", "Agent DVR"), ("rtsp", "Anything else")] %}
+        <button type="button" role="radio" class="tab" data-rec="{{ value }}" aria-checked="{{ 'true' if loop.first else 'false' }}">{{ label }}</button>
+        {% endfor %}
+    </div>
+    <p id="recHow" class="mt-4 text-sm text-zinc-400"></p>
+    <div class="secret mt-2"><pre id="recSnippet" class="snippet"></pre><button type="button" class="copy btn" data-copy="recSnippet"><i class="fas fa-copy"></i>Copy</button></div>
+    <p class="mt-2 text-sm text-zinc-300"><i class="fas fa-circle-info"></i> This has your stream password in it. Paste it only into your recorder.</p>
 </section>
 
 <section id="panel-other" role="tabpanel" class="panel mx-auto mt-4 max-w-2xl space-y-4" hidden>
@@ -234,7 +290,7 @@
         history.replaceState(null, "", `#${id}`);
     };
     pickers.forEach((p) => p.addEventListener("click", () => open(p.dataset.panel)));
-    if (["#ha", "#ai", "#phone", "#other"].includes(location.hash)) open(location.hash.slice(1));
+    if (["#homekit", "#ha", "#ai", "#phone", "#rec", "#other"].includes(location.hash)) open(location.hash.slice(1));
 
     document.addEventListener("click", (e) => {
         const btn = e.target.closest(".copy");
@@ -307,6 +363,42 @@
         document.getElementById("phone-android").hidden = b.dataset.phone !== "android";
     }));
 
+    // Recorders: one ready-made setup per app, from the same camera list the API gives other apps.
+    let recApp = "frigate", recCams = null;
+    const recSnippets = {
+        frigate: [`Add this to Frigate's config file (Settings, Configuration editor), then save and restart Frigate.`, (cams) =>
+            "go2rtc:\n  streams:\n" + cams.map((c) => `    ${c.key}: ${c.rtsp}\n`).join("") +
+            "cameras:\n" + cams.map((c) => `  ${c.key}:\n    ffmpeg:\n      inputs:\n        - path: rtsp://127.0.0.1:8554/${c.key}\n` +
+                `          input_args: preset-rtsp-restream\n          roles: [detect, record]\n    record:\n      enabled: true\n`).join("")],
+        blueiris: [`In Blue Iris, add a camera for each one below. Choose Network IP, Make "Generic/ONVIF" and Model "*RTSP H.264/H.265/MJPG/MPEG4", then fill in these fields.`, (cams) =>
+            cams.map((c) => `${c.name}\n  Address:  ${c.url.host}\n  Path:     ${c.url.pathname}\n  User:     ${c.user}\n  Password: ${c.pass}\n`).join("\n")],
+        agent: [`In Agent DVR, choose Add device, Video Source, FFMPEG for each camera, and paste its link as the Live URL.`, (cams) =>
+            cams.map((c) => `${c.name}\n  ${c.rtsp}\n`).join("\n")],
+        rtsp: [`Each camera's RTSP link. Most recorders and players, like VLC, take these as they are.`, (cams) =>
+            cams.map((c) => `${c.name}: ${c.rtsp}`).join("\n")],
+    };
+    const showRec = () => {
+        if (!recCams) return;
+        document.getElementById("recHow").textContent = recCams.length ? recSnippets[recApp][0] : "No cameras yet. Turn one on from the Cameras page first.";
+        document.getElementById("recSnippet").textContent = recCams.length ? recSnippets[recApp][1](recCams) : "";
+    };
+    const loadRec = () => recCams || fetch("api/v1/cameras").then((r) => r.ok ? r.json() : Promise.reject(new Error(r.statusText))).then((body) => {
+        recCams = body.filter((c) => c.enabled).map((c) => {
+            // RTSP in a URL object reads its host and path; the login comes from stream_login, not the URL.
+            const url = new URL(c.streams.rtsp.replace(/^rtsp:/, "http:"));
+            return { name: c.name, key: c.id.toLowerCase().replace(/[^a-z0-9_]/g, "_"), rtsp: c.streams.rtsp, url,
+                user: c.stream_login?.username || "", pass: c.stream_login?.password || "" };
+        });
+        showRec();
+    }).catch((err) => say(false, `Couldn't load cameras: ${err.message}`));
+    document.querySelector('[data-panel="rec"]').addEventListener("click", loadRec);
+    if (location.hash === "#rec") loadRec();
+    document.querySelectorAll("[data-rec]").forEach((b) => b.addEventListener("click", () => {
+        recApp = b.dataset.rec;
+        document.querySelectorAll("[data-rec]").forEach((x) => x.setAttribute("aria-checked", x === b));
+        showRec();
+    }));
+
     document.getElementById("keyForm").addEventListener("submit", (e) => {
         e.preventDefault();
         const form = Object.fromEntries(new FormData(e.target));
@@ -328,6 +420,12 @@
             out.hidden = false;
         }).catch((err) => say(false, err.message));
     });
+
+    document.querySelectorAll(".hk-toggle").forEach((box) => box.addEventListener("change", () => {
+        box.disabled = true;
+        post(`apps/homekit/${box.dataset.uri}`, { on: box.checked }).then(() => location.reload())
+            .catch((err) => { box.checked = !box.checked; box.disabled = false; say(false, err.message); });
+    }));
 
     document.querySelectorAll(".remove").forEach((btn) => btn.addEventListener("click", () => {
         if (!confirm(`Remove ${btn.dataset.name}? It stops working right away.`)) return;

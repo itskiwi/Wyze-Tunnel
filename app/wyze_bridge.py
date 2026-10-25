@@ -1,12 +1,15 @@
+import contextlib
 import os
 import signal
 import sys
 from dataclasses import replace
+from pathlib import Path
 from threading import Thread
 
 from wyzebridge import config, detect, guests, integrations, recording, timelapse, webhooks
 from wyzebridge.auth import STREAM_AUTH, WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream
+from wyzebridge.go2rtc import lan_controls, tutk_available
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import MtxServer
 from wyzebridge.stream import StreamManager
@@ -66,6 +69,7 @@ class WyzeBridge(Thread):
         self.streams.stop_all()
         self.streams.streams.clear()  # so cameras hidden since the last start drop out
         WyzeStream.go2rtc.streams.clear()
+        WyzeStream.go2rtc.names.clear()
         self.api.get_cameras(fresh_data=True)
         self._initialize(False)
 
@@ -75,6 +79,7 @@ class WyzeBridge(Thread):
         WyzeStream.api = self.api
 
         watching = set()
+        needs_sdk = 0
         for cam in self.api.filtered_cams():
             logger.info(f"[+] Adding {cam.nickname} [{cam.product_model}]")
             if config.SNAPSHOT_TYPE == "api":
@@ -101,7 +106,12 @@ class WyzeBridge(Thread):
                 detect.watch(stream.uri, display_name(cam), on_detect)
                 watching.add(stream.uri)
             self.streams.add(stream)
+            needs_sdk += not cam.is_gwell and not lan_controls(cam, stream.sources)
         detect.stop_all(keep=frozenset(watching))  # cameras switched off since the last start
+        # The Windows tray offers the WSL setup only while a camera needs the Wyze SDK (away from home, old firmware).
+        if (flag := os.getenv("WT_UPDATE_FILE")) and not tutk_available():
+            with contextlib.suppress(OSError):
+                Path(flag).with_name("needs-sdk").write_text(str(needs_sdk))
 
     def rtsp_fw_proxy(self, cam: WyzeCamera, stream: WyzeStream) -> bool:
         if rtsp_fw := env_bool("rtsp_fw").lower():

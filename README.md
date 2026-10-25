@@ -60,7 +60,7 @@ On Wi-Fi only? In Raspberry Pi Imager, click **Edit settings** before writing th
 
 Download **Wyze Tunnel** for Windows (`.exe`) or Mac (`.dmg`) from the [latest desktop release](https://github.com/itskiwi/Wyze-Tunnel/releases?q=desktop-v), open it and click **Set up**. The app keeps Wyze Tunnel running from the tray or menu bar.
 
-- **Windows 10/11:** runs natively, with no permission prompts or restart. Cameras connect through go2rtc (LAN on recent firmware, otherwise Wyze's cloud WebRTC). Camera controls (pan/tilt, siren) and cameras go2rtc can't reach need the Wyze library, which only runs on Linux: choose **Full camera support (WSL)…** in the tray menu to set up WSL2. That asks for permission once and may need a restart.
+- **Windows 10/11:** runs natively, with no permission prompts or restart. Cameras connect through go2rtc (LAN on recent firmware, otherwise Wyze's cloud WebRTC). Camera controls work too: pan/tilt, night vision and the rest over your home network, and the siren, lights and motion detection through Wyze's cloud. Only cameras away from home or on old firmware need the Wyze library, which runs on Linux; then the tray menu shows **Full camera support (WSL)…** to set up WSL2. That asks for permission once and may need a restart.
 - **macOS 13+:** the Wyze library only runs on Linux, so the app quietly sets up a small background VM.
 
 The app isn't code-signed yet: on Mac, right-click it and choose **Open** the first time; on Windows, click **More info**, then **Run anyway**.
@@ -116,6 +116,21 @@ Image tags (`ghcr.io/itskiwi/wyze-tunnel`):
 Add `-hw` (VAAPI) or `-qsv` (Intel QuickSync) to any tag for the amd64 hardware-encoding image, like `latest-hw` or `sha-abc1234-hw`.
 
 See [basic usage](#basic-usage) for additional information or visit the [wiki page](https://github.com/mrlt8/docker-wyze-bridge/wiki/Home-Assistant) for additional information on using the bridge as a Home Assistant Add-on.
+
+## How it compares
+
+Wyze Tunnel is for Wyze owners who want their cameras on their own network, with no subscription. Here's how it sits next to the other options, as of October 2026:
+
+| | Wyze Tunnel | Wyze app + Cam Plus | docker-wyze-bridge | Frigate, Blue Iris, Agent DVR |
+|---|---|---|---|---|
+| Install | Windows app, Tunnel Box image, Linux one-liner or Docker | Phone app | Docker | Installer or Docker |
+| Wyze cameras | Most models, including Cam OG over Wyze's cloud | All | TUTK models | Need a bridge like this one |
+| Recording | On your computer, with a size limit | Wyze's cloud | Through MediaMTX settings | Yes, their main job |
+| Smart detection | People and vehicles, or import from Frigate | Person, vehicle, pet, package | None | Strong (Frigate) to add-on based |
+| Phone alerts | Home-screen web app | Native app | None | Native apps or web push |
+| Cost | Free | $2.99 a month per camera | Free, not updated since 2024 | Free to about $70 |
+
+Already on docker-wyze-bridge? Your settings and stream links carry over. See [Coming from docker-wyze-bridge](docs/coming-from-docker-wyze-bridge.md). Already recording with Frigate, Blue Iris or Agent DVR? **Connect apps → Recorders** in the web page gives you a ready camera setup for each.
 
 ## What's Changed in v2.10.3
 
@@ -187,6 +202,7 @@ Pick cameras to record, or record them all, on the web UI's **Recordings** page,
 The web UI's **Search footage** page (gear menu, home screen or Recordings) finds the moments a person, car or animal showed up and plays that part of the recording. Pick cameras and, optionally, a Frigate address right on that page; no settings files needed.
 
 - Cameras you pick are watched on this computer (keyframes only, light enough for a Raspberry Pi) and also record, keeping clips as long as the search results. The model (MobileNet-SSD, 23 MB) downloads on first use. Not available on 32-bit ARM.
+- On a PC, pick **Stronger** under "How hard to look" for YOLOX-S (36 MB, downloads when you save). It spots smaller, farther people and cars, and trucks, for a few times the CPU.
 - With a [Frigate](https://frigate.video) address (its unauthenticated API port, like `http://frigate:5000`), Frigate's detections and clips are used instead, packages included if your Frigate model finds them. Name cameras the same in both (`front_door` matches `front-door`).
 - Env options still work: `DETECT_ALL=true` / `DETECT_CAM_NAME=true`, `FRIGATE_URL`, `DETECT_SCORE` (0 to 1, default `0.6`), `DETECT_KEEP` (defaults to `RECORD_KEEP`, or 7 days).
 

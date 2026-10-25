@@ -12,21 +12,27 @@ import signal
 import socket
 import sys
 from pathlib import Path
-from subprocess import DEVNULL, PIPE, Popen
-from typing import Optional
+from queue import Empty
+from subprocess import DEVNULL, PIPE, Popen, SubprocessError, run
+from typing import Any, Optional
 from urllib.parse import urlencode
 
 import yaml
+from wyzebridge import homekit
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import kill_orphan
 from wyzecam.api_models import WyzeCamera
+from wyzecam.tutk import tutk_protocol
 
 GO2RTC_BIN = os.getenv("GO2RTC_BIN", "/app/go2rtc")
 GO2RTC_CONFIG = os.getenv("GO2RTC_CONFIG", "/tmp/go2rtc.yaml")
 TUTK_LIB = os.getenv("TUTK_LIB", "/usr/local/lib/libIOTCAPIs_ALL.so")
+# native/wyze-ioctl, shipped next to go2rtc in the Windows bundle.
+IOCTL_BIN = os.getenv("WYZE_IOCTL_BIN") or str(Path(GO2RTC_BIN).with_name("wyze-ioctl" + Path(GO2RTC_BIN).suffix))
 RTSP_PORT = 8556
 API_PORT = 1984
+SRTP_PORT = 8443  # Apple Home video
 SOURCES = ("tutk", "lan", "webrtc")
 # Consecutive failed connects before trying the camera's next source.
 FALLBACK_AFTER = env_bool("SOURCE_FALLBACK_AFTER", "5", style="int")
@@ -103,6 +109,62 @@ def lan_url(cam: WyzeCamera, substream: bool = False) -> str:
     return f"wyze://{cam.ip}?{urlencode(query)}"
 
 
+def lan_controls(cam: WyzeCamera, sources: list[str]) -> bool:
+    """Whether camera commands (PTZ, night vision...) can go over the LAN without the Wyze SDK."""
+    return "lan" in sources and os.access(IOCTL_BIN, os.X_OK)
+
+
+def lan_ioctl(cam: WyzeCamera, msg: tutk_protocol.TutkWyzeProtocolMessage) -> Any:
+    """Send one TUTK command through native/wyze-ioctl (go2rtc's Wyze client) and parse the reply."""
+    no_reply = msg.code in {11000, 11004}  # rotate commands the camera doesn't answer
+    code = "0" if no_reply else str(msg.expected_response_code)
+    out = run([IOCTL_BIN, lan_url(cam), msg.encode().hex(), code], capture_output=True, text=True, timeout=20, check=True)
+    if no_reply:
+        return None
+    _, payload = tutk_protocol.decode(bytes.fromhex(out.stdout.strip()))
+    return msg.parse_response(payload)
+
+
+class LanSession:
+    """Stands in for a WyzeIOTCSession in wyze_control, sending each command with lan_ioctl."""
+
+    preferred_bitrate = 0
+
+    def __init__(self, cam: WyzeCamera) -> None:
+        self.camera = cam
+
+    def should_stream(self, sleep: float = 0) -> bool:
+        return True
+
+    def iotctrl_mux(self) -> "LanSession":
+        return self
+
+    def __enter__(self) -> "LanSession":
+        return self
+
+    def __exit__(self, *_) -> None:
+        pass
+
+    def send_ioctl(self, msg: tutk_protocol.TutkWyzeProtocolMessage):
+        try:
+            reply = lan_ioctl(self.camera, msg)
+        except (OSError, SubprocessError, ValueError) as ex:
+            logger.warning(f"[CONTROL] {self.camera.nickname}: {getattr(ex, 'stderr', '') or ex}")
+            reply = Empty()
+
+        class Future:
+            def result(self, block: bool = True, timeout: Optional[float] = None) -> Any:
+                if isinstance(reply, Empty):
+                    raise reply
+                return reply
+
+        return Future()
+
+    def update_frame_size_rate(self, **change) -> None:
+        if change:  # go2rtc asks for its own resolution and bitrate
+            raise RuntimeError("Bitrate and fps can't be changed on this computer")
+
+
 def webrtc_url(cam_name: str, api_key: Optional[str]) -> str:
     query = "kvs&relay" + (f"&{urlencode({'api': api_key})}" if api_key else "")
     port = os.getenv("FLASK_RUN_PORT", "5000")
@@ -140,33 +202,48 @@ def relay(src: str, uri: str, on_frames, should_stop) -> None:
 
 
 class Go2rtcServer:
-    __slots__ = "sub_process", "streams"
+    __slots__ = "sub_process", "streams", "names"
 
     def __init__(self) -> None:
         self.sub_process: Optional[Popen] = None
         self.streams: dict[str, str] = {}
+        self.names: dict[str, str] = {}  # camera uri to nickname, for Apple Home
 
     def add(self, name: str, url: str) -> str:
         self.streams[name] = url
         return name
 
     def config(self) -> dict:
-        return {
+        hk_streams, accessories = homekit.go2rtc_config(self.names)
+        cfg = {
             "api": {"listen": f"127.0.0.1:{API_PORT}"},
             "rtsp": {"listen": f"127.0.0.1:{RTSP_PORT}"},
             "webrtc": {"listen": ""},
             "srtp": {"listen": ""},
             "log": {"level": env_bool("GO2RTC_LOGLEVEL", "warn")},
-            "streams": self.streams,
+            "streams": self.streams | hk_streams,
         }
+        if accessories:
+            # Apple devices pair on the API port, so it opens to the network, but only for HomeKit's two
+            # pairing paths: go2rtc then drops the rest of its API and web page. Pairing itself is HAP-encrypted.
+            cfg["api"] = {"listen": f":{API_PORT}", "allow_paths": ["/pair-setup", "/pair-verify"]}
+            cfg["srtp"] = {"listen": f":{SRTP_PORT}"}
+            cfg["homekit"] = accessories
+        return cfg
 
     def start(self) -> None:
-        if self.sub_process or not self.streams or not go2rtc_available():
+        if self.sub_process or not go2rtc_available():
             return
+        homekit.keep_pairings(GO2RTC_CONFIG)
+        cfg = self.config()
+        if not cfg["streams"]:
+            return
+        # Holds cloud keys and HomeKit private keys.
+        Path(GO2RTC_CONFIG).touch(mode=0o600)
         with open(GO2RTC_CONFIG, "w") as f:
-            yaml.safe_dump(self.config(), f)
+            yaml.safe_dump(cfg, f)
         kill_orphan(GO2RTC_BIN, RTSP_PORT)
-        logger.info(f"[GO2RTC] starting go2rtc for {len(self.streams)} stream(s)")
+        logger.info(f"[GO2RTC] starting go2rtc for {len(cfg['streams'])} stream(s), {len(cfg.get('homekit', {}))} in Apple Home")
         self.sub_process = Popen([GO2RTC_BIN, "-config", GO2RTC_CONFIG])
 
     def stop(self) -> None:
@@ -178,6 +255,10 @@ class Go2rtcServer:
             except Exception:
                 self.sub_process.kill()
         self.sub_process = None
+
+    def restart(self) -> None:
+        self.stop()
+        self.start()
 
     def health_check(self) -> None:
         if self.sub_process and self.sub_process.poll() is not None:

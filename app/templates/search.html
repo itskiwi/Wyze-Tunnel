@@ -33,6 +33,15 @@
             <p class="mt-2 text-sm text-zinc-500">No cameras yet.</p>
             {% endfor %}
         </fieldset>
+        <fieldset>
+            <legend class="text-sm text-zinc-400">How hard to look</legend>
+            {% for value, title, note in [("standard", "Standard", "Fast, fine on a Raspberry Pi. 23 MB."), ("strong", "Stronger", "Spots smaller, farther people and cars, and trucks. Uses a few times more CPU, so pick it on a PC. 36 MB.")] %}
+            <label class="mt-2 flex items-start gap-3">
+                <input type="radio" name="model" value="{{ value }}" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.get('model', 'standard') == value }} />
+                <span><span class="block">{{ title }}</span><span class="block text-sm text-zinc-500">{{ note }}</span></span>
+            </label>
+            {% endfor %}
+        </fieldset>
         {% else %}
         <p class="text-sm text-zinc-400">This device can't run the built-in spotting. You can still use Frigate below.</p>
         {% endif %}
@@ -82,12 +91,12 @@
     document.getElementById("setupForm")?.addEventListener("submit", (e) => {
         e.preventDefault();
         const form = e.target, out = document.getElementById("setupStatus");
-        const body = { cams: [...form.querySelectorAll("[name=cams]:checked")].map((c) => c.value), frigate_url: form.frigate_url.value };
+        const body = { cams: [...form.querySelectorAll("[name=cams]:checked")].map((c) => c.value), frigate_url: form.frigate_url.value, model: form.querySelector("[name=model]:checked")?.value };
         out.textContent = "Saving…";
         fetch("search/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
             .then((resp) => resp.json().then((r) => resp.ok ? r : Promise.reject(new Error(r.error || resp.statusText))))
             .then(() => {
-                out.textContent = "Saved. Cameras reconnect for a moment; the first time, a 23 MB model downloads.";
+                out.textContent = "Saved. Cameras reconnect for a moment; the first time, the model downloads (23 or 36 MB).";
                 setTimeout(() => location.reload(), 8000);
             })
             .catch((err) => { out.textContent = err.message; });
