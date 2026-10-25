@@ -31,6 +31,10 @@
     {% set wifi = basic.wifidb|int(-1) if basic.wifidb is defined else -1 %}
     {% set sd_free = (sd.free|int / sd.capacity|int * 100)|round|int if sd.status == "1" and sd.capacity|int > 0 else -1 %}
     {% set tips = [] %}
+    {% set fixes = [] %}
+    {% if cam.status == -90 or cam.chronic %}{% set _ = fixes.append(("Restart the camera", "power", "restart")) %}{% endif %}
+    {% if not cam.enabled %}{% set _ = fixes.append(("Turn it on", "state", "enable")) %}{% endif %}
+    {% if cam.enabled and cam.status != -90 and cam.net_mode in ("relay", "internet") or cam.busy %}{% set _ = fixes.append(("Reconnect", "state", "restart")) %}{% endif %}
     {% if cam.status == -90 %}{% set _ = tips.append("The camera isn't reachable. Check that it has power and Wi-Fi, then unplug it for 10 seconds.") %}{% endif %}
     {% if cam.busy %}{% set _ = tips.append("The camera is busy. A Cam OG lets only 2 viewers in at once and Wyze Tunnel uses one, so close the Wyze app on other phones and it reconnects by itself. Everyone watching through Wyze Tunnel shares that one spot. If no one else is watching, check that the camera has power.") %}{% endif %}
     {% if cam.chronic %}{% set _ = tips.append("This camera has failed to connect " ~ cam.failures ~ " times in a row, so Wyze Tunnel restarted it and now retries only every 5 minutes. If that didn't help, unplug it for 10 seconds or check its Wi-Fi signal in the Wyze app.") %}{% endif %}
@@ -62,6 +66,12 @@
         <ul class="mt-3 space-y-2 border-t border-white/5 pt-3 text-sm text-amber-200">
             {% for tip in tips %}<li>{{ tip }}</li>{% endfor %}
         </ul>
+        {% if fixes and not current_guest() %}
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+            {% for label, cmd, payload in fixes %}<button class="fix btn" type="button" data-cam="{{ uri }}" data-cmd="{{ cmd }}" data-payload="{{ payload }}"><i class="fas fa-wrench"></i>{{ label }}</button>{% endfor %}
+            <span class="fix-status text-sm text-zinc-400" role="status"></span>
+        </div>
+        {% endif %}
         {% else %}
         <p class="mt-3 border-t border-white/5 pt-3 text-sm text-zinc-400">No problems found.</p>
         {% endif %}
@@ -71,6 +81,23 @@
     {% endfor %}
 </div>
 <p class="mt-6 text-sm text-zinc-500">Wi-Fi and SD card details appear once a camera has connected at least once.</p>
+<script>
+    // "Fix it" buttons: the same camera commands as Live's control menu, next to the problem they fix.
+    document.querySelectorAll(".fix").forEach((btn) => btn.addEventListener("click", async () => {
+        const out = btn.parentElement.querySelector(".fix-status"), { cam, cmd, payload } = btn.dataset;
+        btn.disabled = true;
+        out.textContent = "Working on it…";
+        const steps = payload === "restart" && cmd === "state" ? ["stop", "start"] : [payload];
+        let r = {};
+        for (const step of steps) {
+            r = await fetch(`api/${encodeURIComponent(cam)}/${cmd}/${step}`).then((x) => x.json()).catch((e) => ({ status: "error", response: e.message }));
+            if (["error", false].includes(r.status)) break;
+        }
+        out.textContent = ["error", false].includes(r.status) ? `That didn't work. ${r.response || ""}`.trim()
+            : cmd === "power" ? "Restarting. Give it a minute, then reload this page." : "Done. Reload this page in a moment to see how it's doing.";
+        btn.disabled = false;
+    }));
+</script>
 <script>
     // One tap watches every camera for a few seconds (the setup stream test), 3 at a time so the PC isn't swamped.
     document.getElementById("checkAll")?.addEventListener("click", async (e) => {
