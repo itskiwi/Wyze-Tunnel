@@ -18,6 +18,7 @@ from typing import Any, Optional
 from urllib.parse import urlencode
 
 import yaml
+from wyzebridge import homekit
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import kill_orphan
@@ -31,6 +32,7 @@ TUTK_LIB = os.getenv("TUTK_LIB", "/usr/local/lib/libIOTCAPIs_ALL.so")
 IOCTL_BIN = os.getenv("WYZE_IOCTL_BIN") or str(Path(GO2RTC_BIN).with_name("wyze-ioctl" + Path(GO2RTC_BIN).suffix))
 RTSP_PORT = 8556
 API_PORT = 1984
+SRTP_PORT = 8443  # Apple Home video
 SOURCES = ("tutk", "lan", "webrtc")
 # Consecutive failed connects before trying the camera's next source.
 FALLBACK_AFTER = env_bool("SOURCE_FALLBACK_AFTER", "5", style="int")
@@ -200,33 +202,48 @@ def relay(src: str, uri: str, on_frames, should_stop) -> None:
 
 
 class Go2rtcServer:
-    __slots__ = "sub_process", "streams"
+    __slots__ = "sub_process", "streams", "names"
 
     def __init__(self) -> None:
         self.sub_process: Optional[Popen] = None
         self.streams: dict[str, str] = {}
+        self.names: dict[str, str] = {}  # camera uri to nickname, for Apple Home
 
     def add(self, name: str, url: str) -> str:
         self.streams[name] = url
         return name
 
     def config(self) -> dict:
-        return {
+        hk_streams, accessories = homekit.go2rtc_config(self.names)
+        cfg = {
             "api": {"listen": f"127.0.0.1:{API_PORT}"},
             "rtsp": {"listen": f"127.0.0.1:{RTSP_PORT}"},
             "webrtc": {"listen": ""},
             "srtp": {"listen": ""},
             "log": {"level": env_bool("GO2RTC_LOGLEVEL", "warn")},
-            "streams": self.streams,
+            "streams": self.streams | hk_streams,
         }
+        if accessories:
+            # Apple devices pair on the API port, so it opens to the network, but only for HomeKit's two
+            # pairing paths: go2rtc then drops the rest of its API and web page. Pairing itself is HAP-encrypted.
+            cfg["api"] = {"listen": f":{API_PORT}", "allow_paths": ["/pair-setup", "/pair-verify"]}
+            cfg["srtp"] = {"listen": f":{SRTP_PORT}"}
+            cfg["homekit"] = accessories
+        return cfg
 
     def start(self) -> None:
-        if self.sub_process or not self.streams or not go2rtc_available():
+        if self.sub_process or not go2rtc_available():
             return
+        homekit.keep_pairings(GO2RTC_CONFIG)
+        cfg = self.config()
+        if not cfg["streams"]:
+            return
+        # Holds cloud keys and HomeKit private keys.
+        Path(GO2RTC_CONFIG).touch(mode=0o600)
         with open(GO2RTC_CONFIG, "w") as f:
-            yaml.safe_dump(self.config(), f)
+            yaml.safe_dump(cfg, f)
         kill_orphan(GO2RTC_BIN, RTSP_PORT)
-        logger.info(f"[GO2RTC] starting go2rtc for {len(self.streams)} stream(s)")
+        logger.info(f"[GO2RTC] starting go2rtc for {len(cfg['streams'])} stream(s), {len(cfg.get('homekit', {}))} in Apple Home")
         self.sub_process = Popen([GO2RTC_BIN, "-config", GO2RTC_CONFIG])
 
     def stop(self) -> None:
@@ -238,6 +255,10 @@ class Go2rtcServer:
             except Exception:
                 self.sub_process.kill()
         self.sub_process = None
+
+    def restart(self) -> None:
+        self.stop()
+        self.start()
 
     def health_check(self) -> None:
         if self.sub_process and self.sub_process.poll() is not None:
