@@ -141,7 +141,7 @@
     {% if not current_guest() %}
     <form id="tlForm" class="mt-4">
         <fieldset><legend class="text-sm text-zinc-400">Cameras</legend>
-            {% for uri, name in all_cams.items() %}
+            {% for uri, name in timelapse_from.items() %}
             <label class="mt-2 flex items-center gap-3"><input type="checkbox" name="cams" value="{{ uri }}" class="h-4 w-4 accent-accent" {{ 'checked' if uri in timelapse_cams }} /><span>{{ name }}</span></label>
             {% endfor %}
         </fieldset>
