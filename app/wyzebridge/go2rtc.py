@@ -104,7 +104,7 @@ def lan_url(cam: WyzeCamera, substream: bool = False) -> str:
 
 
 def webrtc_url(cam_name: str, api_key: Optional[str]) -> str:
-    query = "kvs" + (f"&{urlencode({'api': api_key})}" if api_key else "")
+    query = "kvs&relay" + (f"&{urlencode({'api': api_key})}" if api_key else "")
     port = os.getenv("FLASK_RUN_PORT", "5000")
     return f"webrtc:http://127.0.0.1:{port}/signaling/{cam_name}?{query}#format=wyze"
 

@@ -196,6 +196,11 @@ class WyzeStream:
         return self.state == StreamStatus.CONNECTED
 
     @property
+    def busy(self) -> bool:
+        """A Cam OG takes two viewers at once, so failing to connect usually means Wyze app viewers hold them."""
+        return self.camera.is_gwell and self.failures > 0 and not self.connected
+
+    @property
     def enabled(self) -> bool:
         return self.state != StreamStatus.DISABLED
 
@@ -358,6 +363,7 @@ class WyzeStream:
             "req_bitrate": self.options.bitrate,
             "failures": self.failures,
             "chronic": self.failures >= CHRONIC_FAILURES,
+            "busy": self.busy,
             "source": self.source,
             "sources": self.sources,
         }

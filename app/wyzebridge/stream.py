@@ -171,6 +171,7 @@ class StreamManager:
                 "status": cam.status(),
                 "motion": cam.motion,
                 "net_mode": getattr(cam, "net_mode", ""),
+                "busy": getattr(cam, "busy", False),
             }
             for uri, cam in self.streams.items()
         }
