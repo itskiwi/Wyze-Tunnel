@@ -682,6 +682,21 @@ def create_app():
         Thread(target=wb.refresh_cams, daemon=True).start()
         return {"status": "restored", "restored": restored}
 
+    @app.route("/settings/from-docker-wyze-bridge", methods=["POST"])
+    @owner_only
+    def settings_from_dwb():
+        try:
+            out = backup.from_docker_wyze_bridge(str((request.get_json(silent=True) or {}).get("text") or ""))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        if os.name == "nt":
+            out["where"] = r"Save it as %LOCALAPPDATA%\Wyze Tunnel\wyze-tunnel.env, then choose Stop and then Start in the tray menu."
+        elif os.path.exists("/.dockerenv"):
+            out["where"] = "On Docker you can keep your compose file as it is. Just change the image to ghcr.io/itskiwi/wyze-tunnel."
+        else:
+            out["where"] = "Add these lines to /etc/wyze-tunnel/wyze-tunnel.env, then run: wyze-tunnel restart"
+        return out
+
     @app.route("/alerts/mode", methods=["POST"])
     @auth_required
     def alerts_mode():
