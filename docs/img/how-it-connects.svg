@@ -18,9 +18,11 @@
   <text x="235" y="178" text-anchor="middle" font-size="13" fill="#7d8076">video</text>
 
   <rect x="292" y="100" width="210" height="180" rx="28" fill="#15895a"/>
-  <path d="M367 210V176c0-19 13.5-34 30-34s30 15 30 34v34z" fill="#fff" opacity=".95"/>
-  <ellipse cx="397" cy="182" rx="12" ry="13" fill="#15895a"/>
-  <circle cx="399" cy="184" r="6" fill="#13241a"/>
+  <g transform="translate(353 130) scale(2)">
+    <path fill-rule="evenodd" d="M8 39.5V21a14 14 0 0 1 28 0v18.5a1.5 1.5 0 0 1-1.5 1.5h-25A1.5 1.5 0 0 1 8 39.5zM17.5 41v-3.2a4.5 4.5 0 0 1 9 0V41z" fill="#fff" opacity=".95"/>
+    <circle cx="22" cy="20" r="8.2" fill="#15895a"/>
+    <circle cx="23.3" cy="21.1" r="4.2" fill="#13241a"/>
+  </g>
   <text x="397" y="244" text-anchor="middle" font-weight="800" font-size="20" fill="#fff">Wyze Tunnel</text>
   <text x="397" y="266" text-anchor="middle" font-size="13" fill="#d6efe2">on your home network</text>
 
