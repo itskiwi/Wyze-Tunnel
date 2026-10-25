@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="dark light" />
     <script>
         // Theme: "light", "dark", or unset to follow the system. Runs before paint to avoid a flash.
@@ -49,7 +49,7 @@
 
 <body class="flex min-h-full flex-col font-sans text-[15px] text-zinc-100">
     <svg width="0" height="0" class="absolute" aria-hidden="true"><defs>
-        <symbol id="mark" viewBox="0 0 44 44"><path d="M7 38V22C7 13 13.5 6 22 6s15 7 15 16v16z" fill="rgb(var(--accent))"/><ellipse cx="22" cy="24" rx="7.5" ry="8" fill="#fff"/><circle cx="23.5" cy="25" r="3.8" fill="#13241a"/><circle cx="25" cy="23.5" r="1.1" fill="#fff"/></symbol>
+        <symbol id="mark" viewBox="0 2 44 44"><path fill-rule="evenodd" d="M8 39.5V21a14 14 0 0 1 28 0v18.5a1.5 1.5 0 0 1-1.5 1.5h-25A1.5 1.5 0 0 1 8 39.5zM17.5 41v-3.2a4.5 4.5 0 0 1 9 0V41z" fill="rgb(var(--accent))"/><circle cx="22" cy="20" r="8.2" fill="#fff"/><circle cx="23.3" cy="21.1" r="4.2" fill="#13241a"/><circle cx="24.9" cy="19.5" r="1.3" fill="#fff"/></symbol>
     </defs></svg>
     {% if not hide_nav %}
     {% set page = request.endpoint %}

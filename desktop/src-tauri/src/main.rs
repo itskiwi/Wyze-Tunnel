@@ -407,7 +407,7 @@ fn main() {
             #[cfg(windows)]
             let (firewall, mut firewall_shown) = (item("firewall", "Fix phone and camera access")?, false);
             let tray = TrayIconBuilder::with_id("tray")
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tauri::include_image!("icons/tray.png")) // bare mark: the app tile is mush at 16px
                 .tooltip("Wyze Tunnel")
                 .menu(&menu)
                 .on_menu_event(|app, e| match e.id.as_ref() {

@@ -17,6 +17,15 @@ Everything starts on the **Connect apps** page: open Wyze Tunnel, click the gear
 - [Keeping it safe](#keeping-it-safe)
 - [FAQ](#faq)
 
+## Apple Home
+
+Open **Connect apps**, pick **Apple Home** and turn on a camera. Then, on an iPhone on the same Wi-Fi, open the Home app, tap **+**, **Add Accessory**, and scan the code shown (or type the 8-digit number). Tap **Add Anyway** when it says the accessory isn't certified.
+
+- Each camera is its own accessory with its own code. Turning a camera off forgets it, so turning it on again gives a new code.
+- It uses go2rtc's HomeKit server. Apple devices pair on port 1984 (TCP) and get video on port 8443 (UDP), and find Wyze Tunnel with Bonjour (mDNS). Only the two pairing paths are opened on port 1984; the rest of go2rtc stays private.
+- In Docker, Bonjour needs `network_mode: host`.
+- Apple Home plays H.264 only, so cameras that stream H.265 won't show video.
+
 ## Home Assistant
 
 You get a camera with live video for each Wyze camera, plus a motion sensor, an online sensor and, if your key can control
@@ -113,6 +122,8 @@ The full reference is in [openapi.json](../app/static/openapi.json). Your Wyze T
 | `GET /api/v1/cameras/{id}/snapshot` | A JPEG picture | Look only |
 | `GET /api/v1/events?limit=20` | Recent motion, newest first | Look only |
 | `GET /api/v1/health` | `ok` or `degraded`, with each problem | Look only |
+| `GET /api/v1/mode` | The alert mode: `schedule` (normal), `home` or `away` | Look only |
+| `POST /api/v1/mode` | Switches it, for phone shortcuts and location automations. Body: `{"mode": "away"}` | Look and control |
 | `POST /api/v1/cameras/{id}/commands/{command}` | Sends a command. Body: `{"value": "on"}` | Look and control |
 | `POST /api/v1/mcp` | MCP server for AI apps | Look only (commands need control) |
 
