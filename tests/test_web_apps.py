@@ -136,6 +136,23 @@ def test_mcp(client):
     assert as_app(c, view, "GET", "/api/v1/mcp").status_code == 405
 
 
+def test_phone_shortcut_switches_home_and_away(client, monkeypatch):
+    c, _, _, tmp_path = client
+    from wyzebridge import webhooks
+
+    monkeypatch.setattr(webhooks, "ALERTS_FILE", str(tmp_path / "alerts.json"))
+    monkeypatch.setattr(webhooks, "ALERTS", {})
+    view, phone = make(c, "view"), make(c, "control", "Phone shortcuts")
+    assert as_app(c, view, "GET", "/api/v1/mode").json["mode"] == "schedule"
+    assert as_app(c, view, "POST", "/api/v1/mode", json={"mode": "away"}).status_code == 403
+    assert as_app(c, phone, "POST", "/api/v1/mode", json={"mode": "Away"}).json == {"mode": "away"}
+    assert webhooks.ALERTS["mode"] == "away"
+    assert as_app(c, phone, "POST", "/api/v1/mode", json={"mode": "party"}).status_code == 400
+    assert "set_mode" not in [t["name"] for t in rpc(c, view, "tools/list").json["result"]["tools"]]
+    assert not rpc(c, phone, "tools/call", {"name": "set_mode", "arguments": {"mode": "home"}}).json["result"]["isError"]
+    assert webhooks.ALERTS["mode"] == "home"
+
+
 def test_webhooks_signed_and_validated(client):
     c, _, integrations, _ = client
     assert c.post("/apps/hooks", json={"url": "ftp://x", "events": ["motion"]}).status_code == 400

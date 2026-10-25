@@ -113,6 +113,8 @@ The full reference is in [openapi.json](../app/static/openapi.json). Your Wyze T
 | `GET /api/v1/cameras/{id}/snapshot` | A JPEG picture | Look only |
 | `GET /api/v1/events?limit=20` | Recent motion, newest first | Look only |
 | `GET /api/v1/health` | `ok` or `degraded`, with each problem | Look only |
+| `GET /api/v1/mode` | The alert mode: `schedule` (normal), `home` or `away` | Look only |
+| `POST /api/v1/mode` | Switches it, for phone shortcuts and location automations. Body: `{"mode": "away"}` | Look and control |
 | `POST /api/v1/cameras/{id}/commands/{command}` | Sends a command. Body: `{"value": "on"}` | Look and control |
 | `POST /api/v1/mcp` | MCP server for AI apps | Look only (commands need control) |
 
