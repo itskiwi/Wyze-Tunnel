@@ -146,6 +146,11 @@
                 </table>
             </div>
             <div class="cam-acts fs-display-none absolute bottom-2.5 right-2.5 z-10 flex gap-1.5">
+                {% if show_video %}
+                <button class="pip cam-action is-hidden" data-cam="{{cam_uri}}" title="Keep this camera on screen over other apps" aria-label="Picture-in-picture for {{ camera.nickname }}">
+                    <i class="fas fa-clone" aria-hidden="true"></i>
+                </button>
+                {% endif %}
                 {% if not watch_only %}
                 <details class="dropdown">
                     <summary class="cam-action" title="Controls" aria-label="Controls for {{ camera.nickname }}"><i class="fas fa-sliders"></i></summary>
