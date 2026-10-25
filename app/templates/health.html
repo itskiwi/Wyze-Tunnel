@@ -13,6 +13,14 @@
     {{ affected ~ " of " ~ cameras|length ~ " cameras need attention." if issues else "All cameras look healthy." }}
 </p>
 {% endif %}
+<section class="surface mb-4 grid gap-3 p-5 text-sm sm:grid-cols-3" aria-label="Data use">
+    <div><p class="text-zinc-400">Downloading from cameras now</p><p class="usage-total-in mt-1 font-display text-xl font-extrabold text-zinc-50">…</p></div>
+    <div><p class="text-zinc-400">Sending to viewers now</p><p class="usage-total-out mt-1 font-display text-xl font-extrabold text-zinc-50">…</p></div>
+    {% if disk %}
+    <div><p class="text-zinc-400">Recordings</p><p class="mt-1 font-display text-xl font-extrabold text-zinc-50">{{ (disk.used / 1024**3)|round(1) }} GB</p>
+        <p class="text-zinc-500">{{ (disk.free / 1024**3)|round(1) }} GB free on the drive</p></div>
+    {% endif %}
+</section>
 {% set labels = {-90: "offline", -1: "stopping", 0: "turned off", 1: "idle", 2: "connecting", 3: "streaming"} %}
 <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
     {% for uri, cam in cameras.items() %}
@@ -45,6 +53,7 @@
             {% if cam.net_mode %}<dt>Connection</dt><dd>{{ {"local": "Local network", "internet": "Over the internet (direct)", "relay": "Through Wyze's relay"}[cam.net_mode] }}</dd>{% endif %}
             {% if wifi >= 0 %}<dt>Wi-Fi signal</dt><dd>{{ wifi }}%</dd>{% endif %}
             {% if sd_free >= 0 %}<dt>SD card free</dt><dd>{{ sd_free }}%</dd>{% endif %}
+            <dt>Data use</dt><dd class="usage" data-cam="{{ uri }}">Not streaming</dd>
             {% if cam.status == 3 and cam.start_time %}<dt>Streaming for</dt><dd>{{ ((now - cam.start_time) / 60)|int }} min</dd>{% endif %}
         </dl>
         {% if tips %}
@@ -60,4 +69,35 @@
     {% endfor %}
 </div>
 <p class="mt-6 text-sm text-zinc-500">Wi-Fi and SD card details appear once a camera has connected at least once.</p>
+<script>
+    // Two readings of MediaMTX's byte counters, 5 seconds apart, make a rate.
+    (() => {
+        const mbps = (bytes, secs) => `${(bytes * 8 / secs / 1e6).toFixed(1)} Mbps`;
+        const size = (bytes) => bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
+        let last = null;
+        async function poll() {
+            try {
+                const now = await (await fetch("api/usage")).json();
+                if (last) {
+                    const secs = now.time - last.time;
+                    let totalIn = 0, totalOut = 0;
+                    document.querySelectorAll(".usage").forEach((el) => {
+                        const cur = now.paths[el.dataset.cam], prev = last.paths[el.dataset.cam];
+                        if (!cur || !cur.in) { el.textContent = "Not streaming"; return }
+                        // A counter that went down means the stream restarted; count from zero.
+                        const dIn = Math.max(0, cur.in - (prev && prev.in <= cur.in ? prev.in : 0));
+                        const dOut = Math.max(0, cur.out - (prev && prev.out <= cur.out ? prev.out : 0));
+                        totalIn += dIn; totalOut += dOut;
+                        el.textContent = `${mbps(dIn, secs)} now, ${size(cur.in)} since it started`;
+                    });
+                    document.querySelector(".usage-total-in").textContent = mbps(totalIn, secs);
+                    document.querySelector(".usage-total-out").textContent = mbps(totalOut, secs);
+                }
+                last = now;
+            } catch (e) { }
+            setTimeout(poll, 5000);
+        }
+        poll();
+    })();
+</script>
 {% endblock %}
