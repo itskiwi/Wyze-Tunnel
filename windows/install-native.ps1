@@ -37,7 +37,7 @@ function Fix-Firewall {
         $p = Start-Process powershell.exe -ArgumentList '-NoProfile', '-EncodedCommand', $Encoded -Verb RunAs -WindowStyle Hidden -Wait -PassThru
         if ($p.ExitCode) { Write-Output "The firewall change didn't finish (error $($p.ExitCode)). Phones and cameras on this network may not connect." }
     } catch {
-        Write-Output 'Skipped the firewall change. Phones and cameras on this network may not connect until you click Set up again and choose Yes.'
+        Write-Output "Skipped the firewall change. Phones and cameras on this network may not connect until you click Set up again and choose Yes. ($($_.Exception.Message))"
     }
 }
 if ($CheckFirewall) { exit $(if (Get-Blocked) { 2 } else { 0 }) }
