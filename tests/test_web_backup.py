@@ -105,3 +105,34 @@ def test_daily_locked_backup(setup, monkeypatch, tmp_path):
     assert client.post("/settings/auto-backup", json={"folder": str(folder)}).json["path"]
     assert client.post("/settings/auto-backup", json={"folder": ""}).json["path"] is None
     assert backup.auto_backup(force=True) is None
+
+
+def test_from_docker_wyze_bridge_compose(setup):
+    client = setup[0]
+    compose = """
+services:
+  wyze-bridge:
+    image: mrlt8/wyze-bridge:latest
+    environment:
+      - WYZE_EMAIL=${EMAIL}
+      - API_KEY=abc
+      - QUALITY=HD120
+      - FILTER_NAMES='Front Door'
+      - RECORD_PATH=/media/{cam_name}
+      - ENABLE_AUDIO=true
+"""
+    out = client.post("/settings/from-docker-wyze-bridge", json={"text": compose}).json
+    assert out["kept"] == ["QUALITY", "FILTER_NAMES", "ENABLE_AUDIO"]
+    assert "FILTER_NAMES=Front Door\n" in out["env"]
+    assert {s["name"] for s in out["skipped"]} == {"WYZE_EMAIL", "API_KEY", "RECORD_PATH"}
+    assert "abc" not in out["env"] and out["where"]
+
+
+def test_from_docker_wyze_bridge_env_and_map():
+    from wyzebridge.backup import from_docker_wyze_bridge
+
+    assert from_docker_wyze_bridge("# comment\nexport NET_MODE=LAN\nROTATE_DOOR=True\n")["kept"] == ["NET_MODE", "ROTATE_DOOR"]
+    mapped = from_docker_wyze_bridge("services:\n  b:\n    environment:\n      SNAPSHOT: RTSP5\n      TZ: America/Chicago\n")
+    assert mapped["kept"] == ["SNAPSHOT", "TZ"]
+    with pytest.raises(ValueError):
+        from_docker_wyze_bridge("hello there")

@@ -8,10 +8,11 @@
         and you can take it back any time.</p>
 </header>
 
-<div class="mx-auto grid max-w-2xl gap-3 sm:grid-cols-3" role="tablist" aria-label="What do you want to connect?">
+<div class="mx-auto grid max-w-2xl gap-3 sm:grid-cols-2" role="tablist" aria-label="What do you want to connect?">
     {% for id, icon, title, text in [
         ("ha", "fa-house", "Home Assistant", "Cameras, motion and controls on your dashboards"),
         ("ai", "fa-comment-dots", "Claude and AI apps", "Ask about your cameras in a chat"),
+        ("rec", "fa-film", "Recorders", "Frigate, Blue Iris, Agent DVR"),
         ("other", "fa-code", "Other apps", "Node-RED, scripts, automations")] %}
     <button type="button" role="tab" aria-selected="false" aria-controls="panel-{{ id }}" data-panel="{{ id }}"
         class="pick surface p-4 text-left ring-2 ring-transparent transition hover:ring-zinc-700 aria-selected:ring-accent">
@@ -91,6 +92,20 @@
         <p class="mt-2 text-sm text-zinc-300"><i class="fas fa-circle-info"></i> Copy it now. The key inside is only shown once.
             Making a new one for the same app replaces this one.</p>
     </div>
+</section>
+
+<section id="panel-rec" role="tabpanel" class="panel surface mx-auto mt-4 max-w-2xl p-5" hidden>
+    <h2 class="font-display text-xl font-extrabold text-zinc-50">Record with another app</h2>
+    <p class="mt-1 text-sm text-zinc-400">Already use a recorder? Wyze Tunnel hands it every camera, with the stream login filled in.
+        Cameras that are turned off aren't included.</p>
+    <div class="seg mt-4" role="radiogroup" aria-label="Which recorder?">
+        {% for value, label in [("frigate", "Frigate"), ("blueiris", "Blue Iris"), ("agent", "Agent DVR"), ("rtsp", "Anything else")] %}
+        <button type="button" role="radio" class="tab" data-rec="{{ value }}" aria-checked="{{ 'true' if loop.first else 'false' }}">{{ label }}</button>
+        {% endfor %}
+    </div>
+    <p id="recHow" class="mt-4 text-sm text-zinc-400"></p>
+    <div class="secret mt-2"><pre id="recSnippet" class="snippet"></pre><button type="button" class="copy btn" data-copy="recSnippet"><i class="fas fa-copy"></i>Copy</button></div>
+    <p class="mt-2 text-sm text-zinc-300"><i class="fas fa-circle-info"></i> This has your stream password in it. Paste it only into your recorder.</p>
 </section>
 
 <section id="panel-other" role="tabpanel" class="panel mx-auto mt-4 max-w-2xl space-y-4" hidden>
@@ -201,7 +216,7 @@
         history.replaceState(null, "", `#${id}`);
     };
     pickers.forEach((p) => p.addEventListener("click", () => open(p.dataset.panel)));
-    if (["#ha", "#ai", "#other"].includes(location.hash)) open(location.hash.slice(1));
+    if (["#ha", "#ai", "#rec", "#other"].includes(location.hash)) open(location.hash.slice(1));
 
     document.addEventListener("click", (e) => {
         const btn = e.target.closest(".copy");
@@ -256,6 +271,42 @@
         post("apps/tokens", { name, scope }).then(({ token }) => { aiToken = token; showAi(); })
             .catch((err) => say(false, err.message)).finally(() => e.target.disabled = false);
     });
+
+    // Recorders: one ready-made setup per app, from the same camera list the API gives other apps.
+    let recApp = "frigate", recCams = null;
+    const recSnippets = {
+        frigate: [`Add this to Frigate's config file (Settings, Configuration editor), then save and restart Frigate.`, (cams) =>
+            "go2rtc:\n  streams:\n" + cams.map((c) => `    ${c.key}: ${c.rtsp}\n`).join("") +
+            "cameras:\n" + cams.map((c) => `  ${c.key}:\n    ffmpeg:\n      inputs:\n        - path: rtsp://127.0.0.1:8554/${c.key}\n` +
+                `          input_args: preset-rtsp-restream\n          roles: [detect, record]\n    record:\n      enabled: true\n`).join("")],
+        blueiris: [`In Blue Iris, add a camera for each one below. Choose Network IP, Make "Generic/ONVIF" and Model "*RTSP H.264/H.265/MJPG/MPEG4", then fill in these fields.`, (cams) =>
+            cams.map((c) => `${c.name}\n  Address:  ${c.url.host}\n  Path:     ${c.url.pathname}\n  User:     ${c.user}\n  Password: ${c.pass}\n`).join("\n")],
+        agent: [`In Agent DVR, choose Add device, Video Source, FFMPEG for each camera, and paste its link as the Live URL.`, (cams) =>
+            cams.map((c) => `${c.name}\n  ${c.rtsp}\n`).join("\n")],
+        rtsp: [`Each camera's RTSP link. Most recorders and players, like VLC, take these as they are.`, (cams) =>
+            cams.map((c) => `${c.name}: ${c.rtsp}`).join("\n")],
+    };
+    const showRec = () => {
+        if (!recCams) return;
+        document.getElementById("recHow").textContent = recCams.length ? recSnippets[recApp][0] : "No cameras yet. Turn one on from the Cameras page first.";
+        document.getElementById("recSnippet").textContent = recCams.length ? recSnippets[recApp][1](recCams) : "";
+    };
+    const loadRec = () => recCams || fetch("api/v1/cameras").then((r) => r.ok ? r.json() : Promise.reject(new Error(r.statusText))).then((body) => {
+        recCams = body.filter((c) => c.enabled).map((c) => {
+            // RTSP in a URL object reads its host and path; the login comes from stream_login, not the URL.
+            const url = new URL(c.streams.rtsp.replace(/^rtsp:/, "http:"));
+            return { name: c.name, key: c.id.toLowerCase().replace(/[^a-z0-9_]/g, "_"), rtsp: c.streams.rtsp, url,
+                user: c.stream_login?.username || "", pass: c.stream_login?.password || "" };
+        });
+        showRec();
+    }).catch((err) => say(false, `Couldn't load cameras: ${err.message}`));
+    document.querySelector('[data-panel="rec"]').addEventListener("click", loadRec);
+    if (location.hash === "#rec") loadRec();
+    document.querySelectorAll("[data-rec]").forEach((b) => b.addEventListener("click", () => {
+        recApp = b.dataset.rec;
+        document.querySelectorAll("[data-rec]").forEach((x) => x.setAttribute("aria-checked", x === b));
+        showRec();
+    }));
 
     document.getElementById("keyForm").addEventListener("submit", (e) => {
         e.preventDefault();

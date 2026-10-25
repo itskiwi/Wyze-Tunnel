@@ -117,6 +117,21 @@ Add `-hw` (VAAPI) or `-qsv` (Intel QuickSync) to any tag for the amd64 hardware-
 
 See [basic usage](#basic-usage) for additional information or visit the [wiki page](https://github.com/mrlt8/docker-wyze-bridge/wiki/Home-Assistant) for additional information on using the bridge as a Home Assistant Add-on.
 
+## How it compares
+
+Wyze Tunnel is for Wyze owners who want their cameras on their own network, with no subscription. Here's how it sits next to the other options, as of October 2026:
+
+| | Wyze Tunnel | Wyze app + Cam Plus | docker-wyze-bridge | Frigate, Blue Iris, Agent DVR |
+|---|---|---|---|---|
+| Install | Windows app, Tunnel Box image, Linux one-liner or Docker | Phone app | Docker | Installer or Docker |
+| Wyze cameras | Most models, including Cam OG over Wyze's cloud | All | TUTK models | Need a bridge like this one |
+| Recording | On your computer, with a size limit | Wyze's cloud | Through MediaMTX settings | Yes, their main job |
+| Smart detection | People and vehicles, or import from Frigate | Person, vehicle, pet, package | None | Strong (Frigate) to add-on based |
+| Phone alerts | Home-screen web app | Native app | None | Native apps or web push |
+| Cost | Free | $2.99 a month per camera | Free, not updated since 2024 | Free to about $70 |
+
+Already on docker-wyze-bridge? Your settings and stream links carry over. See [Coming from docker-wyze-bridge](docs/coming-from-docker-wyze-bridge.md). Already recording with Frigate, Blue Iris or Agent DVR? **Connect apps → Recorders** in the web page gives you a ready camera setup for each.
+
 ## What's Changed in v2.10.3
 
 - FIX: Increased `MTX_WRITEQUEUESIZE` to prevent issues with higher bitrates.
