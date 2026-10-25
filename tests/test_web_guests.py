@@ -140,3 +140,23 @@ def test_cam_og_shows_busy_when_it_cannot_get_in():
     assert stream.busy
     stream._state.value = StreamStatus.CONNECTED
     assert not stream.busy
+
+
+def test_cam_og_waits_before_reopening_a_session(monkeypatch):
+    from time import time
+
+    from wyzebridge import wyze_stream
+    from wyzebridge.wyze_stream import WyzeStream
+
+    stream = WyzeStream.__new__(WyzeStream)
+    stream.camera = mock.Mock(is_gwell=True)
+    stream.uri, stream.sources, stream.source_idx = "og", ["webrtc"], 0
+    stream._state = mock.Mock()
+    proc = mock.patch.object(wyze_stream.mp, "Process")
+    with proc as Process, mock.patch.object(wyze_stream.mp, "Queue"):
+        stream.stopped_at = time()  # just dropped: the camera may still count that session
+        stream._start()
+        assert Process.call_args.kwargs["args"][3] > wyze_stream.SLOT_GAP - 2
+        stream.stopped_at = 0
+        stream._start()
+        assert Process.call_args.kwargs["args"][3] == 0
