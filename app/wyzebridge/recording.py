@@ -23,6 +23,8 @@ MAX_GB_CHOICES = (0, 25, 50, 100, 250, 500, 1000)  # 0 is no limit
 MIN_FREE = 5 * 1024**3  # always leave this much of the drive free, whatever the settings
 MIN_FREE_SHARE = 0.15  # or this share of the drive, if more: Windows slows down when nearly full
 MAX_FREE_FLOOR = 20 * 1024**3  # but never reserve more than this: 15% of a 2 TB drive would wipe every clip
+KEEP_RECENT = 86400  # the free-space floor never takes the last day of clips, unless the drive is under MIN_FREE
+DRIVE_FULL = False  # set by trim() when other files fill the drive and deleting old clips can't make room
 DEFAULT_KEEP_DAYS = 7  # a camera writes roughly 10-20 GB a day, so a fresh install can't quietly fill the disk
 
 
@@ -102,10 +104,13 @@ def trim() -> int:
     use = disk_use()
     limit = (load_settings().get("max_gb") or 0) * 1024**3
     floor = max(MIN_FREE, min(use.get("total", 0) * MIN_FREE_SHARE, MAX_FREE_FLOOR))
-    over = max(use["used"] - limit if limit else 0, floor - use["free"] if use["free"] else 0)
+    # The space limit and the 5 GB minimum may take any clip; the softer floor stops at the last day.
+    must = max(use["used"] - limit if limit else 0, MIN_FREE - use["free"] if use["free"] else 0)
+    over = max(must, floor - use["free"] if use["free"] else 0)
+    recent = time.time() - KEEP_RECENT
     freed = 0
     for clip in clips:
-        if freed >= over:
+        if freed >= over or (freed >= must and _mtime(clip) > recent):
             break
         size = _size(clip)
         try:
@@ -117,6 +122,8 @@ def trim() -> int:
     for thumb in Path(IMG_PATH, "clip-thumbs").rglob("*.jpg"):
         if _mtime(thumb) < time.time() - 31 * 86400:
             thumb.unlink(missing_ok=True)
+    global DRIVE_FULL
+    DRIVE_FULL = freed < over
     if freed:
         logger.info(f"[RECORD] Deleted {freed // 1024**2} MB of the oldest clips to stay under the space limit")
     return freed

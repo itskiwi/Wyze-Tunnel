@@ -163,6 +163,8 @@ mod vm {
             fs::create_dir_all(d.join(sub)).ok()?;
         }
         fs::copy(n.join("mediamtx.yml"), d.join("mediamtx.yml")).ok()?; // fresh each start; the bridge edits it
+        // Kept for the diagnostics report: after a crash the supervisor restarts the bridge, and the cause was in this log.
+        let _ = fs::rename(d.join("bridge.log"), d.join("bridge.previous.log"));
         let log = fs::File::create(d.join("bridge.log")).ok()?;
         let path = std::env::var("PATH").unwrap_or_default();
         let mut c = cmd(n.join(r"python\python.exe"));
@@ -254,7 +256,7 @@ mod vm {
         let n = fs::read_to_string(data().join("needs-sdk")).unwrap_or_default();
         n.trim().parse::<u32>().is_ok_and(|n| n > 0)
     }
-    fn firewall_script(res: &Path, arg: &str) -> Command {
+    fn native_script(res: &Path, arg: &str) -> Command {
         let mut c = cmd("powershell.exe");
         c.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]).arg(res.join("windows/install-native.ps1")).arg(arg);
         c
@@ -264,14 +266,26 @@ mod vm {
     pub fn firewall_blocked(res: &Path) -> bool {
         let blocked = !wsl()
             && native().join(r"python\python.exe").exists()
-            && firewall_script(res, "-CheckFirewall").status().is_ok_and(|s| s.code() == Some(2));
+            && native_script(res, "-CheckFirewall").status().is_ok_and(|s| s.code() == Some(2));
         let flag = data().join("firewall-blocked");
         let _ = if blocked { fs::write(flag, "1") } else { fs::remove_file(flag) };
         blocked
     }
+    /// Puts back the version the last update replaced; true when it did. Native mode only: Linux undoes its own.
+    pub fn rollback(res: &Path) -> bool {
+        if wsl() {
+            return false;
+        }
+        stop();
+        native_script(res, "-Rollback").status().is_ok_and(|s| s.success())
+    }
+    /// Checking for updates by hand tries a version that failed before again.
+    pub fn forget_failed_update() {
+        let _ = fs::remove_file(dir().join("failed-version"));
+    }
     /// Adds the firewall rules behind one Windows permission prompt.
     pub fn fix_firewall(res: &Path) {
-        let _ = firewall_script(res, "-FirewallOnly").status();
+        let _ = native_script(res, "-FirewallOnly").status();
     }
 }
 
@@ -480,11 +494,19 @@ fn main() {
             // Update states, like the web UI's: available, updating, then a notification once the version changes.
             let (mut version, mut latest, mut desktop) = (String::new(), None::<String>, None::<String>);
             let mut updating: Option<Instant> = None;
+            // Set when an update changed the version: the new bridge must answer within 3 minutes or it is undone.
+            #[cfg(windows)]
+            let mut verify: Option<Instant> = None;
             let mut shown = String::new();
             let mut tick = 0u32;
             std::thread::spawn(move || loop {
                 let daily = last_update.elapsed() > Duration::from_secs(24 * 3600) && !vm::watching();
-                if (UPDATE_NOW.swap(false, Ordering::SeqCst) || vm::update_requested() || daily) && vm::installed() {
+                let manual = UPDATE_NOW.swap(false, Ordering::SeqCst) || vm::update_requested();
+                if (manual || daily) && vm::installed() {
+                    #[cfg(windows)]
+                    if manual {
+                        vm::forget_failed_update();
+                    }
                     last_update = Instant::now();
                     updating = Some(Instant::now());
                     let _ = update.set_text("Updating…");
@@ -499,6 +521,10 @@ fn main() {
                         if !version.is_empty() {
                             let n = handle.notification().builder().title("Wyze Tunnel updated").body(format!("Now running v{v}."));
                             let _ = n.show();
+                            #[cfg(windows)]
+                            {
+                                verify = Some(Instant::now());
+                            }
                         }
                         version = v;
                         updating = None;
@@ -526,6 +552,19 @@ fn main() {
                 if FIREWALL_BLOCKED.load(Ordering::SeqCst) != firewall_shown {
                     firewall_shown = !firewall_shown;
                     let _ = if firewall_shown { menu.insert(&firewall, 4) } else { menu.remove(&firewall) };
+                }
+                #[cfg(windows)]
+                if let Some(t) = verify {
+                    if bridge_up() || STOPPED.load(Ordering::SeqCst) {
+                        verify = None;
+                    } else if t.elapsed() > Duration::from_secs(180) && !BUSY.load(Ordering::SeqCst) {
+                        verify = None;
+                        if handle.path().resource_dir().is_ok_and(|res| vm::rollback(&res)) {
+                            version = vm::version(); // not announced as an update
+                            let body = "The new version didn't start, so Wyze Tunnel went back to the one before. It will skip that update.";
+                            let _ = handle.notification().builder().title("Update undone").body(body).show();
+                        }
+                    }
                 }
                 tick = tick.wrapping_add(1);
                 let text = match (&updating, &desktop, &latest) {

@@ -160,6 +160,9 @@
                 <button class="btn is-hidden mt-4" data-reload>Reload page</button>
             </div>
         </div>
+        {% if drive_full %}
+        <p class="surface mb-4 flex items-start gap-3 p-4 text-sm text-amber-200" role="status"><i class="fas fa-hard-drive mt-0.5"></i>The drive is nearly full. Recordings from the last day are kept, but new clips may stop saving. Free up space on this computer, or lower how long recordings are kept.</p>
+        {% endif %}
         {% endif %}
         {% if not hide_nav and page == 'index' %}
         <section id="installTip" class="surface is-hidden mb-4 p-4 md:hidden" role="status">

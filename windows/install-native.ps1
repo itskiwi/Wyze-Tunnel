@@ -2,7 +2,8 @@
 # starts and supervises the bridge itself. Cameras connect through go2rtc, since the Wyze SDK is Linux-only.
 # Exit codes: 0 installed or already up to date.
 # -CheckFirewall only checks the firewall rules (exit 2: phones or cameras are blocked); -FirewallOnly only fixes them.
-param([switch]$CheckFirewall, [switch]$FirewallOnly)
+# -Rollback puts back the version an update replaced (the desktop app runs it when the new one doesn't start).
+param([switch]$CheckFirewall, [switch]$FirewallOnly, [switch]$Rollback)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'  # Invoke-WebRequest is very slow with its progress bar
 $Dir = Join-Path $env:LOCALAPPDATA 'Wyze Tunnel'
@@ -10,6 +11,9 @@ $Native = Join-Path $Dir 'native'
 $Settings = Join-Path $Dir 'wyze-tunnel.env'
 $Release = 'https://github.com/itskiwi/Wyze-Tunnel/releases/latest/download'
 $Bundle = 'wyze-tunnel-windows-x86_64.zip'
+$EnvFile = Join-Path $Native 'wyze-tunnel\app\.env'
+$Previous = "$Native.previous"
+$Failed = Join-Path $Dir 'failed-version'  # an update that didn't start; skipped until the next release
 
 function Say($m) { Write-Output "`n==> $m" }
 
@@ -43,11 +47,26 @@ function Fix-Firewall {
 if ($CheckFirewall) { exit $(if (Get-Blocked) { 2 } else { 0 }) }
 if ($FirewallOnly) { Fix-Firewall; exit }
 
-$Latest = (Invoke-RestMethod 'https://api.github.com/repos/itskiwi/Wyze-Tunnel/releases/latest').tag_name.TrimStart('v')
-$EnvFile = Join-Path $Native 'wyze-tunnel\app\.env'
-$Installed = if (Test-Path $EnvFile) { (Select-String -Path $EnvFile -Pattern '^VERSION=(.*)').Matches.Groups[1].Value }
+function Get-Installed { if (Test-Path $EnvFile) { (Select-String -Path $EnvFile -Pattern '^VERSION=(.*)').Matches.Groups[1].Value } }
+if ($Rollback) {
+    if (-not (Test-Path $Previous)) { exit 1 }
+    Set-Content -Path $Failed -Encoding ascii -Value (Get-Installed)
+    Get-Process | Where-Object { $_.Path -like "$Native\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep 2
+    Remove-Item -Recurse -Force "$Native.failed" -ErrorAction SilentlyContinue
+    Rename-Item $Native "$Native.failed"
+    Rename-Item $Previous $Native
+    Remove-Item -Recurse -Force "$Native.failed" -ErrorAction SilentlyContinue
+    Say "Went back to Wyze Tunnel $(Get-Installed)"
+    exit
+}
 
-if ($Installed -ne $Latest) {
+$Latest = (Invoke-RestMethod 'https://api.github.com/repos/itskiwi/Wyze-Tunnel/releases/latest').tag_name.TrimStart('v')
+$Installed = Get-Installed
+
+if ($Installed -ne $Latest -and (Get-Content $Failed -ErrorAction SilentlyContinue) -eq $Latest) {
+    Say "Staying on ${Installed}: $Latest didn't start on this PC. Check for updates in the tray menu to try it again."
+} elseif ($Installed -ne $Latest) {
     Say "Downloading Wyze Tunnel $Latest"
     New-Item -ItemType Directory -Force $Dir | Out-Null
     $Zip = Join-Path $env:TEMP $Bundle
@@ -62,8 +81,8 @@ if ($Installed -ne $Latest) {
 
     Say 'Installing'
     $New = "$Native.new"
-    $Old = "$Native.old"
-    Remove-Item -Recurse -Force $New, $Old -ErrorAction SilentlyContinue
+    $Old = $Previous  # kept so a version that doesn't start can be undone
+    Remove-Item -Recurse -Force $New, $Old, "$Native.old" -ErrorAction SilentlyContinue
     Expand-Archive $Zip $New
     # A bridge the desktop app no longer tracks (say, one left running across an app update) holds files open.
     Get-Process | Where-Object { $_.Path -like "$Native\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -72,7 +91,6 @@ if ($Installed -ne $Latest) {
     # instead of a delete that removes half the files.
     if (Test-Path $Native) { Rename-Item $Native $Old }
     Rename-Item $New $Native
-    Remove-Item -Recurse -Force $Old -ErrorAction SilentlyContinue  # retried on the next update if still locked
     Remove-Item $Zip
 } else {
     Say "Wyze Tunnel $Latest is up to date"
