@@ -21,8 +21,8 @@
 <details id="setup" class="surface mb-5 p-5" {{ 'open' if not cameras }}>
     <summary class="cursor-pointer font-semibold">{{ 'Recording settings' if cameras else 'Choose cameras to record' }}</summary>
     <form id="setupForm" class="mt-3 space-y-4">
-        <p class="text-sm text-zinc-400">Recordings stay on this computer. They use {{ disk.used|filesizeformat }}{% if disk.free %},
-            with {{ disk.free|filesizeformat }} free{% endif %}. A camera takes roughly 10 to 20 GB a day.</p>
+        <p class="text-sm text-zinc-400">Recordings are saved only on this computer, not in Wyze's cloud or on the camera's SD card.
+            They use {{ disk.used|filesizeformat }}{% if disk.free %}, with {{ disk.free|filesizeformat }} free{% endif %}. A camera takes roughly 10 to 20 GB a day.</p>
         <label class="flex items-start gap-3">
             <input type="checkbox" name="all" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.get('all') }} />
             <span><span class="block">Record every camera</span>
@@ -49,6 +49,15 @@
                 {% endfor %}
             </select>
             <span class="mt-1 block text-sm text-zinc-500">Older clips are deleted on their own.</span>
+        </label>
+        <label class="block max-w-xs">
+            <span class="text-sm text-zinc-400">Use at most</span>
+            <select name="max_gb" class="field mt-1">
+                {% for gb in max_gb_choices %}
+                <option value="{{ gb }}" {{ 'selected' if gb == settings.get('max_gb', 0) }}>{{ gb ~ ' GB' if gb else 'No limit' }}</option>
+                {% endfor %}
+            </select>
+            <span class="mt-1 block text-sm text-zinc-500">The oldest clips go first. {{ min_free_gb }} GB of the drive is always left free.</span>
         </label>
         <div class="flex flex-wrap items-center gap-3">
             <button class="btn btn-primary" type="submit">Save</button>
@@ -111,6 +120,7 @@
             // With "every camera" on, keep the earlier picks for when it's switched off again.
             cams: [...setupForm.querySelectorAll("[name=cams]:not([data-locked])")].filter((c) => setupForm.all.checked ? c.defaultChecked : c.checked).map((c) => c.value),
             keep_days: Number(setupForm.keep_days.value),
+            max_gb: Number(setupForm.max_gb.value),
         };
         out.textContent = "Saving…";
         fetch("recordings/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })

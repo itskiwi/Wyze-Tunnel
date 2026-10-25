@@ -31,6 +31,7 @@ class WyzeBridge(Thread):
         if config.LLHLS:
             self.mtx.setup_llhls(config.TOKEN_PATH, bool(config.HASS_TOKEN))
         detect.start_frigate(lambda: list(self.streams.streams))
+        recording.start_trimming()
 
     def run(self, fresh_data: bool = False) -> None:
         self._initialize(fresh_data)
