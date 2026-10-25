@@ -718,6 +718,29 @@ def create_app():
             return {"error": "start and duration are required"}, 400
         return recording_mp4(cam_name, args)
 
+    @app.route("/recordings/<string:cam_name>/thumb")
+    @auth_required
+    def recording_thumb(cam_name: str):
+        """A small picture from the start of a clip, made once and kept, for the clip list."""
+        try:
+            start = datetime.fromisoformat(request.args.get("start", "").replace("Z", "+00:00"))
+        except ValueError:
+            return {"error": "start must be a date and time"}, 400
+        if not wb.streams.get(cam_name):
+            return {"error": "Camera not found"}, 404
+        thumb = Path(config.IMG_PATH, "clip-thumbs", cam_name, f"{int(start.timestamp())}.jpg")
+        if not thumb.exists():
+            thumb.parent.mkdir(parents=True, exist_ok=True)
+            url = f"http://{PLAYBACK_ADDR}/get?" + urlencode({"path": cam_name, "format": "mp4", "start": request.args["start"], "duration": 2})
+            cmd = ["ffmpeg", "-loglevel", "error", "-y", "-i", url, "-frames:v", "1", "-vf", "scale=320:-2", str(thumb)]
+            try:
+                subprocess.run(cmd, capture_output=True, timeout=20)
+            except subprocess.TimeoutExpired:
+                pass
+            if not thumb.exists():
+                return {"error": "No picture for that moment"}, 404
+        return send_file(thumb, mimetype="image/jpeg", max_age=86400)
+
     @app.route("/recordings/<string:cam_name>/share", methods=["POST"])
     @auth_required
     def share_recording(cam_name: str):

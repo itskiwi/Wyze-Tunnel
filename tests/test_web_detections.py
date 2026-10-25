@@ -155,3 +155,20 @@ def test_heatmap_counts_object_centers():
     model = FakeModel([(15, 0.9)])  # its box is the top-left corner
     detect.find_objects(model, None, heat)
     assert heat[0] == 1 and sum(heat) == 1
+
+
+def test_clip_thumb_is_made_once_and_kept(tmp_path, monkeypatch):
+    frontend, client = make_client()
+    monkeypatch.setattr(frontend.config, "IMG_PATH", str(tmp_path) + "/")
+    calls = []
+
+    def fake_ffmpeg(cmd, **kw):
+        calls.append(cmd)
+        Path(cmd[-1]).write_bytes(b"jpg")
+
+    monkeypatch.setattr(frontend.subprocess, "run", fake_ffmpeg)
+    assert client.get("/recordings/front/thumb?api=key&start=nope").status_code == 400
+    url = "/recordings/front/thumb?api=key&start=2026-10-24T12:00:00.123456Z"
+    assert client.get(url).data == b"jpg"
+    assert client.get(url).data == b"jpg"
+    assert len(calls) == 1
