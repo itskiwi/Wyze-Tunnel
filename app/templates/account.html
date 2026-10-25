@@ -47,10 +47,22 @@
     <button id="pairBtn" type="button" class="btn btn-primary mt-3"><i class="fas fa-qrcode"></i>Show code</button>
     <div id="pairCodes" class="mt-4 hidden flex-wrap gap-6"></div>
     <p id="pairStatus" class="mt-2 text-sm" role="status"></p>
+    {% if away.available %}
+    <div id="away" class="mt-4 border-t border-zinc-800 pt-3" data-away='{{ away|tojson }}'>
+        <h3 class="font-medium">Away from home</h3>
+        <p id="awayText" class="mt-1 text-sm text-zinc-400" role="status"></p>
+        <div class="mt-3 flex flex-wrap gap-2">
+            <a id="awaySignIn" class="btn btn-primary hidden" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i>Sign in to Tailscale</a>
+            <a id="awayFunnel" class="btn btn-primary hidden" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i>Allow the phone link</a>
+            <button id="awayBtn" type="button" class="btn"></button>
+        </div>
+    </div>
+    {% else %}
     <p class="mt-3 text-sm text-zinc-400">To watch away from home without touching your router, install
         <a class="underline underline-offset-2 hover:text-zinc-200" href="https://tailscale.com/download" target="_blank" rel="noopener">Tailscale</a>
         (free) on this computer and your phone, sign in to both with the same account, then show the code again. You'll get an
         Anywhere code.</p>
+    {% endif %}
 </section>
 {% endif %}
 
@@ -214,6 +226,37 @@
             .then(() => btn.lastChild.textContent = "Copied", () => {});
     });
 
+    const awayBox = document.getElementById("away");
+    if (awayBox) {
+        const text = document.getElementById("awayText"), signIn = document.getElementById("awaySignIn"), btn = document.getElementById("awayBtn");
+        const funnel = document.getElementById("awayFunnel");
+        let poll;
+        const show = (a) => {
+            signIn.classList.toggle("hidden", !(a.on && a.state === "NeedsLogin" && a.auth_url));
+            signIn.href = a.auth_url || "#";
+            funnel.classList.toggle("hidden", !(a.on && a.state === "Running" && !a.public && a.funnel_url));
+            funnel.href = a.funnel_url || "#";
+            btn.textContent = a.on ? "Turn off" : "Turn on away access";
+            btn.classList.toggle("btn-primary", !a.on);
+            text.textContent = !a.on ? "Watch your cameras on mobile data or any Wi-Fi. It uses Tailscale, a free private network, so nothing on your router changes and nothing is public."
+                : a.state === "Running" && a.public ? "Away access is on. Tap Show code and scan the Anywhere code with your phone's camera. It then works anywhere, with no app. Only phones paired this way can open the link."
+                : a.state === "Running" && a.funnel_url ? "Away access is on for phones with the Tailscale app. For phones without it, click Allow the phone link and turn it on in Tailscale."
+                : a.state === "Running" ? "Away access is on. On your phone, install the free Tailscale app and sign in with the same account. Then tap Show code and scan the Anywhere code."
+                : a.state === "NeedsLogin" && a.auth_url ? "One step left: sign in to Tailscale with Google, Microsoft or Apple. A free account is made for you if you don't have one."
+                : a.state === "NeedsMachineAuth" ? "Approve this computer on your Tailscale admin page, under Machines."
+                : "Starting…";
+            clearTimeout(poll);
+            if (a.on && !(a.state === "Running" && a.public)) poll = setTimeout(() => fetch("away").then((r) => r.json()).then(show, () => {}), 3000);
+        };
+        show(JSON.parse(awayBox.dataset.away));
+        btn.addEventListener("click", () => {
+            const on = btn.textContent !== "Turn off";
+            fetch("away", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on }) })
+                .then((resp) => resp.json().then((body) => resp.ok ? body : Promise.reject(new Error(body.error || resp.statusText))))
+                .then(show, (err) => { text.className = "mt-1 text-sm text-rose-300"; text.textContent = err.message; });
+        });
+    }
+
     const pairCodes = document.getElementById("pairCodes");
     const labels = { home: ["At home", "Works on your home Wi-Fi."], anywhere: ["Anywhere", "Works on Wi-Fi or mobile data while Tailscale is on."] };
     document.getElementById("pairBtn")?.addEventListener("click", () => {
@@ -228,7 +271,7 @@
                     fig.innerHTML = `<div class="w-fit overflow-hidden rounded-lg"></div><figcaption class="mt-2 text-sm"><span class="font-medium"></span> <span class="text-zinc-400"></span></figcaption>`;
                     fig.firstChild.innerHTML = codes[key].qr;
                     fig.querySelector(".font-medium").textContent = labels[key][0];
-                    fig.querySelector(".text-zinc-400").textContent = labels[key][1];
+                    fig.querySelector(".text-zinc-400").textContent = key === "anywhere" && codes[key].url.startsWith("https:") ? "Works anywhere, no app needed." : labels[key][1];
                     pairCodes.append(fig);
                 }
                 pairCodes.classList.replace("hidden", "flex");

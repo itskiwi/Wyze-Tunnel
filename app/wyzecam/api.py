@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 import requests
 from requests import PreparedRequest, Response
-from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeCredential
+from wyzecam.api_models import CLOUD_CAMS, WyzeAccount, WyzeCamera, WyzeCredential
 
 IOS_VERSION = getenv("IOS_VERSION")
 APP_VERSION = getenv("APP_VERSION")
@@ -290,7 +290,7 @@ def get_cam_webrtc(auth_info: WyzeCredential, mac_id: str, model: str = "") -> d
     """Get webrtc for camera."""
     if not auth_info.access_token:
         raise AccessTokenError()
-    if model.startswith("GW_"):
+    if model.startswith("GW_") or model in CLOUD_CAMS:
         return _get_cam_streams(auth_info, mac_id, model)
 
     ui_headers = _headers()
@@ -313,7 +313,7 @@ def get_cam_webrtc(auth_info: WyzeCredential, mac_id: str, model: str = "") -> d
 
 
 def _get_cam_streams(auth_info: WyzeCredential, mac_id: str, model: str) -> dict:
-    """Gwell cameras (OG) never answer webrtc.api.wyze.com's channel; the app's get_streams one works.
+    """Gwell cameras (OG, Doorbell Pro) and CLOUD_CAMS never answer webrtc.api.wyze.com's channel; the app's get_streams one works.
 
     Ported from IDisposable/docker-wyze-bridge (AGPL-3.0), internal/wyzeapi/cameras.go GetCameraStream.
     """

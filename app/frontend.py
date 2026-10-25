@@ -45,6 +45,7 @@ def create_app():
     app.jinja_env.globals["current_guest"] = web_ui.current_guest
     wb = WyzeBridge()
     Thread(target=webhooks.announce_update, daemon=True).start()
+    pocket.Away.health_check()
     try:
         wb.start()
     except RuntimeError as ex:
@@ -88,6 +89,12 @@ def create_app():
             return
         if web_ui.cross_site_request():
             return {"error": "Cross-site request blocked"}, 403
+
+    @app.before_request
+    def public_link_paired_only():
+        # Pages without a login (Wyze sign-in, setup, shares...) stay home-only too: the public link only pairs.
+        if pocket.public_request() and not request.path.startswith(("/static/", "/pair/")) and not web_ui.verify_password("", ""):
+            return render_template("pair.html", public_only=True), 403
 
     @app.route("/login", methods=["GET", "POST"])
     def wyze_login():
@@ -616,6 +623,7 @@ def create_app():
             username=WbAuth.username,
             enabled=WbAuth.enabled,
             api=WbAuth.api,
+            away=pocket.Away.status(),
             version=config.VERSION,
         )
 
@@ -646,8 +654,11 @@ def create_app():
         path = url_for("pair_phone", code=pocket.new_code())
         host, port = phone_host()
         codes = {"home": f"{request.scheme}://{host}{port}{path}"}
-        if (ts_host := pocket.tailscale_host()) and ts_host != host:
-            codes["anywhere"] = f"http://{ts_host}{port}{path}"
+        if public := pocket.Away.status()["public"]:
+            codes["anywhere"] = public + path  # the phone's cookie belongs to this address, so it works anywhere
+        elif (ts_host := pocket.tailscale_host()) and ts_host != host:
+            # The bundled Tailscale serves the web UI on port 80.
+            codes["anywhere"] = f"http://{ts_host}{'' if ts_host == pocket.Away.status()['host'] else port}{path}"
         return {k: {"url": url, "qr": pocket.qr_svg(url)} for k, url in codes.items()}
 
     def phone_host() -> tuple[str, str]:
@@ -657,6 +668,15 @@ def create_app():
         if host in ("localhost", "127.0.0.1", "[::1]"):
             host = pocket.lan_ip()
         return host, port
+
+    @app.route("/away", methods=["GET", "POST"])
+    @owner_only
+    def away():
+        if request.method == "POST":
+            if not pocket.Away.available():
+                return {"error": "Away access isn't included in this install."}, 400
+            pocket.Away.turn(bool((request.get_json(silent=True) or {}).get("on")))
+        return pocket.Away.status()
 
     @app.route("/pair/<string:code>")
     def pair_phone(code: str):
