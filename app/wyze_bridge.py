@@ -4,7 +4,7 @@ import sys
 from dataclasses import replace
 from threading import Thread
 
-from wyzebridge import config, detect, guests, integrations, recording, webhooks
+from wyzebridge import config, detect, guests, integrations, recording, timelapse, webhooks
 from wyzebridge.auth import STREAM_AUTH, WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream
 from wyzebridge.logging import logger
@@ -32,6 +32,7 @@ class WyzeBridge(Thread):
             self.mtx.setup_llhls(config.TOKEN_PATH, bool(config.HASS_TOKEN))
         detect.start_frigate(lambda: list(self.streams.streams))
         recording.start_trimming()
+        timelapse.start(self.streams.get_rtsp_snap)
 
     def run(self, fresh_data: bool = False) -> None:
         self._initialize(fresh_data)

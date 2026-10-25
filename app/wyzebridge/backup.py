@@ -10,7 +10,7 @@ from pathlib import Path
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from wyzebridge import privacy, webhooks, wyze_api, wyze_stream
+from wyzebridge import privacy, timelapse, webhooks, wyze_api, wyze_stream
 from wyzebridge.config import TOKEN_PATH, VERSION
 from wyzebridge.logging import logger
 
@@ -27,6 +27,7 @@ def _files() -> dict[str, str]:
         "net_modes": wyze_stream.NET_MODES_FILE,
         "quality": wyze_stream.QUALITY_FILE,
         "privacy": privacy.PRIVACY_FILE,
+        "timelapse": timelapse.SETTINGS_FILE,
     }
 
 
