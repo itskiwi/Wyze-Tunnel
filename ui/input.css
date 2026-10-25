@@ -73,6 +73,7 @@
   .zone-cell.zone-off {
     background: repeating-linear-gradient(135deg, rgb(14 16 14 / .75) 0 4px, rgb(248 249 246 / .35) 4px 6px);
   }
+  .zone-cell.zone-mask { background: rgb(0 0 0 / .9); }
   /* Numbered step bubble in a how-to list */
   .step {
     @apply grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent font-display font-extrabold text-on-accent;

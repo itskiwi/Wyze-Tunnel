@@ -10,7 +10,7 @@ from pathlib import Path
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from wyzebridge import detect, privacy, timelapse, webhooks, wyze_api, wyze_stream
+from wyzebridge import detect, masks, privacy, timelapse, webhooks, wyze_api, wyze_stream
 from wyzebridge.config import TOKEN_PATH, VERSION
 from wyzebridge.logging import logger
 
@@ -30,6 +30,7 @@ def _files() -> dict[str, str]:
         "battery_saver": privacy.BATTERY_FILE,
         "timelapse": timelapse.SETTINGS_FILE,
         "zones": detect.ZONES_FILE,
+        "masks": masks.MASKS_FILE,
     }
 
 
@@ -129,6 +130,7 @@ def import_settings(backup: dict) -> list[str]:
         "privacy": _privacy,
         "battery_saver": _privacy,
         "zones": _zones,
+        "masks": _zones,
         "timelapse": lambda v: {"cams": _str_list(v.get("cams", []) if isinstance(v, dict) else None)},
     }
     try:

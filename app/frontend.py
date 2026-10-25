@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, floorplan, guests, integrations, network, pocket, privacy, recording, shares, street_watch, timelapse, visitors, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, detect, floorplan, guests, integrations, masks, network, pocket, privacy, recording, shares, street_watch, timelapse, visitors, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_cam
 from wyzebridge.diagnostics import build_report
@@ -818,7 +818,7 @@ def create_app():
         if request.headers.get("Range", "bytes=0-").startswith("bytes=0-"):  # players fetch more ranges of one view
             shares.count_view(token)
         args = {"start": share["start"], "duration": share["duration"]}
-        return recording_mp4(share["cam"], args, sound=share.get("sound", True))
+        return recording_mp4(share["cam"], args, sound=share.get("sound", True), mask=masks.load_masks().get(share["cam"]))
 
     @app.route("/search")
     @auth_required
@@ -841,7 +841,13 @@ def create_app():
     def api_heatmap(cam_name: str):
         """Where things showed up on this camera: a grid of counts, row by row from the top left."""
         grid = detect.load_heat().get(cam_name) or detect.HEAT.get(cam_name) or []
-        return {"w": detect.HEAT_W, "h": detect.HEAT_H, "grid": grid, "ignore": detect.load_zones().get(cam_name, [])}
+        return {
+            "w": detect.HEAT_W,
+            "h": detect.HEAT_H,
+            "grid": grid,
+            "ignore": detect.load_zones().get(cam_name, []),
+            "mask": masks.load_masks().get(cam_name, []),
+        }
 
     @app.route("/api/zones/<string:cam_name>", methods=["POST"])
     @owner_only
@@ -851,6 +857,17 @@ def create_app():
             return {"error": "No camera by that name"}, 404
         try:
             return {"ignore": detect.save_zone(cam_name, (request.get_json(silent=True) or {}).get("ignore"))}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
+    @app.route("/api/masks/<string:cam_name>", methods=["POST"])
+    @owner_only
+    def api_masks(cam_name: str):
+        """Save the squares of the picture to black out in shared clips of this camera."""
+        if cam_name not in wb.streams.streams:
+            return {"error": "No camera by that name"}, 404
+        try:
+            return {"mask": masks.save_mask(cam_name, (request.get_json(silent=True) or {}).get("mask"))}
         except ValueError as ex:
             return {"error": str(ex)}, 400
 
@@ -900,20 +917,22 @@ def create_app():
             return {"error": "Frigate doesn't have this clip any more"}, resp.status_code
         return Response(resp.iter_content(64 * 1024), mimetype=resp.headers.get("content-type", f"image/{ext}"))
 
-    def recording_mp4(cam_name: str, args: dict, sound: bool = True):
+    def recording_mp4(cam_name: str, args: dict, sound: bool = True, mask: list[int] | None = None):
         name = f"{cam_name}_{args['start']}.mp4".replace(":", "-")
         headers = {"Content-Disposition": f'inline; filename="{name}"'}
-        if not sound:
+        if not sound or mask:
             url = f"http://{PLAYBACK_ADDR}/get?" + urlencode({"path": cam_name, "format": "mp4", **args})
-            return Response(silent_mp4(url), mimetype="video/mp4", headers=headers)
+            return Response(remux_mp4(url, sound, masks.video_filter(mask or [])), mimetype="video/mp4", headers=headers)
         resp = mtx_playback("get", stream=True, path=cam_name, format="mp4", **args)
         if not resp.ok:
             return {"error": resp.text.strip()}, resp.status_code
         return Response(resp.iter_content(64 * 1024), mimetype="video/mp4", headers=headers)
 
-    def silent_mp4(url: str):
-        """The clip with its sound track dropped, remuxed as it streams."""
-        cmd = ["ffmpeg", "-loglevel", "error", "-i", url, "-an", "-c", "copy"]
+    def remux_mp4(url: str, sound: bool = True, vf: str = ""):
+        """The clip as it streams, without its sound track if asked, and re-encoded with privacy masks drawn on."""
+        cmd = ["ffmpeg", "-loglevel", "error", "-i", url]
+        cmd += ["-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23"] if vf else ["-c:v", "copy"]
+        cmd += ["-c:a", "copy"] if sound else ["-an"]
         cmd += ["-movflags", "frag_keyframe+empty_moov", "-f", "mp4", "pipe:1"]
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         try:

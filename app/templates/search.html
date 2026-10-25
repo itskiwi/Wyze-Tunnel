@@ -63,7 +63,8 @@
     <figcaption id="heatCaption" class="mt-2 text-center text-sm text-zinc-400"></figcaption>
     {% if not current_guest() %}
     <div class="mt-3 flex flex-wrap items-center justify-center gap-2">
-        <button id="zoneEdit" class="btn" type="button" aria-pressed="false"><i class="fas fa-eye-slash"></i>Ignore areas</button>
+        <button class="zone-edit btn" data-mode="ignore" type="button" aria-pressed="false"><i class="fas fa-eye-slash"></i>Ignore areas</button>
+        <button class="zone-edit btn" data-mode="mask" type="button" aria-pressed="false"><i class="fas fa-user-secret"></i>Hide in shared clips</button>
         <button id="zoneSave" class="btn btn-primary hidden" type="button">Save</button>
         <span id="zoneStatus" class="text-sm text-zinc-400" role="status"></span>
     </div>
@@ -171,12 +172,15 @@
     }
 
     // Heatmap: brighter squares are where people, cars and animals showed up most.
-    // Activity zones: in edit mode, tap squares to ignore them (a road, a tree); ignored squares are crossed out.
-    let ignore = new Set(), editing = false;
+    // Activity zones: tap squares to ignore them (a road, a tree); ignored squares are crossed out.
+    // Privacy masks: squares blacked out in clips shared by link (a neighbor's window).
+    const picked = { ignore: new Set(), mask: new Set() };
+    let editing = "";
     function drawIgnore() {
         document.querySelectorAll("#heatGrid span").forEach((cell, i) => {
-            cell.classList.toggle("zone-off", ignore.has(i));
-            cell.setAttribute("aria-pressed", ignore.has(i));
+            cell.classList.toggle("zone-off", picked.ignore.has(i));
+            cell.classList.toggle("zone-mask", picked.mask.has(i));
+            cell.setAttribute("aria-pressed", editing ? picked[editing].has(i) : false);
         });
     }
     function heatmap() {
@@ -186,7 +190,7 @@
         const img = document.getElementById("heatImg");
         img.style.visibility = "";
         img.src = `img/${encodeURIComponent(cam)}.jpg`;
-        fetch(`api/heatmap/${encodeURIComponent(cam)}`).then((r) => r.json()).then(({ w, h, grid, ignore: off }) => {
+        fetch(`api/heatmap/${encodeURIComponent(cam)}`).then((r) => r.json()).then(({ w, h, grid, ignore, mask }) => {
             const el = document.getElementById("heatGrid"), top = Math.max(0, ...grid);
             el.style.gridTemplateColumns = `repeat(${w}, 1fr)`;
             el.style.gridTemplateRows = `repeat(${h}, 1fr)`;
@@ -196,38 +200,49 @@
                 cell.style.setProperty("--heat", top ? Math.sqrt((grid[i] || 0) / top) * 0.75 : 0);
                 cell.addEventListener("click", () => {
                     if (!editing) return;
-                    ignore.has(i) ? ignore.delete(i) : ignore.add(i);
+                    const set = picked[editing];
+                    set.has(i) ? set.delete(i) : set.add(i);
                     drawIgnore();
                 });
                 return cell;
             }));
-            ignore = new Set(off || []);
+            picked.ignore = new Set(ignore || []);
+            picked.mask = new Set(mask || []);
             drawIgnore();
             document.getElementById("heatCaption").textContent = top
                 ? `Where things showed up on ${cameras[cam] || cam}. Brighter means more often.`
                 : `Nothing spotted on ${cameras[cam] || cam} yet, so there's no heatmap.`;
-            if (ignore.size) document.getElementById("heatCaption").textContent += " Crossed-out squares are ignored.";
+            if (picked.ignore.size) document.getElementById("heatCaption").textContent += " Crossed-out squares are ignored.";
+            if (picked.mask.size) document.getElementById("heatCaption").textContent += " Black squares are hidden in shared clips.";
         }).catch(() => box.classList.add("hidden"));
     }
-    const zoneEdit = document.getElementById("zoneEdit"), zoneSave = document.getElementById("zoneSave");
-    zoneEdit?.addEventListener("click", () => {
-        editing = !editing;
-        zoneEdit.setAttribute("aria-pressed", editing);
-        document.getElementById("heatGrid").classList.toggle("is-editing", editing);
-        zoneSave.classList.toggle("hidden", !editing);
-        document.getElementById("zoneStatus").textContent = editing
-            ? "Tap the squares where nothing matters, like a busy road. People and cars there won't show up or alert you." : "";
-    });
+    const zoneSave = document.getElementById("zoneSave"), zoneStatus = document.getElementById("zoneStatus");
+    const zoneHelp = {
+        ignore: "Tap the squares where nothing matters, like a busy road. People and cars there won't show up or alert you.",
+        mask: "Tap the squares to black out, like a neighbor's window. Clips you share by link hide them; your own recordings don't.",
+    };
+    function setEditing(mode) {
+        editing = mode;
+        document.querySelectorAll(".zone-edit").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === mode));
+        document.getElementById("heatGrid").classList.toggle("is-editing", !!mode);
+        zoneSave?.classList.toggle("hidden", !mode);
+        if (zoneStatus) zoneStatus.textContent = zoneHelp[mode] || "";
+        drawIgnore();
+    }
+    document.querySelectorAll(".zone-edit").forEach((b) => b.addEventListener("click", () => setEditing(editing === b.dataset.mode ? "" : b.dataset.mode)));
     zoneSave?.addEventListener("click", async () => {
-        const status = document.getElementById("zoneStatus");
-        const r = await fetch(`api/zones/${encodeURIComponent(select.value)}`, {
-            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ignore: [...ignore] }),
+        const mode = editing, url = mode === "mask" ? "api/masks/" : "api/zones/";
+        const r = await fetch(url + encodeURIComponent(select.value), {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [mode]: [...picked[mode]] }),
         }).then((x) => x.json()).catch((e) => ({ error: e.message }));
-        if (r.error) { status.textContent = r.error; return; }
-        zoneEdit.click();
-        status.textContent = r.ignore.length ? `Saved. ${r.ignore.length} squares are ignored from now on.` : "Saved. The whole picture is watched.";
+        if (r.error) { zoneStatus.textContent = r.error; return; }
+        setEditing("");
+        const n = r[mode].length;
+        zoneStatus.textContent = mode === "mask"
+            ? (n ? `Saved. ${n} squares are blacked out in clips you share.` : "Saved. Shared clips show the whole picture.")
+            : (n ? `Saved. ${n} squares are ignored from now on.` : "Saved. The whole picture is watched.");
     });
-    select.addEventListener("change", () => { if (editing) zoneEdit.click(); heatmap(); });
+    select.addEventListener("change", () => { setEditing(""); heatmap(); });
     heatmap();
     select.addEventListener("change", () => load());
     more.addEventListener("click", () => load(true));

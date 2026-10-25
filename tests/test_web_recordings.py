@@ -83,6 +83,24 @@ def test_share_link_plays_without_login_until_it_ends(tmp_path, monkeypatch):
         assert client.get("/" + url).status_code == 404
 
 
+def test_shared_clip_blacks_out_masked_squares(tmp_path, monkeypatch):
+    from wyzebridge import masks, shares
+
+    monkeypatch.setattr(shares, "SHARES_FILE", str(tmp_path / "shares.json"))
+    monkeypatch.setattr(masks, "MASKS_FILE", str(tmp_path / "masks.json"))
+    masks.save_mask("cam1", [0, 1, 17])
+    frontend, client = make_client()
+    start = "2026-10-24T08:42:40.123456Z"
+    url = client.post("/recordings/cam1/share?api=key", json={"start": start, "duration": 60}).json["url"]
+    with mock.patch.object(frontend.subprocess, "Popen") as popen:
+        popen.return_value.stdout.read.side_effect = [b"masked", b""]
+        assert client.get("/" + url).data == b"masked"
+    cmd = popen.call_args.args[0]
+    vf = cmd[cmd.index("-vf") + 1]
+    assert vf.count("drawbox") == 2 and "w=iw*2/16" in vf and "y=ih*1/9" in vf
+    assert "-c:a" in cmd and "libx264" in cmd
+
+
 def test_live_hls_goes_through_the_bridge_login(monkeypatch):
     from wyzebridge import web_ui
 
