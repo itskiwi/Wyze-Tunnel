@@ -1,7 +1,8 @@
 """Spot people, cars and animals in recording cameras, or read them from Frigate, so footage can be searched.
 
 Built-in detection runs MobileNet-SSD (MIT, github.com/chuanqi305/MobileNet-SSD) on keyframes only, so it stays
-light enough for a Raspberry Pi. A Frigate address (settings or FRIGATE_URL) uses Frigate's detections instead (its
+light enough for a Raspberry Pi. A stronger model, YOLOX-S (Apache-2.0, github.com/Megvii-BaseDetection/YOLOX), can be
+picked instead on a PC: it finds smaller and farther things, at a few times the CPU. A Frigate address (settings or FRIGATE_URL) uses Frigate's detections instead (its
 own models, including packages with Frigate+). Cameras and the Frigate address are set on the Search footage page.
 """
 
@@ -38,8 +39,17 @@ AUTO_RECORD_KEEP = f"{int(KEEP.total_seconds())}s"
 DB_FILE = TOKEN_PATH + "detections.db"
 THUMB_DIR = Path(IMG_PATH, "detections")
 MODEL_DIR = Path(TOKEN_PATH, "models")
-MODEL_URL = "https://raw.githubusercontent.com/chuanqi305/MobileNet-SSD/master/"
-MODEL_FILES = {"deploy.prototxt": 44667, "mobilenet_iter_73000.caffemodel": 23306119}
+# Each model: where its files download from, and their exact sizes (a short file is a broken download).
+MODELS = {
+    "standard": (
+        "https://raw.githubusercontent.com/chuanqi305/MobileNet-SSD/master/",
+        {"deploy.prototxt": 44667, "mobilenet_iter_73000.caffemodel": 23306119},
+    ),
+    "strong": (
+        "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/",
+        {"yolox_s.onnx": 35858002},
+    ),
+}
 # MobileNet-SSD's Pascal VOC classes, keeping the ones a home camera cares about.
 LABELS = {
     2: "bicycle",
@@ -50,6 +60,18 @@ LABELS = {
     12: "dog",
     14: "motorcycle",
     15: "person",
+}
+# YOLOX was trained on COCO: the same kinds of things, numbered differently, plus trucks.
+COCO_LABELS = {
+    0: "person",
+    1: "bicycle",
+    2: "car",
+    3: "motorcycle",
+    5: "bus",
+    7: "truck",
+    14: "bird",
+    15: "cat",
+    16: "dog",
 }
 WIDTH, HEIGHT = 640, 360
 
@@ -140,13 +162,16 @@ def load_settings() -> dict:
 
 def save_settings(form: dict, uris: list[str]) -> dict:
     """Validate and save. Raises ValueError with a message for the user."""
+    model = form.get("model") or "standard"
+    if model not in MODELS:
+        raise ValueError("Pick a detection model from the list")
     url = str(form.get("frigate_url") or "").strip().rstrip("/")
     if url and not re.fullmatch(r"https?://[^\s/]+(/[^\s]*)?", url):
         raise ValueError("The Frigate address should look like http://192.168.1.20:5000")
     cams = form.get("cams") or []
     if not isinstance(cams, list) or not all(isinstance(c, str) for c in cams):
         raise ValueError("Pick cameras from the list")
-    settings = {"cams": [c for c in cams if c in uris], "frigate_url": url}
+    settings = {"cams": [c for c in cams if c in uris], "frigate_url": url, "model": model}
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)
     return settings
@@ -165,32 +190,71 @@ def enabled() -> bool:
     return bool(frigate_url() or any(not w.stop_flag.is_set() for w in _watchers.values()))
 
 
-def load_model():
-    """Download the model once (23 MB) and load it. Returns None if OpenCV isn't installed or the download fails."""
+def load_model(name: str = ""):
+    """Download the picked model once and load it. Returns None if OpenCV isn't installed or the download fails."""
     if not cv2:
         logger.warning("[DETECT] OpenCV isn't installed on this system, so built-in detection is off.")
         return None
+    name = name if name in MODELS else load_settings().get("model", "standard")
+    url, files = MODELS.get(name, MODELS["standard"])
     with _model_lock:
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        for name, size in MODEL_FILES.items():
-            path = MODEL_DIR / name
+        for file, size in files.items():
+            path = MODEL_DIR / file
             if path.exists() and path.stat().st_size == size:
                 continue
-            logger.info(f"[DETECT] Downloading the detection model: {name}")
+            logger.info(f"[DETECT] Downloading the detection model: {file}")
             try:
-                resp = requests.get(MODEL_URL + name, timeout=60)
+                resp = requests.get(url + file, timeout=60)
                 resp.raise_for_status()
             except requests.RequestException as ex:
                 logger.error(f"[DETECT] Couldn't download the detection model: {ex}")
                 return None
             path.with_suffix(".part").write_bytes(resp.content)
             path.with_suffix(".part").replace(path)
+    if "yolox_s.onnx" in files:
+        return Yolox(cv2.dnn.readNetFromONNX(str(MODEL_DIR / "yolox_s.onnx")))
     model = cv2.dnn_DetectionModel(
         str(MODEL_DIR / "deploy.prototxt"),
         str(MODEL_DIR / "mobilenet_iter_73000.caffemodel"),
     )
     model.setInputParams(scale=1 / 127.5, size=(300, 300), mean=(127.5, 127.5, 127.5))
     return model
+
+
+class Yolox:
+    """YOLOX-S behind the same detect() as OpenCV's DetectionModel: class ids, scores and x, y, w, h boxes."""
+
+    labels = COCO_LABELS
+    SIZE = 640
+
+    def __init__(self, net):
+        self.net = net
+        grids, strides = [], []
+        for stride in (8, 16, 32):
+            n = self.SIZE // stride
+            ys, xs = np.mgrid[0:n, 0:n]
+            grids.append(np.stack((xs, ys), -1).reshape(-1, 2))
+            strides.append(np.full((n * n, 1), stride))
+        self.grid, self.stride = np.concatenate(grids), np.concatenate(strides)
+
+    def detect(self, frame, min_score):
+        # Pad (not stretch) to a square, gray like YOLOX's own demo; frames are 640 wide so no resize is needed.
+        h, w = frame.shape[:2]
+        scale = min(self.SIZE / h, self.SIZE / w)
+        padded = np.full((self.SIZE, self.SIZE, 3), 114, np.uint8)
+        padded[: int(h * scale), : int(w * scale)] = cv2.resize(frame, (int(w * scale), int(h * scale)))
+        self.net.setInput(cv2.dnn.blobFromImage(padded))
+        out = self.net.forward()[0]
+        centers = (out[:, :2] + self.grid) * self.stride
+        sizes = np.exp(out[:, 2:4]) * self.stride
+        class_ids = out[:, 5:].argmax(1)
+        scores = out[:, 4] * out[np.arange(len(out)), 5 + class_ids]
+        keep = scores >= min_score
+        boxes = (np.hstack((centers - sizes / 2, sizes))[keep] / scale).round().astype(int).tolist()
+        class_ids, scores = class_ids[keep].tolist(), scores[keep].tolist()
+        picked = cv2.dnn.NMSBoxesBatched(boxes, scores, class_ids, min_score, 0.45) if boxes else []
+        return [class_ids[i] for i in picked], [scores[i] for i in picked], [boxes[i] for i in picked]
 
 
 def find_objects(model, frame, heat: list[int] | None = None, ignore=frozenset()) -> dict[str, float]:
@@ -200,8 +264,9 @@ def find_objects(model, frame, heat: list[int] | None = None, ignore=frozenset()
     """
     found: dict[str, float] = {}
     class_ids, scores, boxes = model.detect(frame, MIN_SCORE)
+    names = getattr(model, "labels", LABELS)
     for class_id, score, (x, y, w, h) in zip(class_ids, scores, boxes):
-        if label := LABELS.get(int(class_id)):
+        if label := names.get(int(class_id)):
             col = min(max(int((x + w / 2) / WIDTH * HEAT_W), 0), HEAT_W - 1)
             row = min(max(int((y + h / 2) / HEIGHT * HEAT_H), 0), HEAT_H - 1)
             if heat is not None:
