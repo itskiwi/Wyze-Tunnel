@@ -271,7 +271,8 @@
                     const button = document.createElement("button");
                     button.className = "menu-item";
                     const mins = Math.max(1, Math.round(clip.duration / 60));
-                    button.innerHTML = '<i class="fas fa-play w-4 text-zinc-500"></i>';
+                    button.innerHTML = '<span class="relative aspect-video w-16 flex-none overflow-hidden rounded-lg bg-black"><img loading="lazy" alt="" class="h-full w-full object-cover" onerror="this.remove()"><i class="fas fa-play absolute inset-0 m-auto h-3 w-3 text-[10px] text-white/80"></i></span>';
+                    button.querySelector("img").src = `recordings/${encodeURIComponent(cam)}/thumb?start=${encodeURIComponent(clip.iso)}`;
                     button.append(`${clip.start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
                     const length = document.createElement("span");
                     length.className = "ml-auto text-xs text-zinc-500";
