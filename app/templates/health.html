@@ -23,6 +23,7 @@
     {% set sd_free = (sd.free|int / sd.capacity|int * 100)|round|int if sd.status == "1" and sd.capacity|int > 0 else -1 %}
     {% set tips = [] %}
     {% if cam.status == -90 %}{% set _ = tips.append("The camera isn't reachable. Check that it has power and Wi-Fi, then unplug it for 10 seconds.") %}{% endif %}
+    {% if cam.busy %}{% set _ = tips.append("The camera is busy. A Cam OG lets only 2 viewers in at once and Wyze Tunnel uses one, so close the Wyze app on other phones and it reconnects by itself. Everyone watching through Wyze Tunnel shares that one spot. If no one else is watching, check that the camera has power.") %}{% endif %}
     {% if cam.chronic %}{% set _ = tips.append("This camera has failed to connect " ~ cam.failures ~ " times in a row, so Wyze Tunnel restarted it and now retries only every 5 minutes. If that didn't help, unplug it for 10 seconds or check its Wi-Fi signal in the Wyze app.") %}{% endif %}
     {% if not cam.enabled %}{% set _ = tips.append("This camera is turned off in Wyze Tunnel. Open Live, tap the sliders on the camera, then Stream: Turn on.") %}{% endif %}
     {% if 0 <= wifi < 40 %}{% set _ = tips.append("Weak Wi-Fi (" ~ wifi ~ "%). Move the camera or router closer, or add a mesh point.") %}{% endif %}

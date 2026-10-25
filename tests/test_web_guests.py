@@ -80,3 +80,38 @@ def test_family_login_has_full_access_but_not_owner_login(setup):
         assert client.get("/cameras", headers=mom).status_code == 200  # never ends
     client.delete("/guests/Mom", headers=basic("owner", "ownerpass"))
     assert client.get("/", headers=mom).status_code == 401
+
+
+def test_viewers_share_the_tunnels_camera_connection(setup, monkeypatch):
+    import frontend
+    from wyzebridge import config
+
+    client, _, _ = setup
+    owner = basic("owner", "ownerpass")
+    wb = frontend.WyzeBridge.return_value
+    wb.api.get_kvs_signal.return_value = {"result": "ok", "signalingUrl": "wss://wyze"}
+    monkeypatch.setattr(config, "BRIDGE_IP", "10.0.0.21")
+
+    # A browser asking for the camera's own WebRTC gets the tunnel's stream, so it takes no extra camera slot.
+    assert "whep" in client.get("/signaling/cam?kvs", headers=owner).json
+    assert b"whep" in client.get("/webrtc/cam", headers=owner).data
+    wb.api.get_kvs_signal.assert_not_called()
+    # go2rtc still fetches the one connection the tunnel holds.
+    assert client.get("/signaling/cam?kvs&relay", headers=owner).json["signalingUrl"] == "wss://wyze"
+    # A camera the tunnel isn't streaming still goes direct.
+    wb.streams.get.return_value.enabled = False
+    assert client.get("/signaling/cam?kvs", headers=owner).json["signalingUrl"] == "wss://wyze"
+
+
+def test_cam_og_shows_busy_when_it_cannot_get_in():
+    from wyzebridge.wyze_stream import StreamStatus, WyzeStream
+
+    stream = WyzeStream.__new__(WyzeStream)
+    stream.camera = mock.Mock(is_gwell=True)
+    stream._state = mock.Mock(value=StreamStatus.STOPPED)
+    stream.failures = 0
+    assert not stream.busy
+    stream.failures = 1
+    assert stream.busy
+    stream._state.value = StreamStatus.CONNECTED
+    assert not stream.busy

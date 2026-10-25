@@ -397,7 +397,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const motionIcon = card.querySelector(".icon.motion");
       const statusLabel = card.querySelector(".status-label");
       if (statusLabel) {
-        statusLabel.textContent = STATUS_WORDS[messageData.status] || messageData.status;
+        statusLabel.textContent = messageData.busy ? "busy" : STATUS_WORDS[messageData.status] || messageData.status;
+        statusLabel.title = messageData.busy ? "A Cam OG lets only 2 viewers in at once. Close the Wyze app on other phones and it reconnects by itself." : "";
         statusLabel.dataset.status = messageData.status;
       }
       const netMode = card.querySelector(".net-mode");
