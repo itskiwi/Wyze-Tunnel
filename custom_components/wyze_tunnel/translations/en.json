@@ -4,12 +4,16 @@
       "user": {
         "title": "Connect Wyze Tunnel",
         "description": "In Wyze Tunnel, open the gear menu, then Connect apps, then Home Assistant. Make a setup code and paste it here.",
-        "data": { "setup_code": "Setup code" }
+        "data": {
+          "setup_code": "Setup code"
+        }
       },
       "reauth_confirm": {
         "title": "Reconnect Wyze Tunnel",
         "description": "This connection's key was removed in Wyze Tunnel. Make a new setup code on its Connect apps page and paste it here.",
-        "data": { "setup_code": "Setup code" }
+        "data": {
+          "setup_code": "Setup code"
+        }
       }
     },
     "error": {
@@ -27,8 +31,65 @@
       "name": "Send command",
       "description": "Send any Wyze Tunnel camera command, like night_vision on or rotary_action left.",
       "fields": {
-        "command": { "name": "Command", "description": "The command name, like spotlight, alarm or night_vision." },
-        "value": { "name": "Value", "description": "What to set it to, like on or off. Leave empty to read the current value." }
+        "command": {
+          "name": "Command",
+          "description": "The command name, like spotlight, alarm or night_vision."
+        },
+        "value": {
+          "name": "Value",
+          "description": "What to set it to, like on or off. Leave empty to read the current value."
+        }
+      }
+    }
+  },
+  "entity": {
+    "event": {
+      "activity": {
+        "name": "Activity",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "motion": "Motion",
+              "doorbell": "Doorbell pressed",
+              "person": "Person",
+              "vehicle": "Vehicle",
+              "animal": "Animal",
+              "package": "Package"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "wifi": {
+        "name": "Wi-Fi signal"
+      },
+      "last_motion": {
+        "name": "Last motion"
+      }
+    },
+    "button": {
+      "move_left": {
+        "name": "Pan left"
+      },
+      "move_right": {
+        "name": "Pan right"
+      },
+      "move_up": {
+        "name": "Tilt up"
+      },
+      "move_down": {
+        "name": "Tilt down"
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Alert mode",
+        "state": {
+          "schedule": "Normal (schedule)",
+          "home": "Home (no motion alerts)",
+          "away": "Away (always alert)"
+        }
       }
     }
   }

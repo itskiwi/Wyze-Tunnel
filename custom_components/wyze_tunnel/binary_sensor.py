@@ -11,7 +11,7 @@ from . import WyzeTunnelEntity
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = entry.runtime_data
     async_add_entities(
-        sensor(coordinator, cam_id) for cam_id in coordinator.data for sensor in (MotionSensor, OnlineSensor)
+        sensor(coordinator, cam_id) for cam_id in coordinator.data for sensor in (MotionSensor, OnlineSensor, ProblemSensor)
     )
 
 
@@ -36,3 +36,21 @@ class OnlineSensor(WyzeTunnelEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         return bool(self.cam.get("online"))
+
+
+class ProblemSensor(WyzeTunnelEntity, BinarySensorEntity):
+    """On when Wyze Tunnel's Health page has something to fix for this camera."""
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, cam_id: str) -> None:
+        super().__init__(coordinator, cam_id, "problem")
+
+    @property
+    def is_on(self) -> bool:
+        return bool(self.cam.get("issues"))
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"issues": self.cam.get("issues") or []}
