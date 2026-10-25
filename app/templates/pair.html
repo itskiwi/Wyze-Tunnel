@@ -13,8 +13,13 @@
 
 <body class="grid min-h-full place-items-center p-4 font-sans text-[15px] text-zinc-100">
     <main class="surface w-full max-w-sm p-6 text-center">
+        {% if public_only %}
+        <h1 class="font-display text-xl font-extrabold text-zinc-50">This link is for paired phones</h1>
+        <p class="mt-2 text-sm text-zinc-400">On your computer, open Login, then Pair a phone, and scan the Anywhere code with this phone.</p>
+        {% else %}
         <h1 class="font-display text-xl font-extrabold text-zinc-50">This code has been used or is too old</h1>
         <p class="mt-2 text-sm text-zinc-400">Codes work once, for 10 minutes. On your computer, open Login, then Pair a phone, and scan the new code.</p>
+        {% endif %}
     </main>
 </body>
 

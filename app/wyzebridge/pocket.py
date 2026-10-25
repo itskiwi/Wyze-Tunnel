@@ -1,14 +1,19 @@
 """Pair a phone by scanning a QR code: the phone gets its own family login, kept in a cookie."""
 import json
+import os
 import secrets
 import shutil
 import socket
 import subprocess
 import time
+from pathlib import Path
+from subprocess import DEVNULL, PIPE, Popen
 from typing import Optional
 
 import segno
+from flask import request
 from wyzebridge import config, guests
+from wyzebridge.go2rtc import GO2RTC_BIN
 from wyzebridge.logging import logger
 
 COOKIE = "wt_pocket"
@@ -16,6 +21,13 @@ PAIR_SECONDS = 600
 # Browsers cap cookies at 400 days; the phone stays paired until it's removed on the Login page.
 COOKIE_SECONDS = 400 * 86400
 TAILSCALE_PATHS = "tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale", r"C:\Program Files\Tailscale\tailscale.exe"
+
+# native/wyze-away: embedded Tailscale, shipped next to go2rtc in the Windows bundle.
+AWAY_BIN = os.getenv("WYZE_AWAY_BIN") or str(Path(GO2RTC_BIN).with_name("wyze-away" + Path(GO2RTC_BIN).suffix))
+AWAY_DIR = Path(config.TOKEN_PATH) / "tailscale"
+AWAY_PORT = int(os.getenv("FLASK_RUN_PORT", "5000"))
+# wyze-away sets it on every request through the public no-app link (Tailscale Funnel).
+PUBLIC_HEADER = "X-Wyze-Away-Public"
 
 _codes: dict[str, float] = {}
 
@@ -58,8 +70,68 @@ def lan_ip() -> str:
             return "127.0.0.1"
 
 
+class Away:
+    """Away-from-home access through the bundled Tailscale: the web UI joins the user's private Tailscale network."""
+
+    proc: Optional[Popen] = None
+
+    @staticmethod
+    def available() -> bool:
+        return os.access(AWAY_BIN, os.X_OK)
+
+    @staticmethod
+    def on() -> bool:
+        return (AWAY_DIR / "on").exists()
+
+    @classmethod
+    def running(cls) -> bool:
+        return bool(cls.proc and cls.proc.poll() is None)
+
+    @classmethod
+    def turn(cls, on: bool) -> None:
+        if on:
+            AWAY_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+            (AWAY_DIR / "on").touch()
+            cls.health_check()
+            return
+        # The sign-in stays in AWAY_DIR, so turning it back on needs no new sign-in.
+        (AWAY_DIR / "on").unlink(missing_ok=True)
+        if cls.running():
+            cls.proc.terminate()
+        cls.proc = None
+
+    @classmethod
+    def health_check(cls) -> None:
+        """Starts the helper when away access is on, and again if it ever exits."""
+        if not cls.on() or not cls.available() or cls.running():
+            return
+        if cls.proc:
+            logger.error(f"[AWAY] wyze-away exited with code {cls.proc.returncode}, restarting")
+        (AWAY_DIR / "status.json").unlink(missing_ok=True)
+        # It exits when our end of its stdin closes, so it never outlives the bridge.
+        args = [AWAY_BIN, "-dir", str(AWAY_DIR), "-port", str(AWAY_PORT), "-status", str(AWAY_DIR / "status.json"), "-funnel"]
+        cls.proc = Popen(args, stdin=PIPE, stdout=DEVNULL)
+
+    @classmethod
+    def status(cls) -> dict:
+        info = {"available": cls.available(), "on": cls.on(), "state": "", "auth_url": "", "host": "", "public": "", "funnel_url": ""}
+        if info["on"] and cls.running():
+            try:
+                info |= json.loads((AWAY_DIR / "status.json").read_text())
+            except (OSError, ValueError):
+                info["state"] = "Starting"
+        return info
+
+
+def public_request() -> bool:
+    """True when this request came over the public no-app link, where only paired phones may get in."""
+    return PUBLIC_HEADER in request.headers
+
+
 def tailscale_host() -> str:
     """This computer's Tailscale name, so a phone on Tailscale can reach it from anywhere. Empty if not set up."""
+    if (away := Away.status())["state"] == "Running" and away["host"]:
+        return away["host"]
     for path in TAILSCALE_PATHS:
         if not (exe := shutil.which(path)):
             continue
