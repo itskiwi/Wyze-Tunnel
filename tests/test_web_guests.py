@@ -90,7 +90,7 @@ def test_viewers_share_the_tunnels_camera_connection(setup, monkeypatch):
     owner = basic("owner", "ownerpass")
     wb = frontend.WyzeBridge.return_value
     wb.api.get_kvs_signal.return_value = {"result": "ok", "signalingUrl": "wss://wyze"}
-    monkeypatch.setattr(config, "BRIDGE_IP", "10.0.0.2")
+    monkeypatch.setattr(config, "BRIDGE_IP", "10.0.0.21")
 
     # A browser asking for the camera's own WebRTC gets the tunnel's stream, so it takes no extra camera slot.
     assert "whep" in client.get("/signaling/cam?kvs", headers=owner).json
