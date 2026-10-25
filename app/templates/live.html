@@ -87,6 +87,9 @@
                     <span class="truncate">{{camera.nickname}}</span>
                     <span class="status-label rounded-full bg-[#fff]/15 px-2 py-0.5 text-[11px] font-medium text-[#e5e5e5]">{{ 'off' if not camera.enabled else 'idle' }}</span>
                     <span class="net-mode rounded-full bg-[#fff]/15 px-2 py-0.5 text-[11px] font-medium text-[#e5e5e5] {{ '' if camera.net_mode else 'is-hidden' }}" data-mode="{{ camera.net_mode }}" title="How Wyze Tunnel reaches this camera">{{ camera.net_mode }}</span>
+                    {% if weather_on and camera.outdoor %}
+                    <span class="weather-tag is-hidden whitespace-nowrap rounded-full bg-[#fff]/15 px-2 py-0.5 text-[11px] font-medium text-[#e5e5e5]"><i class="fas"></i> <span></span></span>
+                    {% endif %}
                     {% if camera.substream %}
                     <span class="icon text-[#d4d4d4]" title="Sub-stream of {{ camera.nickname }}"><i class="fas fa-object-ungroup"></i></span>
                     {% endif %}
@@ -313,6 +316,22 @@
 {% endif %}
 {% endblock %}
 {% block javascript %}
+{% if weather_on %}
+<script>
+    // Outdoor cameras show the weather; hidden until it loads, and if it never does.
+    (() => {
+        const tags = document.querySelectorAll(".weather-tag");
+        const load = () => fetch("weather").then((r) => r.json()).then((w) => tags.forEach((tag) => {
+            tag.classList.toggle("is-hidden", w.temp == null);
+            if (w.temp == null) return;
+            tag.querySelector("i").className = `fas ${w.icon}`;
+            tag.querySelector("span").textContent = `${w.temp}° · ${w.text}`;
+            tag.title = `${w.temp}${w.unit}, ${w.text.toLowerCase()}`;
+        })).catch(() => { });
+        if (tags.length) { load(); setInterval(load, 30 * 60 * 1000); }
+    })();
+</script>
+{% endif %}
 {% if api %}
 <script>
     function addApiKey() {

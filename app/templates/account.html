@@ -87,6 +87,21 @@
 </section>
 {% endif %}
 
+{% if not member %}
+<form id="weather" class="surface mx-auto mt-6 max-w-xl p-5">
+    <h2 class="font-semibold">Weather</h2>
+    <label class="mt-3 flex items-start gap-3 text-sm">
+        <input type="checkbox" name="weather" class="mt-0.5 h-4 w-4 accent-accent" {{ 'checked' if location.weather }} />
+        <span>Show the weather on outdoor cameras</span></label>
+    <div class="mt-3 flex flex-wrap items-end gap-2">
+        <label class="block min-w-0 flex-1 text-sm"><span class="text-zinc-400">Town</span>
+            <input class="field mt-1" name="town" value="{{ location.name or '' }}" maxlength="80" autocomplete="off" /></label>
+        <button type="submit" class="btn"><i class="fas fa-check"></i>Save</button>
+    </div>
+    <p id="weatherStatus" class="mt-2 text-sm" role="status"></p>
+</form>
+{% endif %}
+
 <section id="backup" class="surface mx-auto mt-6 max-w-xl p-5">
     <h2 class="font-semibold">Back up your settings</h2>
     <p class="mt-1 text-sm text-zinc-400">Saves alerts, hidden cameras, camera names, quality, connection choices and the privacy schedule
@@ -160,6 +175,23 @@
                 say(true, "Locked backup saved. Keep the passphrase somewhere safe.");
             })
             .catch((err) => say(false, err.message));
+    });
+
+    const weatherForm = document.getElementById("weather");
+    // No town saved yet: show the one guessed from this connection.
+    if (weatherForm && !weatherForm.town.value) fetch("weather").then((r) => r.json()).then((w) => { weatherForm.town.value ||= w.name || ""; }).catch(() => { });
+    weatherForm?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const out = document.getElementById("weatherStatus");
+        const data = { weather: weatherForm.weather.checked, town: weatherForm.town.value };
+        fetch("weather/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })
+            .then((resp) => resp.json().then((body) => resp.ok ? body : Promise.reject(new Error(body.error || resp.statusText))))
+            .then((body) => {
+                out.className = "mt-2 text-sm text-emerald-300";
+                out.textContent = "Saved.";
+                if (body.name) weatherForm.town.value = body.name;
+            })
+            .catch((err) => { out.className = "mt-2 text-sm text-rose-300"; out.textContent = err.message; });
     });
 
     const autoForm = document.getElementById("autoBackup");
