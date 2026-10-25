@@ -277,10 +277,18 @@ def create_app():
 
         return wb.streams.send_cmd(cam_name, cam_cmd.lower(), payload)
 
+    def shared(name: str) -> bool:
+        """Whether viewers can share the tunnel's own camera connection instead of opening one each.
+
+        Matters for cameras that take few viewers, like the Cam OG (two at once).
+        """
+        return bool(config.BRIDGE_IP) and bool((stream := wb.streams.get(name)) and stream.enabled)
+
     @app.route("/signaling/<string:name>")
     @auth_required
     def webrtc_signaling(name):
-        if "kvs" in request.args:
+        # "relay" is go2rtc fetching the one connection the tunnel holds.
+        if "kvs" in request.args and ("relay" in request.args or not shared(name)):
             return wb.api.get_kvs_signal(name)
         if web_ui.current_guest():
             return web_ui.get_webrtc_signal(name, guests.stream_key(), guests.STREAM_USER)
@@ -289,8 +297,9 @@ def create_app():
     @app.route("/webrtc/<string:name>")
     @auth_required
     def webrtc(name):
-        """View WebRTC direct from camera."""
-        if (webrtc := wb.api.get_kvs_signal(name)).get("result") == "ok":
+        """View WebRTC, direct from the camera only when the tunnel isn't streaming it."""
+        webrtc = web_ui.get_webrtc_signal(name, WbAuth.api) if shared(name) else wb.api.get_kvs_signal(name)
+        if webrtc.get("result") == "ok":
             return make_response(render_template("webrtc.html", webrtc=webrtc))
         return webrtc
 

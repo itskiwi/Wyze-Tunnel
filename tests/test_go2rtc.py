@@ -49,8 +49,8 @@ def test_overrides(both, monkeypatch):
 def test_urls():
     assert go2rtc.lan_url(cam(), substream=True) == (
         "wyze://192.168.1.20?uid=UID123&enr=secret%2B%2F%3D&mac=AABBCC&model=HL_CAM4&subtype=sd&dtls=true")
-    assert go2rtc.webrtc_url("front", "k y") == "webrtc:http://127.0.0.1:5000/signaling/front?kvs&api=k+y#format=wyze"
-    assert go2rtc.webrtc_url("front", "") == "webrtc:http://127.0.0.1:5000/signaling/front?kvs#format=wyze"
+    assert go2rtc.webrtc_url("front", "k y") == "webrtc:http://127.0.0.1:5000/signaling/front?kvs&relay&api=k+y#format=wyze"
+    assert go2rtc.webrtc_url("front", "") == "webrtc:http://127.0.0.1:5000/signaling/front?kvs&relay#format=wyze"
 
 
 def test_fallback_moves_to_next_source_after_5_failures():
