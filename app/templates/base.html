@@ -40,6 +40,7 @@
     <link rel="stylesheet" href="static/site.css?v={{ version }}" />
     <script src="static/update.js?v={{ version }}" defer></script>
     <script src="static/player.js?v={{ version }}" defer></script>
+    <script src="static/mobile.js?v={{ version }}" defer></script>
     <link rel="stylesheet" href="static/fontawesome/css/all.min.css" />
     {% block stylesheet %}
     {% endblock %}
@@ -62,9 +63,11 @@
         </nav>
         <div class="ml-auto flex items-center gap-2">
             <button class="theme-toggle round-btn" aria-label="Switch theme"><i class="fas fa-circle-half-stroke"></i></button>
-            <details class="dropdown relative">
+            <details id="settings" class="dropdown relative">
                 <summary class="round-btn cursor-pointer list-none" aria-label="Settings"><i class="fas fa-gear"></i></summary>
                 <div class="menu right-0 w-64">
+                    <p class="menu-label md:hidden">More</p>
+                    <a href="health" class="menu-item md:hidden"><i class="fas fa-heart-pulse w-4"></i>Camera health</a>
                     {% block settings_menu %}{% endblock %}
                     <a href="cameras" class="menu-item"><i class="fas fa-eye w-4"></i>Choose cameras</a>
                     <a href="map" class="menu-item"><i class="fas fa-map-location-dot w-4"></i>Home map</a>
@@ -79,11 +82,14 @@
             </details>
         </div>
     </header>
+    {# Phones: four tabs and More, which opens the settings menu as a sheet #}
     <nav class="tabbar fs-display-none md:hidden" aria-label="Main">
-        {% for endpoint, href, label, icon in pages %}
+        {% for endpoint, href, label, icon in pages[:4] %}
         <a href="{{ href }}" {{ 'aria-current=page' if page == endpoint }}><i class="fas {{ icon }}"></i>{{ label }}</a>
         {% endfor %}
+        <button type="button" data-more aria-label="More: health, cameras, account and settings" {{ 'aria-current=page' if page not in pages[:4]|map(attribute=0)|list }}><i class="fas fa-ellipsis"></i>More</button>
     </nav>
+    <div id="ptr" class="round-btn" aria-hidden="true"><i class="fas fa-arrow-down"></i></div>
     {% endif %}
     <main class="section safe-x mx-auto w-full max-w-screen-2xl flex-1 py-4">
         {% if not hide_nav and not current_guest() %}
@@ -114,6 +120,22 @@
                 <button class="btn is-hidden mt-4" data-reload>Reload page</button>
             </div>
         </div>
+        {% endif %}
+        {% if not hide_nav and page == 'index' %}
+        <section id="installTip" class="surface is-hidden mb-4 p-4 md:hidden" role="status">
+            <div class="flex items-start gap-3">
+                <svg class="h-10 w-10 flex-none" aria-hidden="true"><use href="#mark" /></svg>
+                <div class="min-w-0 flex-1">
+                    <h2 class="font-display text-lg font-extrabold text-zinc-50">Put Wyze Tunnel on your Home Screen</h2>
+                    <p class="is-hidden text-sm text-zinc-400" data-ios>It opens full screen like an app. Tap <i class="fas fa-arrow-up-from-bracket" aria-label="Share"></i> Share at the bottom of Safari, then Add to Home Screen.</p>
+                    <p class="is-hidden text-sm text-zinc-400" data-android>It opens full screen like an app, with no browser bars.</p>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <button class="btn btn-primary is-hidden" data-install>Install</button>
+                        <button class="btn" data-dismiss>Not now</button>
+                    </div>
+                </div>
+            </div>
+        </section>
         {% endif %}
         {% block content %}
         {% endblock %}

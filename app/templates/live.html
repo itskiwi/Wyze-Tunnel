@@ -284,6 +284,13 @@
     </div>
     {% endfor %}
 </div>
+{# Phones: tap a picture to fill the screen; swipe for the next camera #}
+<div id="camFocus" class="is-hidden" role="dialog" aria-label="Camera view">
+    <button type="button" class="round-btn" data-close aria-label="Close"><i class="fas fa-xmark"></i></button>
+    <p><span data-name></span> <span data-count></span></p>
+    <button type="button" class="round-btn" data-prev aria-label="Previous camera"><i class="fas fa-chevron-left"></i></button>
+    <button type="button" class="round-btn" data-next aria-label="Next camera"><i class="fas fa-chevron-right"></i></button>
+</div>
 
 {% else %}
 </div>

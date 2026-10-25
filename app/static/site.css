@@ -108,21 +108,29 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .card-header-title .status .fas { font-size: 11px; }
 .cam-menu { position: absolute; right: 0; bottom: calc(100% + 8px); width: 18rem; max-height: min(70vh, 32rem); overflow: auto; }
 .cam-menu .btn { border-radius: 14px; }
-/* Phones: camera menus open as a sheet above the tab bar */
+/* Phones: camera menus and the settings menu open as sheets above the tab bar, with a grab handle to swipe them closed */
 @media (max-width: 767px) {
-  .cam-menu { position: fixed; left: 12px; right: 12px; width: auto; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); max-height: 65vh; animation: rise .25s ease both;
+  .cam-menu, #settings > .menu { position: fixed; left: 8px; right: 8px; top: auto; width: auto; margin: 0; z-index: 45;
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px)); max-height: 70vh; overflow: auto; overscroll-behavior: contain;
+    border-radius: 26px; padding-top: 6px; animation: sheet .3s cubic-bezier(.2, .9, .3, 1) both; transition: transform .2s ease;
     box-shadow: 0 0 0 1px rgb(var(--zinc-700)), 0 0 0 100vmax rgb(0 0 0 / .45); }  /* the huge shadow dims the page behind the sheet */
+  .cam-menu::before, #settings > .menu::before { content: ""; display: block; width: 40px; height: 5px; margin: 4px auto 8px;
+    border-radius: 99px; background: rgb(var(--zinc-600)); }
+  #settings > summary { display: none; }  /* the More tab opens it */
+  #settings .menu-item { padding-block: 12px; }
 }
+@keyframes sheet { from { transform: translateY(40px); opacity: 0; } }
 
 /* Phone tab bar: a floating pill, lifted off the bottom edge so browser toolbars and the home bar never hide it */
 .tabbar { position: fixed; z-index: 40; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; padding: 5px;
   left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); bottom: max(12px, env(safe-area-inset-bottom, 0px));
   background: rgb(var(--zinc-800)); border-radius: 26px; box-shadow: 0 0 0 1px rgb(var(--white) / .09), 0 14px 34px -8px rgb(0 0 0 / .7); }
-.tabbar a { display: grid; place-items: center; gap: 2px; min-height: 52px; padding: 6px 0 5px; border-radius: 21px;
+.tabbar :is(a, button) { display: grid; place-items: center; gap: 2px; min-height: 52px; padding: 6px 0 5px; border-radius: 21px;
   font-size: 11px; font-weight: 600; color: rgb(var(--zinc-300)); -webkit-tap-highlight-color: transparent; transition: transform .15s, background-color .2s; }
-.tabbar a i { font-size: 18px; }
-.tabbar a:active { transform: scale(.93); }
-.tabbar a[aria-current] { background: rgb(var(--accent) / .16); color: rgb(var(--accent)); }
+.tabbar :is(a, button) i { font-size: 18px; }
+.tabbar :is(a, button):active { transform: scale(.93); }
+.tabbar :is(a, button)[aria-current], :root:has(#settings[open]) .tabbar [data-more] { background: rgb(var(--accent) / .16); color: rgb(var(--accent)); }
+:root:has(#settings[open]) .tabbar a[aria-current] { background: none; color: rgb(var(--zinc-300)); }
 :root[data-theme="light"] .tabbar { background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / .07), 0 14px 32px -10px rgb(40 44 36 / .35); }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) .tabbar { background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / .07), 0 14px 32px -10px rgb(40 44 36 / .35); }
@@ -133,6 +141,31 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   .footer { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
   #toasts { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
 }
+
+/* Pull to refresh (Home Screen app only) */
+#ptr { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 8px); z-index: 46; opacity: 0; pointer-events: none;
+  transform: translate(-50%, 0); transition: opacity .2s; color: rgb(var(--zinc-400)); }
+#ptr.is-ready { color: rgb(var(--accent)); }
+#ptr.is-loading i { animation: spin .7s linear infinite; }
+#ptr.is-loading i::before { content: "\f2f1"; }  /* fa-arrows-rotate */
+
+/* Phones: camera pictures run nearly edge to edge */
+@media (max-width: 767px) { .cameras { margin-inline: -8px; gap: 12px; } }
+/* Camera view: one camera fills the screen; swipe sideways for the next */
+.cam-focus-on { overflow: hidden; }
+.camera.cam-focus { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; background: #000; animation: fade .25s ease both;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+.cam-focus .card { width: min(100%, calc(100dvh * 16 / 9)); background: #000; box-shadow: none; }
+.cam-focus .card-image { border-radius: 0; }
+#camFocus { position: fixed; z-index: 71; inset: auto 0 0; display: flex; align-items: center; gap: 8px; color: #e5e5e5;
+  padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+#camFocus p { flex: 1; text-align: center; font-size: 13px; }
+#camFocus [data-name] { font-weight: 600; color: #fff; }
+#camFocus .round-btn { background: rgb(255 255 255 / .14); color: #fff; box-shadow: none; }
+#camFocus [data-close] { order: -1; }
+#camFocus [data-prev] { order: 2; }
+#camFocus [data-next] { order: 3; }
+@media (min-width: 768px) { #camFocus { display: none; } }
 
 /* Setup wizard */
 .num-step { display: flex; gap: 12px; align-items: flex-start; counter-increment: step; }
