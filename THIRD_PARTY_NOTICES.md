@@ -24,3 +24,5 @@ Wyze Tunnel builds on other people's work. Thank you to these projects.
   `app/static/fontawesome` so the web UI works without internet. https://fontawesome.com
 - **hls.js** 1.5.13 by video-dev (Apache-2.0). Bundled as `app/static/hls.min.js` for live video in
   the browser. https://github.com/video-dev/hls.js
+- **wyzeapy** by SecKatie (GPL-3.0). The Wyze cloud property ids and actions for siren, lights and
+  motion detection follow it; no wyzeapy code is included. https://github.com/SecKatie/wyzeapy
