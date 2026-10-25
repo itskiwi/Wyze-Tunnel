@@ -27,6 +27,8 @@ function Get-Blocked {
 }
 function Fix-Firewall {
     if (-not (Get-Blocked)) { return }
+    # The tray asks for the prompt itself: one asked from its windowless installer opens unseen and times out.
+    if ($env:WT_TRAY) { Write-Output 'Phones and cameras need a firewall change. Wyze Tunnel will ask for it (or use Fix phone and camera access in its tray menu).'; return }
     Say 'Letting phones and cameras through Windows Firewall (click Yes on the Windows permission prompt)'
     $Fix = ($Exes -replace "'", "''" | ForEach-Object {
         "Get-NetFirewallApplicationFilter -Program '$_' -ErrorAction SilentlyContinue | Get-NetFirewallRule | Where-Object Direction -eq Inbound | Remove-NetFirewallRule; " +
@@ -37,7 +39,7 @@ function Fix-Firewall {
         $p = Start-Process powershell.exe -ArgumentList '-NoProfile', '-EncodedCommand', $Encoded -Verb RunAs -WindowStyle Hidden -Wait -PassThru
         if ($p.ExitCode) { Write-Output "The firewall change didn't finish (error $($p.ExitCode)). Phones and cameras on this network may not connect." }
     } catch {
-        Write-Output 'Skipped the firewall change. Phones and cameras on this network may not connect until you click Set up again and choose Yes.'
+        Write-Output "Skipped the firewall change. Phones and cameras on this network may not connect until you click Set up again and choose Yes. ($($_.Exception.Message))"
     }
 }
 if ($CheckFirewall) { exit $(if (Get-Blocked) { 2 } else { 0 }) }

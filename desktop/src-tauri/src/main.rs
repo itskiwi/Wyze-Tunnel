@@ -135,7 +135,8 @@ mod vm {
         }
         let mut c = cmd("powershell.exe");
         c.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
-            .arg(res.join(if full { "windows/install.ps1" } else { "windows/install-native.ps1" }));
+            .arg(res.join(if full { "windows/install.ps1" } else { "windows/install-native.ps1" }))
+            .env("WT_TRAY", "1"); // the tray asks for the firewall prompt itself (fix_firewall)
         c
     }
     pub fn ensure_running() {
@@ -270,8 +271,32 @@ mod vm {
         blocked
     }
     /// Adds the firewall rules behind one Windows permission prompt.
+    /// Asked from this process, right after a click: a prompt asked from a windowless child opens
+    /// behind other windows, flashes in the taskbar unseen and is cancelled after two minutes.
     pub fn fix_firewall(res: &Path) {
-        let _ = firewall_script(res, "-FirewallOnly").status();
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::System::Threading::{WaitForSingleObject, INFINITE};
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
+        let wide = |s: &std::ffi::OsStr| s.encode_wide().chain([0]).collect::<Vec<u16>>();
+        let script = res.join(r"windows\install-native.ps1");
+        let args = format!("-NoProfile -ExecutionPolicy Bypass -File \"{}\" -FirewallOnly", script.display());
+        let (verb, file, args) = (wide("runas".as_ref()), wide("powershell.exe".as_ref()), wide(args.as_ref()));
+        let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
+        info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
+        info.fMask = SEE_MASK_NOCLOSEPROCESS;
+        info.lpVerb = verb.as_ptr();
+        info.lpFile = file.as_ptr();
+        info.lpParameters = args.as_ptr();
+        info.nShow = SW_HIDE;
+        // Declined or failed: the tray item stays, so the user can try again.
+        unsafe {
+            if ShellExecuteExW(&mut info) != 0 && !info.hProcess.is_null() {
+                WaitForSingleObject(info.hProcess, INFINITE);
+                CloseHandle(info.hProcess);
+            }
+        }
     }
 }
 
@@ -405,7 +430,18 @@ fn sign_in(w: &tauri::WebviewWindow, password: String, home: String) {
 #[tauri::command]
 async fn install(app: AppHandle, full: bool) -> Result<i32, String> {
     let res = app.path().resource_dir().map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || run_installer(&app, &res, full)).await.map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let code = run_installer(&app, &res, full);
+        // Set up was clicked in the window, so the prompt can come up in front now.
+        #[cfg(windows)]
+        if code == Ok(0) && !full && vm::firewall_blocked(&res) {
+            vm::fix_firewall(&res);
+            check_firewall(app);
+        }
+        code
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn run_installer(app: &AppHandle, res: &Path, full: bool) -> Result<i32, String> {
