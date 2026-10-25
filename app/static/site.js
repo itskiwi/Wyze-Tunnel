@@ -573,7 +573,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (timestamp) {
         var created = new Date(timestamp).getTime(),
           s = Math.floor((new Date() - created) / 1000),
-          age = s < 60 ? `${s}s` : s < 3600 ? `+${Math.floor(s / 60)}m` : s < 86400 ? `+${Math.floor(s / 3600)}h` : `+${Math.floor(s / 86400)}d`
+          age = s < 60 ? "just now" : s < 3600 ? `${Math.floor(s / 60)} min ago` : s < 86400 ? `${Math.floor(s / 3600)} hr ago` : (s < 172800 ? "yesterday" : `${Math.floor(s / 86400)} days ago`)
         span.textContent = age
       }
     })
