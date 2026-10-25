@@ -90,7 +90,7 @@ The Mac app and Terminal installer still exist, but they're on hold while Window
 
 ## Away from home
 
-Nothing to open on your router. Install [Tailscale](https://tailscale.com/download) on the computer running Wyze Tunnel and on your phone, then open the gear menu, **Pair a phone**, and scan the **Anywhere** code. Your phone reaches the cameras over your private Tailscale network, wherever it is.
+Nothing to open on your router. In the Windows app, open the gear menu, **Pair a phone**, click **Turn on away access** and sign in to Tailscale (free, built in). Click **Allow the phone link** once, then scan the **Anywhere** code: it's an https link that works on the phone with no app, and only phones paired with that code can open it. To keep everything private instead, install the [Tailscale app](https://tailscale.com/download) on the phone and sign in with the same account. On other installs, put Tailscale on the computer and the phone.
 
 Please don't forward ports or put Wyze Tunnel in your router's DMZ.
 
