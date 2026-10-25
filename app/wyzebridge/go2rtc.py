@@ -17,6 +17,7 @@ from subprocess import DEVNULL, PIPE, Popen, SubprocessError, run
 from typing import Any, Optional
 from urllib.parse import urlencode
 
+import requests
 import yaml
 from wyzebridge import homekit
 from wyzebridge.bridge_utils import env_bool
@@ -256,6 +257,17 @@ class Go2rtcServer:
             except Exception:
                 self.sub_process.kill()
         self.sub_process = None
+
+    def reset(self, name: str) -> None:
+        """Recreate one stream so its producer reconnects, without restarting go2rtc."""
+        if not (url := self.streams.get(name)):
+            return
+        api = f"http://127.0.0.1:{API_PORT}/api/streams"
+        try:
+            requests.delete(api, params={"src": name}, timeout=3)
+            requests.put(api, params={"name": name, "src": url}, timeout=3)
+        except requests.RequestException as ex:
+            logger.warning(f"[GO2RTC] Couldn't reset {name}: {ex}")
 
     def restart(self) -> None:
         self.stop()

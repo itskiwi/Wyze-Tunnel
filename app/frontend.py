@@ -248,7 +248,7 @@ def create_app():
     def sse_status():
         """Server sent event for camera status."""
         return Response(
-            web_ui.sse_generator(wb.streams.get_sse_status),
+            web_ui.sse_generator(lambda: web_ui.sse_status(wb.streams)),
             mimetype="text/event-stream",
         )
 
@@ -819,6 +819,20 @@ def create_app():
         # Hidden cameras, names, quality and connection choices apply when streams restart.
         Thread(target=wb.refresh_cams, daemon=True).start()
         return {"status": "restored", "restored": restored}
+
+    @app.route("/start-over", methods=["POST"])
+    @owner_only
+    def start_over():
+        try:
+            saved = web_ui.start_over(config.TOKEN_PATH, config.IMG_PATH, recording.record_root())
+        except OSError as ex:
+            return {"error": f"Couldn't save a backup first, so nothing was cleared: {ex.strerror}"}, 500
+        wb.api.creds.reset_creds()
+        wb.api.login_error = ""
+        wb.api.clear_cache()
+        # Blocks in login until the setup wizard gets new Wyze credentials.
+        Thread(target=wb.restart, daemon=True).start()
+        return {"status": "cleared", "backup": saved, "redirect": url_for("wyze_login")}
 
     @app.route("/settings/from-docker-wyze-bridge", methods=["POST"])
     @owner_only

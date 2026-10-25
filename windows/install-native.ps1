@@ -1,6 +1,8 @@
 # Install or update Wyze Tunnel to run natively on Windows (no WSL). The desktop app runs this and then
 # starts and supervises the bridge itself. Cameras connect through go2rtc, since the Wyze SDK is Linux-only.
 # Exit codes: 0 installed or already up to date.
+# -CheckFirewall only checks the firewall rules (exit 2: phones or cameras are blocked); -FirewallOnly only fixes them.
+param([switch]$CheckFirewall, [switch]$FirewallOnly)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'  # Invoke-WebRequest is very slow with its progress bar
 $Dir = Join-Path $env:LOCALAPPDATA 'Wyze Tunnel'
@@ -10,6 +12,36 @@ $Release = 'https://github.com/itskiwi/Wyze-Tunnel/releases/latest/download'
 $Bundle = 'wyze-tunnel-windows-x86_64.zip'
 
 function Say($m) { Write-Output "`n==> $m" }
+
+# Phones reach the web app (python.exe), cameras answer go2rtc and wyze-ioctl over UDP, other devices reach MediaMTX,
+# and phones away from home connect straight to wyze-away (embedded Tailscale), so all need inbound firewall rules.
+# One Windows permission prompt, only when a rule is missing or a Block rule (from a canceled firewall prompt) exists.
+# Only Wyze Tunnel's own programs are touched (approved by the project owner, 2026-10-24).
+$Exes = 'go2rtc.exe', 'mediamtx.exe', 'wyze-ioctl.exe', 'wyze-away.exe', 'python\python.exe' | ForEach-Object { Join-Path $Native "wyze-tunnel\$_" }
+function Get-Blocked {
+    $Exes | Where-Object {
+        $rules = Get-NetFirewallApplicationFilter -Program $_ -ErrorAction SilentlyContinue | Get-NetFirewallRule -ErrorAction SilentlyContinue |
+            Where-Object { $_.Direction -eq 'Inbound' -and $_.Enabled -eq 'True' }
+        -not ($rules | Where-Object Action -eq 'Allow') -or ($rules | Where-Object Action -eq 'Block')
+    }
+}
+function Fix-Firewall {
+    if (-not (Get-Blocked)) { return }
+    Say 'Letting phones and cameras through Windows Firewall (click Yes on the Windows permission prompt)'
+    $Fix = ($Exes -replace "'", "''" | ForEach-Object {
+        "Get-NetFirewallApplicationFilter -Program '$_' -ErrorAction SilentlyContinue | Get-NetFirewallRule | Where-Object Direction -eq Inbound | Remove-NetFirewallRule; " +
+        "New-NetFirewallRule -DisplayName 'Wyze Tunnel ($(Split-Path $_ -Leaf))' -Direction Inbound -Action Allow -Program '$_' -Profile Any | Out-Null"
+    }) -join '; '
+    try {
+        $Encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Fix))  # no quoting to get wrong
+        $p = Start-Process powershell.exe -ArgumentList '-NoProfile', '-EncodedCommand', $Encoded -Verb RunAs -WindowStyle Hidden -Wait -PassThru
+        if ($p.ExitCode) { Write-Output "The firewall change didn't finish (error $($p.ExitCode)). Phones and cameras on this network may not connect." }
+    } catch {
+        Write-Output 'Skipped the firewall change. Phones and cameras on this network may not connect until you click Set up again and choose Yes.'
+    }
+}
+if ($CheckFirewall) { exit $(if (Get-Blocked) { 2 } else { 0 }) }
+if ($FirewallOnly) { Fix-Firewall; exit }
 
 $Latest = (Invoke-RestMethod 'https://api.github.com/repos/itskiwi/Wyze-Tunnel/releases/latest').tag_name.TrimStart('v')
 $EnvFile = Join-Path $Native 'wyze-tunnel\app\.env'
@@ -51,28 +83,5 @@ if (-not (Test-Path $Settings)) {
         "WB_PASSWORD=$Password"
     )
 }
-# Cameras answer go2rtc and wyze-ioctl over UDP, other devices reach MediaMTX, and phones away from home connect
-# straight to wyze-away (embedded Tailscale) instead of through a slower relay, so all need inbound firewall rules.
-# One Windows permission prompt, only when a rule is missing or a Block rule (from a canceled firewall prompt) exists.
-# Only Wyze Tunnel's own programs are touched (approved by the project owner, 2026-10-24).
-$Exes = 'go2rtc.exe', 'mediamtx.exe', 'wyze-ioctl.exe', 'wyze-away.exe' | ForEach-Object { Join-Path $Native "wyze-tunnel\$_" }
-$NeedsFix = $Exes | Where-Object {
-    $rules = Get-NetFirewallApplicationFilter -Program $_ -ErrorAction SilentlyContinue | Get-NetFirewallRule -ErrorAction SilentlyContinue |
-        Where-Object { $_.Direction -eq 'Inbound' -and $_.Enabled -eq 'True' }
-    -not ($rules | Where-Object Action -eq 'Allow') -or ($rules | Where-Object Action -eq 'Block')
-}
-if ($NeedsFix) {
-    Say 'Letting cameras through Windows Firewall (click Yes on the Windows permission prompt)'
-    $Fix = ($Exes -replace "'", "''" | ForEach-Object {
-        "Get-NetFirewallApplicationFilter -Program '$_' -ErrorAction SilentlyContinue | Get-NetFirewallRule | Where-Object Direction -eq Inbound | Remove-NetFirewallRule; " +
-        "New-NetFirewallRule -DisplayName 'Wyze Tunnel ($(Split-Path $_ -Leaf))' -Direction Inbound -Action Allow -Program '$_' -Profile Any | Out-Null"
-    }) -join '; '
-    try {
-        $Encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Fix))  # no quoting to get wrong
-        $p = Start-Process powershell.exe -ArgumentList '-NoProfile', '-EncodedCommand', $Encoded -Verb RunAs -WindowStyle Hidden -Wait -PassThru
-        if ($p.ExitCode) { Write-Output "The firewall change didn't finish (error $($p.ExitCode)). Cameras on this network may not connect." }
-    } catch {
-        Write-Output 'Skipped the firewall change. Cameras on this network may not connect until you click Set up again and choose Yes.'
-    }
-}
+Fix-Firewall
 Say 'Done! Wyze Tunnel is ready.'

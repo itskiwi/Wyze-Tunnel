@@ -132,7 +132,7 @@ jobs:
           windows\install-native.ps1
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           if (-not (Test-Path "$env:LOCALAPPDATA\Wyze Tunnel\native\wyze-tunnel\python\python.exe")) { exit 1 }
-          Get-NetFirewallRule -DisplayName 'Wyze Tunnel (go2rtc.exe)', 'Wyze Tunnel (mediamtx.exe)' | Format-Table DisplayName, Action, Profile
+          Get-NetFirewallRule -DisplayName 'Wyze Tunnel (go2rtc.exe)', 'Wyze Tunnel (mediamtx.exe)', 'Wyze Tunnel (python.exe)' | Format-Table DisplayName, Action, Profile
       - uses: actions/download-artifact@v4
         with:
           name: windows-bundle

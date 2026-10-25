@@ -1,6 +1,8 @@
 import json
 import os
-from time import sleep
+import shutil
+from pathlib import Path
+from time import sleep, time
 from types import SimpleNamespace
 from typing import Callable, Generator, Optional
 from urllib.parse import urlparse
@@ -122,6 +124,14 @@ def sse_generator(sse_status: Callable) -> Generator[str, str, str]:
         sleep(1)
 
 
+def sse_status(streams: StreamManager) -> dict:
+    """Live status per camera, plus the plain-language reason when one is known."""
+    return {
+        uri: cam | {"reason": getattr(streams.streams.get(uri), "reason", None)}
+        for uri, cam in streams.get_sse_status().items()
+    }
+
+
 def get_webrtc_signal(cam_name: str, api_key: str, user: str = "wb") -> dict:
     """Generate signaling for MediaMTX webrtc."""
     hostname = env_bool("DOMAIN", urlparse(request.root_url).hostname or "localhost")
@@ -235,6 +245,32 @@ def setup_steps(cams: dict[str, dict]) -> list[dict]:
         {"title": "Pair your phone", "href": "account#phone", "done": any(g["expires"] == 0 for g in guests.list_guests())},
         {"title": "Back up your settings every day", "href": "account#backup", "done": bool(backup.load_auto().get("folder"))},
     ]
+
+# Kept by "Start over": the web login, the downloaded detection models, and finished timelapse videos.
+KEEP_ON_START_OVER = {"wb_login", "wb_password", "wb_api", "models", "timelapse"}
+
+
+def start_over(token_path: str, img_path: str, record_root: Path) -> str:
+    """Save a settings backup, then clear every setting and cached picture. Never touches recordings. Returns the backup's path."""
+    from wyzebridge import backup
+
+    saved = Path(token_path, f"settings-before-start-over-{int(time())}.json")
+    saved.write_text(json.dumps(backup.export_settings()))  # raises before anything is deleted
+    rec = Path(record_root).resolve()
+    keep = KEEP_ON_START_OVER | {saved.name}
+    for folder in (token_path, img_path):
+        if not os.path.isdir(folder):  # the picture folder can sit inside the settings folder
+            continue
+        for path in Path(folder).iterdir():
+            real = path.resolve()
+            if path.name in keep or real == rec or rec in real.parents or real in rec.parents:
+                continue
+            try:
+                shutil.rmtree(path) if path.is_dir() and not path.is_symlink() else path.unlink()
+            except OSError as ex:
+                logger.warning(f"[START OVER] Couldn't delete {path}: {ex}")
+    os.makedirs(img_path, exist_ok=True)
+    return str(saved)
 
 
 def bridge_issues(cams: dict[str, dict]) -> list[dict]:
