@@ -26,7 +26,7 @@ from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_cam
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
-from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED
+from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED, path_bytes
 from wyzebridge.web_ui import url_for
 from wyzebridge.wyze_events import EVENT_LOG
 from wyzecam.api import API_STATS
@@ -236,6 +236,12 @@ def create_app():
         issues = web_ui.bridge_issues(cams)
         return {"status": "degraded" if issues else "ok", "cameras": len(cams), "issues": issues}
 
+    @app.route("/api/usage")
+    @auth_required
+    def api_usage():
+        """Byte counters per camera; the Health page turns two readings into a rate."""
+        return {"time": time.time(), "paths": path_bytes()}
+
     @app.route("/metrics.prom")
     @auth_required
     def metrics_prom():
@@ -406,6 +412,7 @@ def create_app():
         return render_template(
             "health.html",
             cameras=cams,
+            disk=None if web_ui.current_guest() else recording.disk_use(),
             issues=web_ui.bridge_issues(cams),
             now=time.time(),
             api=WbAuth.api,
