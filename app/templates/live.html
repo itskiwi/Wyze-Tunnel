@@ -50,7 +50,7 @@
         </nav>
         {% endif %}
         {% if cam_data.cameras %}
-        <div class="preview-toggle seg w-full sm:w-auto" role="radiogroup" aria-label="How cameras show">
+        <div class="preview-toggle seg flex-1 sm:flex-none" role="radiogroup" aria-label="How cameras show">
             {% set mode = 'autoplay' if show_video and autoplay else ('live' if show_video else 'snapshot') %}
             {% for action, label, hint in [('snapshot', 'Snapshot', 'Still pictures that refresh'), ('live', 'Live', 'Tap a camera to play it'), ('autoplay', 'Auto-play', 'Every camera plays when the page opens')] %}
             <button data-action="{{ action }}" role="radio" aria-checked="{{ 'true' if mode == action else 'false' }}" title="{{ hint }}"
