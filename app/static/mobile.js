@@ -99,7 +99,10 @@
       };
       const step = (by) => {
         const list = cams();
+        const was = current?.querySelector("video");
         show(list[(list.indexOf(current) + by + list.length) % list.length]);
+        // Watching live? The next camera connects right away; its last picture or snapshot shows until it plays.
+        if (was && !was.paused) { current.querySelector("video")?.play().catch(() => { }) }
       };
       // Android's back button closes the view instead of leaving the page.
       addEventListener("popstate", close);
