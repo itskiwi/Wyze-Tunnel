@@ -11,7 +11,7 @@ import yaml
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from wyzebridge import detect, masks, privacy, timelapse, webhooks, wyze_api, wyze_stream
+from wyzebridge import detect, masks, privacy, timelapse, weather, webhooks, wyze_api, wyze_stream
 from wyzebridge.config import TOKEN_PATH, VERSION
 from wyzebridge.logging import logger
 
@@ -32,6 +32,7 @@ def _files() -> dict[str, str]:
         "timelapse": timelapse.SETTINGS_FILE,
         "zones": detect.ZONES_FILE,
         "masks": masks.MASKS_FILE,
+        "location": weather.LOCATION_FILE,
     }
 
 
@@ -115,6 +116,12 @@ def _zones(value) -> dict:
     return value
 
 
+def _location(value) -> dict:
+    if not isinstance(value, dict) or not all(isinstance(value.get(k, 0), (int, float)) for k in ("lat", "lon")):
+        raise ValueError
+    return {k: value[k] for k in ("lat", "lon", "name", "unit", "weather") if k in value}
+
+
 def import_settings(backup: dict) -> list[str]:
     """Validate everything first, then write. Raises ValueError with a message for the user."""
     if not isinstance(backup, dict) or backup.get("wyze_tunnel_backup") != 1:
@@ -132,6 +139,7 @@ def import_settings(backup: dict) -> list[str]:
         "battery_saver": _privacy,
         "zones": _zones,
         "masks": _zones,
+        "location": _location,
         "timelapse": lambda v: {"cams": _str_list(v.get("cams", []) if isinstance(v, dict) else None)},
     }
     try:
