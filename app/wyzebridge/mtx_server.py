@@ -6,6 +6,7 @@ from subprocess import DEVNULL, Popen, run
 from time import sleep
 from typing import Optional
 
+import requests
 import yaml
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
@@ -20,6 +21,7 @@ RECORD_KEEP = env_bool("RECORD_KEEP", "0s")
 rec_file = env_bool("RECORD_FILE_NAME", style="original").strip("/")
 rec_path = env_bool("RECORD_PATH", "record/%path/%Y-%m-%d_%H-%M-%S-%f", style="original")
 PLAYBACK_ADDR = "127.0.0.1:9996"
+API_ADDR = "127.0.0.1:9997"  # local only; feeds the data use meter
 RECORD_PATH = f"{Path('/') / Path(rec_path) / Path(rec_file)}".removesuffix(".mp4")
 # MediaMTX refuses to start with playback on unless the file name has every one of these.
 PLAYBACK_ENABLED = all(f in RECORD_PATH for f in ("%Y", "%m", "%d", "%H", "%M", "%S", "%f"))
@@ -100,6 +102,8 @@ class MtxServer:
             # Local-only playback server; the web UI proxies it behind its own login.
             mtx.set("playback", PLAYBACK_ENABLED)
             mtx.set("playbackAddress", PLAYBACK_ADDR)
+            mtx.set("api", True)
+            mtx.set("apiAddress", API_ADDR)
 
     def setup_auth(self, api: Optional[str], stream: Optional[str]):
         publisher = [
@@ -109,6 +113,7 @@ class MtxServer:
                     {"action": "read"},
                     {"action": "publish"},
                     {"action": "playback"},
+                    {"action": "api"},
                 ],
             }
         ]
@@ -203,6 +208,15 @@ class MtxServer:
             generate_certificates(cert_path)
             mtx.set("hlsServerKey", f"{cert_path}.key")
             mtx.set("hlsServerCert", f"{cert_path}.crt")
+
+
+def path_bytes() -> dict:
+    """Bytes from and to each camera since its stream last started, from MediaMTX's local API."""
+    try:
+        items = requests.get(f"http://{API_ADDR}/v3/paths/list", timeout=3).json()["items"]
+    except (requests.RequestException, ValueError, KeyError):
+        return {}
+    return {p["name"]: {"in": p.get("bytesReceived", 0), "out": p.get("bytesSent", 0)} for p in items}
 
 
 def mtx_version() -> str:
