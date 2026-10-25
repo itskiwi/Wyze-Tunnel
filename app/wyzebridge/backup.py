@@ -7,6 +7,7 @@ import time as clock
 from datetime import date, time
 from pathlib import Path
 
+import yaml
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -199,3 +200,48 @@ def auto_backup(force: bool = False, now: float | None = None) -> str | None:
     _write_auto({**settings, "last": now})
     logger.info(f"[BACKUP] Saved a locked settings backup to {path}")
     return str(path)
+
+
+DWB_SIGN_IN = {"WYZE_EMAIL", "WYZE_PASSWORD", "API_ID", "API_KEY", "TOTP_KEY"}
+
+
+def _dwb_pairs(text: str) -> list[tuple[str, str]]:
+    """Name/value pairs from a docker-compose file (every service's environment) or a plain .env file."""
+    try:
+        doc = yaml.safe_load(text)
+    except yaml.YAMLError:
+        doc = None
+    if isinstance(doc, dict) and isinstance(doc.get("services"), dict):
+        pairs = []
+        for service in doc["services"].values():
+            env = (service or {}).get("environment") if isinstance(service, dict) else None
+            if isinstance(env, dict):
+                pairs += [(str(k), "" if v is None else str(v)) for k, v in env.items()]
+            elif isinstance(env, list):
+                pairs += [tuple(str(line).split("=", 1)) for line in env if "=" in str(line)]
+        return pairs
+    lines = (line.strip().removeprefix("export ").strip() for line in text.splitlines())
+    return [tuple(line.split("=", 1)) for line in lines if "=" in line and not line.startswith("#")]
+
+
+def from_docker_wyze_bridge(text: str) -> dict:
+    """Turn docker-wyze-bridge settings into a wyze-tunnel.env. Option names are the same; only what can't move is left out."""
+    if len(text) > 100_000:
+        raise ValueError("That's too long for a settings file. Paste just the docker-compose.yml or .env.")
+    keep, skipped = {}, []
+    for name, value in _dwb_pairs(text):
+        name, value = name.strip().upper(), value.strip().strip("'\"")
+        if not name.replace("_", "").isalnum():
+            continue
+        if name in DWB_SIGN_IN:
+            skipped.append({"name": name, "why": "Sign in from the setup page instead, so it isn't saved in a plain file."})
+        elif "${" in value:
+            skipped.append({"name": name, "why": "Its value comes from another file. Copy the real value in by hand."})
+        elif value.startswith("/"):
+            skipped.append({"name": name, "why": "It points to a folder inside the old Docker container."})
+        else:
+            keep[name] = value
+    if not keep and not skipped:
+        raise ValueError("No settings found. Paste your docker-compose.yml or .env file.")
+    env = "# Moved from docker-wyze-bridge\n" + "".join(f"{k}={v}\n" for k, v in keep.items())
+    return {"env": env, "kept": list(keep), "skipped": skipped}
