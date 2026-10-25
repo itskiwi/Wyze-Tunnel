@@ -27,6 +27,7 @@ def _files() -> dict[str, str]:
         "net_modes": wyze_stream.NET_MODES_FILE,
         "quality": wyze_stream.QUALITY_FILE,
         "privacy": privacy.PRIVACY_FILE,
+        "battery_saver": privacy.BATTERY_FILE,
         "timelapse": timelapse.SETTINGS_FILE,
     }
 
@@ -116,6 +117,8 @@ def import_settings(backup: dict) -> list[str]:
         "quality": lambda v: _str_map(v, set(wyze_stream.QUALITY_CHOICES.values())),
         "alerts": _alerts,
         "privacy": _privacy,
+        "battery_saver": _privacy,
+        "timelapse": lambda v: {"cams": _str_list(v.get("cams", []) if isinstance(v, dict) else None)},
     }
     try:
         clean = {name: checked[name](value) for name, value in settings.items()}

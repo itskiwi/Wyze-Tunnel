@@ -530,16 +530,18 @@ def create_app():
         ]
 
     @app.route("/privacy", methods=["GET", "POST"])
+    @app.route("/battery-saver", methods=["GET", "POST"], endpoint="battery_saver")
     @auth_required
     def privacy_schedule():
+        path = privacy.BATTERY_FILE if request.path == "/battery-saver" else privacy.PRIVACY_FILE
         if request.method == "POST":
             macs = {cam.mac for cam in wb.api.get_cameras() or []}
             try:
-                privacy.save_privacy(request.get_json(silent=True) or {}, macs)
+                privacy.save_privacy(request.get_json(silent=True) or {}, macs, path)
             except ValueError as ex:
                 return {"error": str(ex)}, 400
             return {"status": "saved"}
-        return privacy.load_privacy()
+        return privacy.load_privacy(path)
 
     @app.route("/cameras/name", methods=["POST"])
     @auth_required
