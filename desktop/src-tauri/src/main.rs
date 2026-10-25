@@ -148,8 +148,16 @@ mod vm {
             };
         }
     }
+    /// A bridge an earlier tray left behind (an app update or restart kills the tray, not its children) would keep
+    /// port 5000, go2rtc and the camera connections, and Windows lets a second server bind the same port.
+    fn stop_strays() {
+        let native = format!("{}\\*", dir().join("native").display()).replace('\'', "''");
+        let script = format!("Get-Process | Where-Object {{ $_.Path -like '{native}' }} | Stop-Process -Force");
+        let _ = cmd("powershell.exe").args(["-NoProfile", "-Command", &script]).output();
+    }
     /// The same environment the Linux systemd unit sets up, with the settings file on top.
     fn start_native() -> Option<Child> {
+        stop_strays();
         let (n, d) = (native(), data());
         for sub in ["tokens", "img", "record", "logs"] {
             fs::create_dir_all(d.join(sub)).ok()?;
