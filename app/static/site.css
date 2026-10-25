@@ -56,12 +56,14 @@ video { display: block; }
 [data-enabled=True] video.placeholder, .status .fa-circle-play, .status .fa-circle-pause,
 .status .fa-satellite-dish, .fa-arrows-rotate { cursor: pointer; }
 figure.image:hover > video.placeholder { opacity: .85; transition: .3s ease; }
-video + i::before {
+/* The play icon floats over the video; left inline it adds a black strip under the picture */
+video ~ i { position: absolute; inset: 0; pointer-events: none; }
+video ~ i::before {
   color: white; font-size: 3.5rem; position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%); text-shadow: 0 2px 12px rgb(0 0 0 / .6); pointer-events: none;
 }
-video.lost + i::before { content: "\e560"; }
-video.lost, video.lost + i { cursor: default; }
+video.lost ~ i::before { content: "\e560"; }
+video.lost, video.lost ~ i { cursor: default; }
 
 /* Preview overlay: refresh button on hover, age otherwise */
 .cam-overlay button, .card:hover .age, button:not(.offline):disabled + .age { display: none; }
