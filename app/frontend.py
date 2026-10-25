@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, guests, integrations, network, pocket, privacy, recording, shares, street_watch, timelapse, visitors, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, detect, floorplan, guests, integrations, network, pocket, privacy, recording, shares, street_watch, timelapse, visitors, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_cam
 from wyzebridge.diagnostics import build_report
@@ -441,6 +441,43 @@ def create_app():
     @auth_required
     def visitor_pic(pic: str):
         return send_from_directory(visitors.PIC_DIR, pic)
+
+    @app.route("/map")
+    @auth_required
+    def map_page():
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return render_template(
+            "map.html",
+            cameras={uri: {"name": c["nickname"], "connected": c.get("connected"), "offline": c.get("status") == -90} for uri, c in cams.items()},
+            pins=floorplan.load_pins(),
+            has_image=floorplan.IMAGE_FILE.exists(),
+            api=WbAuth.api,
+            version=config.VERSION,
+        )
+
+    @app.route("/map/image", methods=["GET", "POST"])
+    @auth_required
+    def map_image():
+        if request.method == "GET":
+            if not floorplan.IMAGE_FILE.exists():
+                return {"error": "No floor plan yet"}, 404
+            data = floorplan.IMAGE_FILE.read_bytes()
+            return Response(data, mimetype=floorplan.image_type(data) or "application/octet-stream")
+        if web_ui.current_guest():
+            return {"error": "Only the owner can change this."}, 403
+        try:
+            floorplan.save_image(request.get_data(cache=False)[: floorplan.MAX_BYTES + 1])
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"status": "saved"}
+
+    @app.route("/map/pins", methods=["POST"])
+    @owner_only
+    def map_pins():
+        try:
+            return {"pins": floorplan.save_pins(request.get_json(silent=True), list(wb.streams.streams))}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
 
     @app.route("/events")
     def events():
