@@ -407,6 +407,16 @@ document.addEventListener("DOMContentLoaded", () => {
         netMode.dataset.mode = messageData.net_mode || "";
         netMode.classList.toggle("is-hidden", !messageData.net_mode);
       }
+      const reason = card.querySelector(".reason a");
+      if (reason) {
+        reason.lastChild.textContent = messageData.reason || "";
+        reason.classList.toggle("is-hidden", !messageData.reason);
+        // Matches REASON_AUTH in wyze_stream.py: the only reason the user fixes by signing in.
+        if (messageData.reason === "Wyze password changed or session expired") reason.setAttribute("href", "login");
+        else reason.removeAttribute("href");
+        const offline = card.querySelector(".no-preview .offline-reason");
+        if (offline) offline.textContent = messageData.reason || "Camera offline";
+      }
       const connected = card.dataset.connected.toLowerCase() === "true";
       updateBatteryLevel(card);
 

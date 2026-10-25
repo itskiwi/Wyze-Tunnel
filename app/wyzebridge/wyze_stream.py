@@ -1,6 +1,7 @@
 import contextlib
 import json
 import multiprocessing as mp
+import socket
 import zoneinfo
 from collections import namedtuple
 from ctypes import c_int
@@ -206,6 +207,16 @@ class WyzeStream:
     def enabled(self) -> bool:
         return self.state != StreamStatus.DISABLED
 
+    @property
+    def reason(self) -> str | None:
+        """Why this camera isn't working right, in plain words, or None."""
+        wifi = ((self.camera.camera_info or {}).get("basicInfo") or {}).get("wifidb")
+        api = getattr(self, "api", None)
+        return status_reason(
+            self.state, self.failures, self.connected, wifi,
+            bool(api and api.login_error), not self.connected or internet_up(),
+        )
+
     def start(self) -> bool:
         if self.health_check(False) != StreamStatus.STOPPED:
             return False
@@ -366,6 +377,7 @@ class WyzeStream:
             "failures": self.failures,
             "chronic": self.failures >= CHRONIC_FAILURES,
             "busy": self.busy,
+            "reason": self.reason,
             "source": self.source,
             "sources": self.sources,
         }
@@ -624,6 +636,49 @@ def auto_restart(stream: "WyzeStream") -> bool:
 def backoff(failures: int) -> int:
     """Seconds to wait before retry number `failures`: doubles, capped at COOLDOWN_MAX."""
     return min(COOLDOWN * 2 ** min(failures - 1, 16), COOLDOWN_MAX)
+
+
+REASON_AUTH = "Wyze password changed or session expired"
+REASON_OFFLINE = "Camera unplugged or lost power"
+REASON_WIFI = "Wi-Fi signal too weak"
+REASON_INTERNET = "Internet offline — local recording active"
+AUTH_ERRORS = {-19, -68}  # ENR/auth errors, see health_check
+
+
+def status_reason(status: int, failures: int, connected: bool, wifi, auth_error: bool, internet: bool) -> str | None:
+    """The one reason worth showing, most important first: auth, offline, weak Wi-Fi, internet."""
+    if auth_error or status in AUTH_ERRORS:
+        return REASON_AUTH
+    if status == StreamStatus.OFFLINE:
+        return REASON_OFFLINE
+    try:
+        wifi = int(wifi)
+    except (TypeError, ValueError):
+        wifi = -1
+    if failures > 0 and not connected and 0 <= wifi < 40:
+        return REASON_WIFI
+    if connected and not internet:
+        return REASON_INTERNET
+    return None
+
+
+_internet = {"up": True, "checked": 0.0}
+
+
+def internet_up() -> bool:
+    """Last known internet state. Rechecks at most once a minute, in the background, so callers never wait."""
+    if time() - _internet["checked"] > 60:
+        _internet["checked"] = time()
+        Thread(target=_check_internet, daemon=True).start()
+    return _internet["up"]
+
+
+def _check_internet() -> None:
+    try:
+        socket.create_connection(("api.wyzecam.com", 443), timeout=3).close()
+        _internet["up"] = True
+    except OSError:
+        _internet["up"] = False
 
 
 def start_relay_stream(uri: str, src: str, state: c_int):

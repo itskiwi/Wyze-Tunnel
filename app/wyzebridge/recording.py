@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import sys
 import time
 from pathlib import Path
 from threading import Thread
@@ -15,6 +16,7 @@ SETTINGS_FILE = TOKEN_PATH + "record.json"
 KEEP_CHOICES = (1, 3, 7, 14, 30)
 MAX_GB_CHOICES = (0, 25, 50, 100, 250, 500, 1000)  # 0 is no limit
 MIN_FREE = 5 * 1024**3  # always leave this much of the drive free, whatever the settings
+MIN_FREE_SHARE = 0.15  # or this share of the drive, if more: Windows slows down when nearly full
 DEFAULT_KEEP_DAYS = 7  # a camera writes roughly 10-20 GB a day, so a fresh install can't quietly fill the disk
 
 
@@ -66,16 +68,17 @@ def record_root() -> Path:
 
 
 def disk_use() -> dict:
-    """Bytes used by recordings and free on that drive. Free is 0 if the drive can't be read."""
+    """Bytes used by recordings, free and total on that drive. Free is 0 if the drive can't be read."""
     root = record_root()
     # shortcut: walks every clip on each page load (~10k files a camera a week); cache it if the page gets slow.
     used = sum(_size(f) for f in root.rglob("*.mp4"))
     drive = next((p for p in (root, *root.parents) if p.exists()), Path(os.getcwd()))
     try:
-        free = shutil.disk_usage(drive).free
+        usage = shutil.disk_usage(drive)
+        free, total = usage.free, usage.total
     except OSError:
-        free = 0
-    return {"used": used, "free": free}
+        free = total = 0
+    return {"used": used, "free": free, "total": total}
 
 
 def _size(path: Path) -> int:
@@ -92,7 +95,8 @@ def trim() -> int:
     clips = sorted((f for f in root.rglob("*.mp4") if _mtime(f) < time.time() - 120), key=_mtime)
     use = disk_use()
     limit = (load_settings().get("max_gb") or 0) * 1024**3
-    over = max(use["used"] - limit if limit else 0, MIN_FREE - use["free"] if use["free"] else 0)
+    floor = max(MIN_FREE, use.get("total", 0) * MIN_FREE_SHARE)
+    over = max(use["used"] - limit if limit else 0, floor - use["free"] if use["free"] else 0)
     freed = 0
     for clip in clips:
         if freed >= over:
@@ -122,6 +126,21 @@ def start_trimming() -> None:
             time.sleep(300)
 
     Thread(target=loop, name="record-trim", daemon=True).start()
+
+
+_awake = False
+
+
+def keep_awake(on: bool) -> None:
+    """Stop Windows sleeping while cameras record. Call from one long-lived thread: the flag is per thread."""
+    global _awake
+    if on == _awake or sys.platform != "win32":
+        return
+    import ctypes
+
+    # ES_CONTINUOUS, plus ES_SYSTEM_REQUIRED to hold the PC awake
+    ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | (0x00000001 if on else 0))
+    _awake = on
 
 
 def _mtime(path: Path) -> float:

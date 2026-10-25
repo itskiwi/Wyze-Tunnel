@@ -25,6 +25,8 @@ const RELEASES: &str = "https://github.com/itskiwi/Wyze-Tunnel/releases";
 static STOPPED: AtomicBool = AtomicBool::new(false);
 static BUSY: AtomicBool = AtomicBool::new(false); // an install/update is running; don't supervise
 static UPDATE_NOW: AtomicBool = AtomicBool::new(false); // the tray's update item was clicked
+#[cfg(windows)]
+static FIREWALL_BLOCKED: AtomicBool = AtomicBool::new(false); // shows the tray's firewall fix
 
 fn cmd(program: impl AsRef<std::ffi::OsStr>) -> Command {
     let mut c = Command::new(program);
@@ -244,6 +246,35 @@ mod vm {
         let n = fs::read_to_string(data().join("needs-sdk")).unwrap_or_default();
         n.trim().parse::<u32>().is_ok_and(|n| n > 0)
     }
+    fn firewall_script(res: &Path, arg: &str) -> Command {
+        let mut c = cmd("powershell.exe");
+        c.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]).arg(res.join("windows/install-native.ps1")).arg(arg);
+        c
+    }
+    /// Native mode: a firewall rule for the bridge's programs is missing or blocking (read-only check).
+    /// Mirrored to a "firewall-blocked" flag next to WT_UPDATE_FILE so the web UI can show a tip.
+    pub fn firewall_blocked(res: &Path) -> bool {
+        let blocked = !wsl()
+            && native().join(r"python\python.exe").exists()
+            && firewall_script(res, "-CheckFirewall").status().is_ok_and(|s| s.code() == Some(2));
+        let flag = data().join("firewall-blocked");
+        let _ = if blocked { fs::write(flag, "1") } else { fs::remove_file(flag) };
+        blocked
+    }
+    /// Adds the firewall rules behind one Windows permission prompt.
+    pub fn fix_firewall(res: &Path) {
+        let _ = firewall_script(res, "-FirewallOnly").status();
+    }
+}
+
+/// Runs the firewall check in the background; skipped while an install replaces the programs.
+#[cfg(windows)]
+fn check_firewall(app: AppHandle) {
+    std::thread::spawn(move || {
+        if let (false, Ok(res)) = (BUSY.load(Ordering::SeqCst), app.path().resource_dir()) {
+            FIREWALL_BLOCKED.store(vm::firewall_blocked(&res), Ordering::SeqCst);
+        }
+    });
 }
 
 fn bridge_up() -> bool {
@@ -329,6 +360,8 @@ fn run_installer(app: &AppHandle, res: &Path, full: bool) -> Result<i32, String>
         }
         STOPPED.store(false, Ordering::SeqCst);
         let _ = app.autolaunch().enable();
+        #[cfg(windows)]
+        check_firewall(app.clone());
     }
     result
 }
@@ -370,6 +403,9 @@ fn main() {
             // Shown only while a camera needs it; everything else runs natively.
             #[cfg(windows)]
             let (full, mut full_shown) = (item("full", "Full camera support (WSL)…")?, false);
+            // Shown only while Windows Firewall blocks phones or cameras.
+            #[cfg(windows)]
+            let (firewall, mut firewall_shown) = (item("firewall", "Fix phone and camera access")?, false);
             let tray = TrayIconBuilder::with_id("tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Wyze Tunnel")
@@ -397,6 +433,16 @@ fn main() {
                     "full" => {
                         open_window(app);
                         let _ = app.emit("full-setup", ());
+                    }
+                    #[cfg(windows)]
+                    "firewall" => {
+                        let app = app.clone();
+                        std::thread::spawn(move || {
+                            if let Ok(res) = app.path().resource_dir() {
+                                vm::fix_firewall(&res);
+                            }
+                            check_firewall(app);
+                        });
                     }
                     "quit" => {
                         vm::quit();
@@ -445,11 +491,22 @@ fn main() {
                 }
                 if tick.is_multiple_of(4 * 60 * 6) {
                     (latest, desktop) = (latest_bridge(), newer_release()); // every 6 hours
+                    if vm::installed() {
+                        // No off switch in the app, so re-assert it in case a cleanup or update dropped it.
+                        let _ = handle.autolaunch().enable();
+                    }
+                    #[cfg(windows)]
+                    check_firewall(handle.clone());
                 }
                 #[cfg(windows)]
                 if tick.is_multiple_of(4) && vm::needs_sdk() != full_shown {
                     full_shown = !full_shown;
                     let _ = if full_shown { menu.insert(&full, 4) } else { menu.remove(&full) };
+                }
+                #[cfg(windows)]
+                if FIREWALL_BLOCKED.load(Ordering::SeqCst) != firewall_shown {
+                    firewall_shown = !firewall_shown;
+                    let _ = if firewall_shown { menu.insert(&firewall, 4) } else { menu.remove(&firewall) };
                 }
                 tick = tick.wrapping_add(1);
                 let text = match (&updating, &desktop, &latest) {
