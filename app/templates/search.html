@@ -61,6 +61,13 @@
         <div id="heatGrid" class="absolute inset-0 grid"></div>
     </div>
     <figcaption id="heatCaption" class="mt-2 text-center text-sm text-zinc-400"></figcaption>
+    {% if not current_guest() %}
+    <div class="mt-3 flex flex-wrap items-center justify-center gap-2">
+        <button id="zoneEdit" class="btn" type="button" aria-pressed="false"><i class="fas fa-eye-slash"></i>Ignore areas</button>
+        <button id="zoneSave" class="btn btn-primary hidden" type="button">Save</button>
+        <span id="zoneStatus" class="text-sm text-zinc-400" role="status"></span>
+    </div>
+    {% endif %}
 </figure>
 <ul id="hits" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></ul>
 <p id="status" class="mt-6 text-center text-sm text-zinc-500" role="status">Loading…</p>
@@ -164,6 +171,14 @@
     }
 
     // Heatmap: brighter squares are where people, cars and animals showed up most.
+    // Activity zones: in edit mode, tap squares to ignore them (a road, a tree); ignored squares are crossed out.
+    let ignore = new Set(), editing = false;
+    function drawIgnore() {
+        document.querySelectorAll("#heatGrid span").forEach((cell, i) => {
+            cell.classList.toggle("zone-off", ignore.has(i));
+            cell.setAttribute("aria-pressed", ignore.has(i));
+        });
+    }
     function heatmap() {
         const box = document.getElementById("heatBox"), cam = select.value;
         box.classList.toggle("hidden", !cam);
@@ -171,18 +186,48 @@
         const img = document.getElementById("heatImg");
         img.style.visibility = "";
         img.src = `img/${encodeURIComponent(cam)}.jpg`;
-        fetch(`api/heatmap/${encodeURIComponent(cam)}`).then((r) => r.json()).then(({ w, h, grid }) => {
+        fetch(`api/heatmap/${encodeURIComponent(cam)}`).then((r) => r.json()).then(({ w, h, grid, ignore: off }) => {
             const el = document.getElementById("heatGrid"), top = Math.max(0, ...grid);
             el.style.gridTemplateColumns = `repeat(${w}, 1fr)`;
             el.style.gridTemplateRows = `repeat(${h}, 1fr)`;
-            el.replaceChildren(...Array.from({ length: w * h }, (_, i) => Object.assign(document.createElement("span"), {
-                className: "bg-accent", style: `opacity:${top ? Math.sqrt((grid[i] || 0) / top) * 0.75 : 0}` })));
+            el.replaceChildren(...Array.from({ length: w * h }, (_, i) => {
+                const cell = document.createElement("span");
+                cell.className = "zone-cell";
+                cell.style.setProperty("--heat", top ? Math.sqrt((grid[i] || 0) / top) * 0.75 : 0);
+                cell.addEventListener("click", () => {
+                    if (!editing) return;
+                    ignore.has(i) ? ignore.delete(i) : ignore.add(i);
+                    drawIgnore();
+                });
+                return cell;
+            }));
+            ignore = new Set(off || []);
+            drawIgnore();
             document.getElementById("heatCaption").textContent = top
                 ? `Where things showed up on ${cameras[cam] || cam}. Brighter means more often.`
                 : `Nothing spotted on ${cameras[cam] || cam} yet, so there's no heatmap.`;
+            if (ignore.size) document.getElementById("heatCaption").textContent += " Crossed-out squares are ignored.";
         }).catch(() => box.classList.add("hidden"));
     }
-    select.addEventListener("change", heatmap);
+    const zoneEdit = document.getElementById("zoneEdit"), zoneSave = document.getElementById("zoneSave");
+    zoneEdit?.addEventListener("click", () => {
+        editing = !editing;
+        zoneEdit.setAttribute("aria-pressed", editing);
+        document.getElementById("heatGrid").classList.toggle("is-editing", editing);
+        zoneSave.classList.toggle("hidden", !editing);
+        document.getElementById("zoneStatus").textContent = editing
+            ? "Tap the squares where nothing matters, like a busy road. People and cars there won't show up or alert you." : "";
+    });
+    zoneSave?.addEventListener("click", async () => {
+        const status = document.getElementById("zoneStatus");
+        const r = await fetch(`api/zones/${encodeURIComponent(select.value)}`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ignore: [...ignore] }),
+        }).then((x) => x.json()).catch((e) => ({ error: e.message }));
+        if (r.error) { status.textContent = r.error; return; }
+        zoneEdit.click();
+        status.textContent = r.ignore.length ? `Saved. ${r.ignore.length} squares are ignored from now on.` : "Saved. The whole picture is watched.";
+    });
+    select.addEventListener("change", () => { if (editing) zoneEdit.click(); heatmap(); });
     heatmap();
     select.addEventListener("change", () => load());
     more.addEventListener("click", () => load(true));
