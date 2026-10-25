@@ -119,7 +119,7 @@ Already on docker-wyze-bridge? Your settings and stream links carry over. See [C
 | Wyze Cam Outdoor, Outdoor v2 | WVOD1, HL_WCO2 | Yes |
 | Wyze Video Doorbell, Doorbell v2 | WYZEDB3, HL_DB2 | Yes |
 | Wyze Cam OG, OG Telephoto 3x | GW_GC1, GW_GC2 | Yes, through Wyze's cloud |
-| Doorbell Pro, Doorbell Pro 2, Battery Cam Pro, Floodlight Pro | GW_BE1, AN_RDB1, AN_RSCW, LD_CFP | Yes, through Wyze's cloud (new, video only; tell us if yours doesn't connect) |
+| Doorbell Pro, Doorbell Pro 2, Battery Cam Pro, Floodlight Pro | GW_BE1, AN_RDB1, AN_RSCW, LD_CFP | Yes, through Wyze's cloud (new; tell us if yours doesn't connect) |
 
 Some newer firmware blocks remote (P2P) connections. On your home network they still work.
 
