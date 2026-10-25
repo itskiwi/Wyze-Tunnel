@@ -11,6 +11,7 @@ Everything starts on the **Connect apps** page: open Wyze Tunnel, click the gear
 
 - [Home Assistant](#home-assistant)
 - [Claude and other AI apps](#claude-and-other-ai-apps)
+- [Node-RED, openHAB, Homey, Google and Alexa](#node-red-openhab-homey-google-and-alexa)
 - [Other apps: the API](#the-api)
 - [Other apps: webhooks](#webhooks)
 - [How-tos](#how-tos)
@@ -28,8 +29,18 @@ Open **Connect apps**, pick **Apple Home** and turn on a camera. Then, on an iPh
 
 ## Home Assistant
 
-You get a camera with live video for each Wyze camera, plus a motion sensor, an online sensor and, if your key can control
-things, switches for the stream and for spotlights and floodlights. You don't need MQTT.
+You get a camera with live video for each Wyze camera, plus:
+
+- **Activity**, an event that fires for motion, a doorbell press, or a person, vehicle, animal or package the detector saw.
+  Use it to start automations: trigger on its state, and pick the kind in a condition on `event_type`.
+- **Motion** and **Last motion**, **Online**, **Wi-Fi signal**, and **Problem**, which turns on when the Health page has
+  something to fix for that camera (offline, weak Wi-Fi, full SD card).
+- If your key can control things: switches for the stream and for spotlights and floodlights, **Pan left/right** and
+  **Tilt up/down** buttons for cameras that move, and **Alert mode** (Normal, Home, Away) on the Wyze Tunnel device, so
+  presence automations can switch it.
+
+You don't need MQTT. If something isn't working, **Download diagnostics** on the integration gives a file with your
+cameras' state and no passwords or keys.
 
 **Before you start:** you need [HACS](https://hacs.xyz/docs/use/) in Home Assistant. It's the free add-on store most people
 already have.
@@ -62,6 +73,43 @@ data:
 ```
 
 See [the command list](#commands) for what you can send.
+
+### Do something when a person is at the door
+
+```yaml
+alias: Porch light when someone's at the door
+triggers:
+  - trigger: state
+    entity_id: event.front_door_activity
+conditions:
+  - condition: template
+    value_template: "{{ trigger.to_state.attributes.event_type in ['person', 'doorbell'] }}"
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.porch
+```
+
+## Node-RED, openHAB, Homey, Google and Alexa
+
+On the Connect apps page, click **Other apps**, then pick yours under **Use with your smart home**.
+
+- **Node-RED.** Click **Make setup** and copy the flow. In Node-RED, open the menu, choose **Import**, paste it and click
+  **Deploy**. It lists your cameras every 30 seconds, has a button that turns a spotlight on, and an **http in** node at
+  `/wyze-tunnel` for events. Add your Node-RED address with `/wyze-tunnel` on the end (like
+  `http://192.168.1.30:1880/wyze-tunnel`) under **Send events to an app**.
+- **openHAB.** Install the **HTTP binding** and the **JSONPath transformation** from openHAB's add-on store. Click **Make
+  setup**, save what you copy as `conf/things/wyze-tunnel.things`, then link the channels (motion, online, Wi-Fi, last
+  event) to items. If you already send Wyze Tunnel to an MQTT broker with discovery on, openHAB's MQTT binding finds those
+  cameras by itself too.
+- **Homey.** Homey starts Flows from a webhook link. Make a Flow that starts with Logic's webhook card and name the event,
+  like `wyze_motion`. Paste `https://YOUR-HOMEY-ID.connect.athom.com/api/manager/logic/webhook/wyze_motion` under **Send
+  events to an app** and tick **Motion**. Make one per kind of event, like `wyze_person` with **Person seen**.
+- **Google Home and Alexa** reach your cameras through Home Assistant. Set up [Home Assistant](#home-assistant) first,
+  then turn on Home Assistant Cloud (or its Google Assistant or Alexa integration) and share the Wyze Tunnel cameras and
+  motion sensors.
+- **Anything else** (Hubitat, SmartThings, n8n, IFTTT): if it can make web requests, use [the API](#the-api); if it gives
+  you a webhook link, paste it under **Send events to an app**.
 
 ## Claude and other AI apps
 
@@ -141,6 +189,9 @@ A camera looks like this:
   "motion": false,
   "last_motion": 1792864000,
   "recording": false,
+  "wifi": 68,
+  "issues": [],
+  "last_event": { "type": "person", "ts": 1792864000 },
   "features": { "doorbell": true, "pan_cam": false, "floodlight": false, "spotlight": false, "battery": false },
   "streams": {
     "rtsp": "rtsp://apps:…@192.168.1.20:8554/front-door",
@@ -153,7 +204,9 @@ A camera looks like this:
 ```
 
 `motion` is true for 20 seconds after Wyze reports motion. The `rtsp` link already has a read-only login in it, so you can
-open it in VLC or add it to a recorder like Frigate or Blue Iris.
+open it in VLC or add it to a recorder like Frigate or Blue Iris. `wifi` is 0 to 100, or null when the camera hasn't said.
+`issues` lists what the Health page would flag: `offline`, `repeated_failures`, `weak_wifi`, `sd_card_full`,
+`using_relay`. `last_event.type` is `motion`, `doorbell`, or what the detector saw, like `person` or `car`.
 
 ### Commands
 
@@ -180,7 +233,7 @@ Webhooks are the other direction: Wyze Tunnel tells your app when something happ
 ![A camera sees motion, Wyze Tunnel signs the event and posts it to your app, and your app runs an automation.](img/webhook-flow.svg)
 
 1. On the Connect apps page, click **Other apps**.
-2. Under **Send events to an app**, paste your app's webhook link and tick what to send: motion, camera offline, Street Watch
+2. Under **Send events to an app**, paste your app's webhook link and tick what to send: motion, person seen, camera offline, Street Watch
    requests or updates.
 3. Click **Add webhook**. Copy the signing secret if your app will check signatures.
 4. Click **Send test** next to the new webhook. You'll see your app's answer right there.
@@ -201,7 +254,7 @@ Each event is a `POST` with a JSON body:
 }
 ```
 
-`event` is `motion`, `offline`, `street`, `update` or `test`. `image_url` is a short-lived picture from Wyze, when there is one.
+`event` is `motion`, `person`, `offline`, `street`, `update` or `test`. `image_url` is a short-lived picture from Wyze, when there is one.
 
 ### Checking the signature
 
@@ -276,7 +329,8 @@ Run it from cron or Task Scheduler.
 
 ### Node-RED
 
-Use an **http request** node with the URL `http://192.168.1.20:5000/api/v1/cameras` and, under **Headers**, add
+The quickest way is the ready-made flow under [Use with your smart home](#node-red-openhab-homey-google-and-alexa). By hand:
+use an **http request** node with the URL `http://192.168.1.20:5000/api/v1/cameras` and, under **Headers**, add
 `Authorization` with `Bearer wt_your_key`. For events, add an **http in** node (method POST) and paste its address into
 **Send events to an app**.
 

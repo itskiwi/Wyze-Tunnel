@@ -13,6 +13,11 @@ from wyzebridge.wyze_stream import StreamStatus
 MCP_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 
 
+def event_type(label) -> str:
+    """motion, doorbell, or what the detector saw (person, car, ...)."""
+    return {None: "motion", "": "motion", "rang the doorbell": "doorbell"}.get(label, label)
+
+
 def camera_json(uri: str, cam: dict) -> dict:
     """One camera in the shape the API documents. Stream links carry a read-only login."""
     if isinstance(web_ui.auth.current_user(), web_ui.SimpleNamespace):  # an app token
@@ -25,6 +30,9 @@ def camera_json(uri: str, cam: dict) -> dict:
         state = StreamStatus(status).name.lower()
     except ValueError:
         state = "unknown"
+    info = cam.get("camera_info") or {}
+    wifi = web_ui._int((info.get("basicInfo") or {}).get("wifidb"))
+    last = next((e for e in EVENT_LOG if e.get("uri") == uri), None)
     return {
         "id": uri,
         "name": cam.get("nickname") or uri,
@@ -36,6 +44,9 @@ def camera_json(uri: str, cam: dict) -> dict:
         "motion": bool(cam.get("motion")),
         "last_motion": cam.get("motion_ts") or None,
         "recording": bool(cam.get("record")),
+        "wifi": wifi if wifi >= 0 else None,
+        "issues": [i["issue"] for i in web_ui.bridge_issues({uri: cam})],
+        "last_event": last and {"type": event_type(last.get("label")), "ts": last.get("ts")},
         "features": {f: bool(cam.get(f"is_{f}")) for f in ("doorbell", "pan_cam", "floodlight", "spotlight", "battery")},
         "streams": {
             "rtsp": cam["rtsp_url"].replace("rtsp://", f"rtsp://{login}", 1),

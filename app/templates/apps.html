@@ -15,7 +15,7 @@
         ("ai", "fa-comment-dots", "Claude and AI apps", "Ask about your cameras in a chat"),
         ("phone", "fa-mobile-screen", "Phone shortcuts", "Say \"Hey Siri, I'm leaving\", or switch to Away when you leave home"),
         ("rec", "fa-film", "Recorders", "Frigate, Blue Iris, Agent DVR"),
-        ("other", "fa-code", "Other apps", "Node-RED, scripts, automations")] %}
+        ("other", "fa-code", "Other apps", "Node-RED, openHAB, Homey, Google and Alexa, scripts")] %}
     <button type="button" role="tab" aria-selected="false" aria-controls="panel-{{ id }}" data-panel="{{ id }}"
         class="pick surface p-4 text-left ring-2 ring-transparent transition hover:ring-zinc-700 aria-selected:ring-accent">
         <span class="grid h-10 w-10 place-items-center rounded-full bg-accent/15 text-accent"><i class="fas {{ icon }}"></i></span>
@@ -184,6 +184,19 @@
 
 <section id="panel-other" role="tabpanel" class="panel mx-auto mt-4 max-w-2xl space-y-4" hidden>
     <div class="surface p-5">
+        <h2 class="font-display text-xl font-extrabold text-zinc-50">Use with your smart home</h2>
+        <p class="mt-1 text-sm text-zinc-400">Pick what you use. Wyze Tunnel makes its key and fills in your cameras.</p>
+        <div class="seg mt-4" role="radiogroup" aria-label="Which smart home app?">
+            {% for value, label in [("nodered", "Node-RED"), ("openhab", "openHAB"), ("homey", "Homey"), ("voice", "Google and Alexa")] %}
+            <button type="button" role="radio" class="tab" data-hub="{{ value }}" aria-checked="{{ 'true' if loop.first else 'false' }}">{{ label }}</button>
+            {% endfor %}
+        </div>
+        <p id="hubHow" class="mt-4 text-sm text-zinc-400"></p>
+        <button type="button" id="hubMake" class="btn btn-primary mt-3"><i class="fas fa-wand-magic-sparkles"></i><span>Make setup</span></button>
+        <div id="hubOut" class="mt-3" hidden></div>
+    </div>
+
+    <div class="surface p-5">
         <h2 class="font-display text-xl font-extrabold text-zinc-50">Let an app use Wyze Tunnel</h2>
         <p class="mt-1 text-sm text-zinc-400">The app sends this key with each request. <a class="underline underline-offset-2"
                 href="https://github.com/itskiwi/Wyze-Tunnel/blob/main/docs/apps-and-api.md#the-api" target="_blank" rel="noopener">API guide</a>
@@ -217,7 +230,7 @@
             </label>
             <fieldset class="flex flex-wrap gap-x-5 gap-y-2 text-sm">
                 <legend class="mb-1 text-zinc-400">Send</legend>
-                {% for e, label in [("motion", "Motion"), ("offline", "Camera offline"), ("street", "Street Watch requests"), ("update", "Updates")] %}
+                {% for e, label in [("motion", "Motion"), ("person", "Person seen"), ("offline", "Camera offline"), ("street", "Street Watch requests"), ("update", "Updates")] %}
                 <label class="flex items-center gap-2"><input type="checkbox" name="events" value="{{ e }}" class="h-4 w-4 accent-accent" {{ 'checked' if e in ('motion', 'offline') }} />{{ label }}</label>
                 {% endfor %}
             </fieldset>
@@ -362,6 +375,75 @@
         document.getElementById("phone-ios").hidden = b.dataset.phone !== "ios";
         document.getElementById("phone-android").hidden = b.dataset.phone !== "android";
     }));
+
+    // Smart home apps: a key plus a ready-made setup, built from the camera list.
+    let hub = "nodered";
+    const hubs = {
+        nodered: { name: "Node-RED", scope: "control", how: "Makes a flow that lists your cameras every 30 seconds, turns a spotlight on, and " +
+            "receives Wyze Tunnel's events. In Node-RED, open the menu, choose Import, paste it and click Deploy. Then add your Node-RED " +
+            "address with /wyze-tunnel on the end, like http://192.168.1.30:1880/wyze-tunnel, under Send events to an app below.",
+            build: (token, cams) => JSON.stringify(nodeRedFlow(token, cams[0]?.id || "front-door")) },
+        openhab: { name: "openHAB", scope: "view", how: "Makes a things file with motion, online and Wi-Fi for each camera. It needs the HTTP binding " +
+            "and the JSONPath transformation, both from openHAB's add-on store. Save it as conf/things/wyze-tunnel.things, then link the " +
+            "channels to items in Settings, Things.",
+            build: (token, cams) => cams.map((c) => `Thing http:url:wyze_${c.id.replace(/[^A-Za-z0-9_]/g, "_")} "${c.name}" ` +
+                `[ baseURL="${base}api/v1/cameras/${c.id}", headers="Authorization=Bearer ${token}", refresh=5 ] {\n` +
+                `    Channels:\n` +
+                `        Type switch : motion "Motion" [ stateTransformation="JSONPATH:$.motion", onValue="true", offValue="false" ]\n` +
+                `        Type switch : online "Online" [ stateTransformation="JSONPATH:$.online", onValue="true", offValue="false" ]\n` +
+                `        Type number : wifi "Wi-Fi signal" [ stateTransformation="JSONPATH:$.wifi" ]\n` +
+                `        Type string : last_event "Last event" [ stateTransformation="JSONPATH:$.last_event.type" ]\n}\n`).join("\n") },
+        homey: { how: "Homey starts Flows from a webhook link. In Homey, make a Flow that starts with the Logic card for a webhook, and give " +
+            "the event a name like wyze_motion. Then paste https://YOUR-HOMEY-ID.connect.athom.com/api/manager/logic/webhook/wyze_motion " +
+            "under Send events to an app below and tick Motion. Make one per kind of event you want, like wyze_person with Person seen." },
+        voice: { how: "Google Home and Alexa reach your cameras through Home Assistant. Set up the Home Assistant tile first, then turn on " +
+            "Home Assistant Cloud, or its Google Assistant or Alexa integration, and share the Wyze Tunnel cameras and motion sensors. " +
+            "Then say \"Hey Google, show the front door\" on a Nest Hub or Echo Show." },
+    };
+    const nodeRedFlow = (token, cam) => {
+        const z = "wt_tab", headers = JSON.stringify({ Authorization: `Bearer ${token}` });
+        const debug = (id, name, y) => ({ id, z, type: "debug", name, active: true, tosidebar: true, complete: "payload", targetType: "msg", x: 860, y, wires: [] });
+        return [
+            { id: z, type: "tab", label: "Wyze Tunnel" },
+            { id: "wt_tick", z, type: "inject", name: "Every 30 seconds", props: [], repeat: "30", once: true, onceDelay: "2", x: 150, y: 60, wires: [["wt_key1"]] },
+            { id: "wt_key1", z, type: "change", name: "Wyze Tunnel key", rules: [{ t: "set", p: "headers", pt: "msg", to: headers, tot: "json" }], x: 360, y: 60, wires: [["wt_cams"]] },
+            { id: "wt_cams", z, type: "http request", name: "Cameras", method: "GET", ret: "obj", paytoqs: "ignore", url: `${base}api/v1/cameras`, x: 550, y: 60, wires: [["wt_split"]] },
+            { id: "wt_split", z, type: "split", name: "One per camera", x: 700, y: 60, wires: [["wt_dbg1"]] },
+            debug("wt_dbg1", "Camera", 60),
+            { id: "wt_light", z, type: "inject", name: `Spotlight on (${cam})`, props: [{ p: "payload" }], payload: '{"value":"on"}', payloadType: "json", x: 170, y: 140, wires: [["wt_key2"]] },
+            { id: "wt_key2", z, type: "change", name: "Wyze Tunnel key", rules: [{ t: "set", p: "headers", pt: "msg", to: headers, tot: "json" }], x: 360, y: 140, wires: [["wt_cmd"]] },
+            { id: "wt_cmd", z, type: "http request", name: "Send command", method: "POST", ret: "obj", paytoqs: "ignore", url: `${base}api/v1/cameras/${cam}/commands/spotlight`, x: 560, y: 140, wires: [["wt_dbg2"]] },
+            debug("wt_dbg2", "Command result", 140),
+            { id: "wt_in", z, type: "http in", name: "Events from Wyze Tunnel", url: "/wyze-tunnel", method: "post", x: 180, y: 220, wires: [["wt_ok", "wt_kind"]] },
+            { id: "wt_ok", z, type: "http response", name: "", statusCode: "204", x: 400, y: 260, wires: [] },
+            { id: "wt_kind", z, type: "switch", name: "Which event?", property: "payload.event", propertyType: "msg", outputs: 3,
+                rules: [{ t: "eq", v: "motion", vt: "str" }, { t: "eq", v: "person", vt: "str" }, { t: "eq", v: "offline", vt: "str" }], x: 400, y: 220,
+                wires: [["wt_dbg3"], ["wt_dbg4"], ["wt_dbg5"]] },
+            debug("wt_dbg3", "Motion", 200), debug("wt_dbg4", "Person", 240), debug("wt_dbg5", "Camera offline", 280),
+        ];
+    };
+    const showHub = () => {
+        document.getElementById("hubHow").textContent = hubs[hub].how;
+        document.getElementById("hubMake").classList.toggle("hidden", !hubs[hub].build);
+        document.getElementById("hubOut").hidden = true;
+    };
+    showHub();
+    document.querySelectorAll("[data-hub]").forEach((b) => b.addEventListener("click", () => {
+        hub = b.dataset.hub;
+        document.querySelectorAll("[data-hub]").forEach((x) => x.setAttribute("aria-checked", x === b));
+        showHub();
+    }));
+    document.getElementById("hubMake").addEventListener("click", (e) => {
+        const btn = e.currentTarget, { name, scope, build } = hubs[hub];
+        btn.disabled = true;
+        Promise.all([post("apps/tokens", { name, scope }), fetch("api/v1/cameras").then((r) => r.ok ? r.json() : Promise.reject(new Error(r.statusText)))])
+            .then(([{ token }, cams]) => {
+                const out = document.getElementById("hubOut");
+                out.innerHTML = secretBox(`Your ${name} setup`, build(token, cams), `This has a new key for ${name} in it. Paste it only into ${name}. ` +
+                    "Making it again replaces the key.");
+                out.hidden = false;
+            }).catch((err) => say(false, err.message)).finally(() => btn.disabled = false);
+    });
 
     // Recorders: one ready-made setup per app, from the same camera list the API gives other apps.
     let recApp = "frigate", recCams = null;

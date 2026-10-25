@@ -13,7 +13,8 @@ TOKEN = "wt_abc"
 CODE = "wt1." + base64.urlsafe_b64encode(json.dumps({"url": URL, "token": TOKEN}).encode()).decode().rstrip("=")
 CAM = {
     "id": "front", "name": "Front Door", "model": "Wyze Cam v3", "online": True, "streaming": True, "enabled": True,
-    "motion": True, "last_motion": 1, "features": {"spotlight": True},
+    "motion": True, "last_motion": 1, "features": {"spotlight": True, "doorbell": True, "pan_cam": True},
+    "wifi": 72, "issues": ["weak_wifi"], "last_event": {"type": "motion", "ts": 1},
     "streams": {"rtsp": "rtsp://apps:k@bridge.local:8554/front"},
 }
 
@@ -21,6 +22,9 @@ CAM = {
 def mock_bridge(aioclient_mock, scope="control"):
     aioclient_mock.get(f"{URL}/api/v1/", json={"name": "Wyze Tunnel", "scope": scope})
     aioclient_mock.get(f"{URL}/api/v1/cameras", json=[CAM])
+    aioclient_mock.get(f"{URL}/api/v1/mode", json={"mode": "schedule"})
+    aioclient_mock.post(f"{URL}/api/v1/mode", json={"mode": "away"})
+    aioclient_mock.post(f"{URL}/api/v1/cameras/front/commands/rotary_action", json={"status": "success"})
     aioclient_mock.post(f"{URL}/api/v1/cameras/front/commands/spotlight", json={"status": "success"})
     aioclient_mock.post(f"{URL}/api/v1/cameras/front/commands/night_vision", json={"status": "success"})
 
@@ -77,6 +81,8 @@ async def test_view_only_has_no_switches(hass: HomeAssistant, aioclient_mock):
     await hass.async_block_till_done()
     assert hass.states.get("camera.front_door") is not None
     assert hass.states.get("switch.front_door_stream") is None
+    assert hass.states.get("button.front_door_pan_left") is None
+    assert hass.states.get("select.wyze_tunnel_alert_mode") is None
 
 
 async def test_removed_token_asks_to_reconnect(hass: HomeAssistant, aioclient_mock):
@@ -87,3 +93,53 @@ async def test_removed_token_asks_to_reconnect(hass: HomeAssistant, aioclient_mo
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.SETUP_ERROR
     assert any(f["context"]["source"] == "reauth" for f in hass.config_entries.flow.async_progress())
+
+
+async def setup(hass, aioclient_mock, scope="control"):
+    mock_bridge(aioclient_mock, scope)
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=URL, data={"setup_code": CODE})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_health_sensors_and_bridge_controls(hass: HomeAssistant, aioclient_mock):
+    await setup(hass, aioclient_mock)
+    assert hass.states.get("sensor.front_door_wi_fi_signal").state == "72"
+    assert hass.states.get("sensor.front_door_last_motion").state.startswith("1970-01-01")
+    problem = hass.states.get("binary_sensor.front_door_problem")
+    assert problem.state == "on" and problem.attributes["issues"] == ["weak_wifi"]
+
+    assert hass.states.get("select.wyze_tunnel_alert_mode").state == "schedule"
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": "select.wyze_tunnel_alert_mode", "option": "away"}, blocking=True
+    )
+    await hass.services.async_call("button", "press", {"entity_id": "button.front_door_pan_left"}, blocking=True)
+    posts = {str(c[1]): c[2] for c in aioclient_mock.mock_calls if c[0] == "POST"}
+    assert posts[f"{URL}/api/v1/mode"] == {"mode": "away"}
+    assert posts[f"{URL}/api/v1/cameras/front/commands/rotary_action"] == {"value": "left"}
+
+
+async def test_new_detections_fire_events(hass: HomeAssistant, aioclient_mock):
+    entry = await setup(hass, aioclient_mock)
+    event = hass.states.get("event.front_door_activity")
+    assert event.state == "unknown"  # the event already in the log when Home Assistant started isn't replayed
+    assert event.attributes["device_class"] == "doorbell"
+
+    coordinator = entry.runtime_data
+    for label, kind in (("car", "vehicle"), ("doorbell", "doorbell"), ("kangaroo", "motion")):
+        cam = coordinator.data["front"] | {"last_event": {"type": label, "ts": coordinator.data["front"]["last_event"]["ts"] + 1}}
+        coordinator.async_set_updated_data({"front": cam})
+        await hass.async_block_till_done()
+        event = hass.states.get("event.front_door_activity")
+        assert (event.attributes["event_type"], event.attributes["label"]) == (kind, label)
+
+
+async def test_diagnostics_hide_secrets(hass: HomeAssistant, aioclient_mock):
+    from custom_components.wyze_tunnel.diagnostics import async_get_config_entry_diagnostics
+
+    entry = await setup(hass, aioclient_mock)
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    assert TOKEN not in json.dumps(diag) and "apps:k" not in json.dumps(diag)
+    assert diag["cameras"]["front"]["wifi"] == 72

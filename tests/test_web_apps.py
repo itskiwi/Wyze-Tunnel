@@ -81,6 +81,22 @@ def test_view_token_reads_but_cannot_control(client):
     assert as_app(c, {"Authorization": "Bearer wt_nope"}, "GET", "/api/v1/cameras").status_code == 401
 
 
+def test_cameras_carry_health_and_last_event(client, monkeypatch):
+    from wyzebridge import api_v1
+
+    c = client[0]
+    h = make(c, "view")
+    monkeypatch.setattr(api_v1, "EVENT_LOG", [
+        {"uri": "back", "ts": 9, "label": "person"},
+        {"uri": "front", "ts": 8, "label": "rang the doorbell"},
+        {"uri": "front", "ts": 7},
+    ])
+    with mock.patch.dict(CAMS["front"], {"camera_info": {"basicInfo": {"wifidb": "30"}}}):
+        cam = as_app(c, h, "GET", "/api/v1/cameras").json[0]
+    assert cam["wifi"] == 30 and cam["issues"] == ["weak_wifi"]
+    assert cam["last_event"] == {"type": "doorbell", "ts": 8}
+
+
 def test_control_token_sends_commands_and_removal_ends_access(client):
     c, streams, integrations, tmp_path = client
     h = make(c, "control")

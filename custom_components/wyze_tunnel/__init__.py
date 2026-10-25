@@ -16,7 +16,9 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator, UpdateFailed
 
 DOMAIN = "wyze_tunnel"
-PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SWITCH]
+PLATFORMS = [
+    Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SWITCH, Platform.EVENT, Platform.SENSOR, Platform.BUTTON, Platform.SELECT
+]
 # Wyze Tunnel keeps a camera's motion flag up for 20 seconds, so polling every 5 can't miss one.
 SCAN_INTERVAL = timedelta(seconds=5)
 _LOGGER = logging.getLogger(__name__)
@@ -74,14 +76,23 @@ class WyzeTunnelApi:
     async def command(self, cam: str, cmd: str, value=None) -> dict:
         return await self.request("POST", f"cameras/{cam}/commands/{cmd}", json={"value": value}, timeout=30)
 
+    async def mode(self) -> str:
+        return (await self.request("GET", "mode"))["mode"]
+
+    async def set_mode(self, mode: str) -> dict:
+        return await self.request("POST", "mode", json={"mode": mode})
+
 
 class WyzeTunnelCoordinator(DataUpdateCoordinator[dict[str, dict]]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry, api: WyzeTunnelApi, scope: str) -> None:
         super().__init__(hass, _LOGGER, config_entry=entry, name=DOMAIN, update_interval=SCAN_INTERVAL)
         self.api, self.scope = api, scope
+        self.mode: str | None = None  # Home, Away or schedule; only read with a control key, which can change it
 
     async def _async_update_data(self) -> dict[str, dict]:
         try:
+            if self.scope == "control":
+                self.mode = await self.api.mode()
             return {cam["id"]: cam for cam in await self.api.cameras()}
         except AuthError as ex:
             raise ConfigEntryAuthFailed("The token was removed in Wyze Tunnel") from ex
@@ -131,3 +142,13 @@ class WyzeTunnelEntity(CoordinatorEntity[WyzeTunnelCoordinator]):
     @property
     def available(self) -> bool:
         return super().available and self.cam_id in self.coordinator.data
+
+
+def bridge_device(coordinator: WyzeTunnelCoordinator) -> DeviceInfo:
+    """Wyze Tunnel itself, for things that aren't about one camera."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, coordinator.config_entry.unique_id)},
+        name="Wyze Tunnel",
+        manufacturer="Wyze Tunnel",
+        configuration_url=coordinator.api.url,
+    )
