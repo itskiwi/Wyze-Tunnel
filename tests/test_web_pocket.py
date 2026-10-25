@@ -48,3 +48,41 @@ def test_pair_code_expires(setup):  # noqa: F811
     with mock.patch("wyzebridge.pocket.time.time", return_value=10**12):
         assert client.get("/pair/" + code).status_code == 410
     assert client.get("/pair/nope").status_code == 410
+
+
+FAKE_AWAY = """#!/usr/bin/env python3
+import json, sys
+args = dict(zip(sys.argv[1::2], sys.argv[2::2]))
+json.dump({"state": "Running", "auth_url": "", "host": "wyze-tunnel.tail1234.ts.net"}, open(args["-status"], "w"))
+sys.stdin.read()  # like wyze-away, it exits when the bridge closes its stdin
+"""
+
+
+def test_away_access_turns_on_and_heals(setup, tmp_path):  # noqa: F811
+    client, _, _ = setup
+    owner = basic("owner", "ownerpass")
+    fake = tmp_path / "wyze-away"
+    fake.write_text(FAKE_AWAY)
+    fake.chmod(0o755)
+    from wyzebridge import pocket
+
+    with mock.patch.object(pocket, "AWAY_BIN", str(fake)), mock.patch.object(pocket, "AWAY_DIR", tmp_path / "ts"):
+        assert client.get("/away", headers=owner).json == {"available": True, "on": False, "state": "", "auth_url": "", "host": ""}
+        assert client.post("/away", json={"on": True}, headers=owner).json["on"]
+        for _ in range(50):
+            if pocket.Away.status()["state"] == "Running":
+                break
+            pocket.time.sleep(0.1)
+        codes = client.post("/pair", headers=owner).json
+        assert codes["anywhere"]["url"].startswith("http://wyze-tunnel.tail1234.ts.net/pair/")
+
+        pocket.Away.proc.kill()
+        pocket.Away.proc.wait()
+        pocket.Away.health_check()
+        assert pocket.Away.running()
+
+        proc = pocket.Away.proc
+        assert not client.post("/away", json={"on": False}, headers=owner).json["on"]
+        assert proc.wait(5) is not None and not pocket.Away.running()
+        pocket.Away.health_check()
+        assert pocket.Away.proc is None

@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 from threading import Thread
 
-from wyzebridge import config, detect, guests, integrations, recording, timelapse, webhooks
+from wyzebridge import config, detect, guests, integrations, pocket, recording, timelapse, webhooks
 from wyzebridge.auth import STREAM_AUTH, WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream
 from wyzebridge.go2rtc import lan_controls, tutk_available
@@ -56,6 +56,7 @@ class WyzeBridge(Thread):
     def health_check(self) -> None:
         self.mtx.health_check()
         WyzeStream.go2rtc.health_check()
+        pocket.Away.health_check()
 
     def restart(self, fresh_data: bool = False) -> None:
         self.mtx.stop()

@@ -51,10 +51,11 @@ if (-not (Test-Path $Settings)) {
         "WB_PASSWORD=$Password"
     )
 }
-# Cameras answer go2rtc over UDP and other devices reach MediaMTX, so both need inbound firewall rules.
+# Cameras answer go2rtc over UDP, other devices reach MediaMTX, and phones away from home connect straight to
+# wyze-away (embedded Tailscale) instead of through a slower relay, so all three need inbound firewall rules.
 # One Windows permission prompt, only when a rule is missing or a Block rule (from a canceled firewall prompt) exists.
-# Only Wyze Tunnel's own two programs are touched (approved by the project owner, 2026-10-24).
-$Exes = 'go2rtc.exe', 'mediamtx.exe' | ForEach-Object { Join-Path $Native "wyze-tunnel\$_" }
+# Only Wyze Tunnel's own programs are touched (approved by the project owner, 2026-10-24).
+$Exes = 'go2rtc.exe', 'mediamtx.exe', 'wyze-away.exe' | ForEach-Object { Join-Path $Native "wyze-tunnel\$_" }
 $NeedsFix = $Exes | Where-Object {
     $rules = Get-NetFirewallApplicationFilter -Program $_ -ErrorAction SilentlyContinue | Get-NetFirewallRule -ErrorAction SilentlyContinue |
         Where-Object { $_.Direction -eq 'Inbound' -and $_.Enabled -eq 'True' }

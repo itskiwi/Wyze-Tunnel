@@ -44,6 +44,7 @@ def create_app():
     app.jinja_env.globals["current_guest"] = web_ui.current_guest
     wb = WyzeBridge()
     Thread(target=webhooks.announce_update, daemon=True).start()
+    pocket.Away.health_check()
     try:
         wb.start()
     except RuntimeError as ex:
@@ -600,6 +601,7 @@ def create_app():
             username=WbAuth.username,
             enabled=WbAuth.enabled,
             api=WbAuth.api,
+            away=pocket.Away.status(),
             version=config.VERSION,
         )
 
@@ -634,8 +636,18 @@ def create_app():
             host = pocket.lan_ip()
         codes = {"home": f"{request.scheme}://{host}{port}{path}"}
         if (ts_host := pocket.tailscale_host()) and ts_host != host:
-            codes["anywhere"] = f"http://{ts_host}{port}{path}"
+            # The bundled Tailscale serves the web UI on port 80.
+            codes["anywhere"] = f"http://{ts_host}{'' if ts_host == pocket.Away.status()['host'] else port}{path}"
         return {k: {"url": url, "qr": pocket.qr_svg(url)} for k, url in codes.items()}
+
+    @app.route("/away", methods=["GET", "POST"])
+    @owner_only
+    def away():
+        if request.method == "POST":
+            if not pocket.Away.available():
+                return {"error": "Away access isn't included in this install."}, 400
+            pocket.Away.turn(bool((request.get_json(silent=True) or {}).get("on")))
+        return pocket.Away.status()
 
     @app.route("/pair/<string:code>")
     def pair_phone(code: str):
