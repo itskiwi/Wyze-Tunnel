@@ -22,12 +22,18 @@ def setup(tmp_path, monkeypatch, total, free):
     return cam
 
 
-def test_keeps_15_percent_of_a_big_drive_free(tmp_path, monkeypatch):
-    # 1 TB drive with 150 GB minus 2 MB free: 15% (150 GB) beats the 5 GB floor
-    cam = setup(tmp_path, monkeypatch, 1000 * GB, 150 * GB - 2 * 1024**2)
-    assert recording.disk_use()["total"] == 1000 * GB
+def test_keeps_15_percent_of_the_drive_free(tmp_path, monkeypatch):
+    # 100 GB drive with 15 GB minus 2 MB free: 15% (15 GB) beats the 5 GB floor
+    cam = setup(tmp_path, monkeypatch, 100 * GB, 15 * GB - 2 * 1024**2)
+    assert recording.disk_use()["total"] == 100 * GB
     assert recording.trim() == 2 * 1024**2
     assert [f.name for f in cam.iterdir()] == ["2.mp4"]
+
+
+def test_big_drive_caps_the_floor_at_20gb(tmp_path, monkeypatch):
+    # 2 TB drive with 251 GB free (13.5%): 15% would be 279 GB and delete every clip
+    setup(tmp_path, monkeypatch, 1862 * GB, 251 * GB)
+    assert recording.trim() == 0
 
 
 def test_small_drive_uses_5gb_floor(tmp_path, monkeypatch):

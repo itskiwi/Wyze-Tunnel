@@ -22,6 +22,7 @@ KEEP_CHOICES = (1, 3, 7, 14, 30)
 MAX_GB_CHOICES = (0, 25, 50, 100, 250, 500, 1000)  # 0 is no limit
 MIN_FREE = 5 * 1024**3  # always leave this much of the drive free, whatever the settings
 MIN_FREE_SHARE = 0.15  # or this share of the drive, if more: Windows slows down when nearly full
+MAX_FREE_FLOOR = 20 * 1024**3  # but never reserve more than this: 15% of a 2 TB drive would wipe every clip
 DEFAULT_KEEP_DAYS = 7  # a camera writes roughly 10-20 GB a day, so a fresh install can't quietly fill the disk
 
 
@@ -100,7 +101,7 @@ def trim() -> int:
     clips = sorted((f for f in root.rglob("*.mp4") if _mtime(f) < time.time() - 120), key=_mtime)
     use = disk_use()
     limit = (load_settings().get("max_gb") or 0) * 1024**3
-    floor = max(MIN_FREE, use.get("total", 0) * MIN_FREE_SHARE)
+    floor = max(MIN_FREE, min(use.get("total", 0) * MIN_FREE_SHARE, MAX_FREE_FLOOR))
     over = max(use["used"] - limit if limit else 0, floor - use["free"] if use["free"] else 0)
     freed = 0
     for clip in clips:
