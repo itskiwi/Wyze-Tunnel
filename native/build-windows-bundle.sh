@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the bundle the Windows desktop app runs natively (no WSL): embeddable Python with the app's
-# packages, the source, MediaMTX, go2rtc and ffmpeg. The Wyze SDK is Linux-only, so cameras connect through go2rtc.
+# packages, the source, MediaMTX, go2rtc, wyze-ioctl and ffmpeg. The Wyze SDK is Linux-only, so cameras connect through go2rtc.
 # Usage: native/build-windows-bundle.sh [out-dir]   (set VERSION=x.y.z to stamp the version)
 # Output: <out-dir>/wyze-tunnel-windows-x86_64.zip
 set -euo pipefail
@@ -33,6 +33,9 @@ get "https://github.com/bluenviron/mediamtx/releases/download/v${MTX_TAG}/mediam
 unzip -q "$TMP/dl.zip" mediamtx.exe mediamtx.yml -d "$STAGE"
 get "https://github.com/AlexxIT/go2rtc/releases/download/v${GO2RTC_TAG}/go2rtc_win64.zip"
 unzip -q "$TMP/dl.zip" go2rtc.exe -d "$STAGE"
+# Camera commands (PTZ, night vision...) over the LAN through go2rtc's Wyze client; keep its go.mod on GO2RTC_TAG.
+grep -q "AlexxIT/go2rtc v$GO2RTC_TAG\$" "$SRC/native/wyze-ioctl/go.mod" || { echo "native/wyze-ioctl/go.mod isn't on go2rtc v$GO2RTC_TAG" >&2; exit 1; }
+(cd "$SRC/native/wyze-ioctl" && go test ./... && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$STAGE/wyze-ioctl.exe" .)
 get "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 unzip -q -j "$TMP/dl.zip" '*/bin/ffmpeg.exe' '*/bin/ffprobe.exe' -d "$STAGE/bin"
 

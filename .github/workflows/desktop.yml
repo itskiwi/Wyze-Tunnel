@@ -32,6 +32,8 @@ jobs:
             args: ''
             out: desktop/src-tauri/target/release/bundle/nsis/*.exe
     runs-on: ${{ matrix.os }}
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
     defaults:
       run:
         working-directory: desktop
@@ -44,7 +46,32 @@ jobs:
         with:
           targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
       - run: npm ci
-      - run: npx tauri build ${{ matrix.args }}
+      # Signs the app and its installer with Microsoft's Artifact Signing (formerly Trusted Signing), so Windows
+      # doesn't show "Windows protected your PC". Skipped until the six secrets are set (see docs/windows-signing.md).
+      - name: Set up Windows code signing
+        if: runner.os == 'Windows' && env.AZURE_CLIENT_ID != ''
+        shell: bash
+        env:
+          ENDPOINT: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+          ACCOUNT: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+          PROFILE: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
+        run: |
+          cargo install trusted-signing-cli --version 0.11.0 --locked
+          printf '{"bundle":{"windows":{"signCommand":"trusted-signing-cli -e %s -a %s -c %s %%1"}}}' \
+            "$ENDPOINT" "$ACCOUNT" "$PROFILE" > signing.json
+          echo "SIGN_ARGS=--config signing.json" >> "$GITHUB_ENV"
+      - run: npx tauri build ${{ matrix.args }} ${{ env.SIGN_ARGS }}
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      - name: Check the installer is signed
+        if: env.SIGN_ARGS != ''
+        shell: pwsh
+        run: |
+          $s = Get-AuthenticodeSignature (Get-Item src-tauri/target/release/bundle/nsis/*.exe)
+          $s | Format-List Status, SignerCertificate
+          if ($s.Status -ne 'Valid') { exit 1 }
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ runner.os }}
