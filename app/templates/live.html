@@ -246,12 +246,8 @@
                             </div>
                             {% endfor %}
                         </details>
-                    </div>
-                </details>
-                <details class="dropdown">
-                    <summary class="cam-action" title="Stream links" aria-label="Stream links for {{ camera.nickname }}"><i class="fas fa-link"></i></summary>
-                    <div class="menu cam-menu">
-                        <p class="menu-label">Video streams</p>
+                        <details class="mt-1">
+                            <summary class="menu-label cursor-pointer list-none"><i class="fas fa-link"></i> Stream links and recordings <i class="fas fa-angle-down ml-auto"></i></summary>
                         {% if camera.webrtc_url %}
                         <a href="{{camera.webrtc_url}}" class="menu-item stream-link" target="_blank"><i class="fas fa-file-code w-4"></i>WebRTC{% if api %}<i class="fas fa-lock ml-auto text-xs text-zinc-500"></i>{% endif %}</a>
                         {% endif %}
@@ -273,6 +269,7 @@
                         <p class="menu-label">Snapshots</p>
                         <a href="{{camera.snapshot_url}}" class="menu-item" target="_blank"><i class="fas fa-file-image w-4"></i>RTSP snapshot{% if api %}<i class="fas fa-lock ml-auto text-xs text-zinc-500"></i>{% endif %}</a>
                         <a href="{{camera.thumbnail_url}}" class="menu-item" target="_blank"><i class="fas fa-file-image w-4"></i>API thumbnail{% if api %}<i class="fas fa-lock ml-auto text-xs text-zinc-500"></i>{% endif %}</a>
+                        </details>
                     </div>
                 </details>
                 <button class="toggle-details cam-action" data-cam="{{cam_uri}}" title="Camera details" aria-label="Details for {{ camera.nickname }}">
