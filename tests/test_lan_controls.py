@@ -44,7 +44,7 @@ def test_pan_without_a_reply(tmp_path, monkeypatch):
 def test_camera_unreachable(tmp_path, monkeypatch):
     fake_helper(tmp_path, monkeypatch, fail=True)
     resp = wyze_control.handle_cmd(go2rtc.LanSession(cam()), ("night_vision", ""))
-    assert resp["status"] == "success" and resp["response"] is None  # like a TUTK timeout
+    assert resp["status"] == "error" and "discovery timeout" in resp["response"]
 
 
 def test_lan_controls_needs_lan_and_the_helper(tmp_path, monkeypatch):
