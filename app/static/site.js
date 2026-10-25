@@ -781,6 +781,25 @@ document.addEventListener("DOMContentLoaded", () => {
     const label = COMMAND_WORDS[cmd] || cmd[0].toUpperCase() + cmd.slice(1).replaceAll("_", " ");
     return `${label} ${PAYLOAD_WORDS[payload] ?? payload}`.trim();
   }
+  // Picture-in-picture: one camera floats over other apps and tabs.
+  document.querySelectorAll(".pip").forEach((btn) => {
+    btn.classList.toggle("is-hidden", !document.pictureInPictureEnabled);
+    btn.addEventListener("click", () => {
+      const video = document.querySelector(`#${CSS.escape(btn.dataset.cam)} video`);
+      if (!video) { return }
+      if (document.pictureInPictureElement === video) { document.exitPictureInPicture(); return }
+      const name = document.querySelector(`#${CSS.escape(btn.dataset.cam)} .card-header-title .truncate`)?.textContent || btn.dataset.cam;
+      if (video.readyState < 1) {
+        // The browser only floats a video that has started; the tap that starts it can't wait for that.
+        if (video.classList.contains("hls")) { loadHLS(video); }
+        if (video.classList.contains("webrtc")) { loadWebRTC(video); }
+        video.play().catch(() => { });
+        sendNotification(name, "Starting the video. Tap the button again in a moment to float it.");
+        return;
+      }
+      video.requestPictureInPicture().catch((err) => sendNotification(name, `Picture-in-picture didn't work. ${err.message}`, "danger"));
+    })
+  })
   // cam control
   document.querySelectorAll(".cam-control").forEach((e) => {
     let { cam } = e.dataset;
