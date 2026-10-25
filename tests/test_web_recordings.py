@@ -177,3 +177,73 @@ def test_trim_deletes_oldest_clips_over_the_limit(tmp_path, monkeypatch):
     monkeypatch.setattr(recording, "MIN_FREE", 10**12 + 1024**2)  # drive nearly full
     monkeypatch.setattr(recording, "disk_use", lambda: {"used": 0, "free": 10**12})
     assert recording.trim() == 1024**2 and not (cam / "2.mp4").exists()
+
+
+def test_clips_copy_to_a_cloud_folder_and_old_copies_go(tmp_path, monkeypatch):
+    import time
+    from datetime import date
+
+    from wyzebridge import recording
+
+    monkeypatch.setattr(recording, "RECORD_PATH", str(tmp_path / "record" / "%path" / "%Y-%m-%d_%H-%M-%S-%f"))
+    monkeypatch.setattr(recording, "SETTINGS_FILE", str(tmp_path / "record.json"))
+    monkeypatch.setattr(recording, "CLOUD_FILE", str(tmp_path / "cloud.json"))
+    assert recording.back_up_clips() == 0  # off
+    cloud = tmp_path / "OneDrive"
+    cloud.mkdir()
+    with pytest.raises(ValueError, match="already exists"):
+        recording.save_cloud({"folder": str(tmp_path / "missing")}, [])
+    recording.save_cloud({"folder": str(cloud), "cams": ["front", "gone"]}, ["front", "back"])
+    assert recording.load_cloud()["cams"] == ["front"]
+    hour_ago = time.time() - 3600
+    for cam, name in (("front", "done.mp4"), ("front", "live.mp4"), ("back", "other.mp4")):
+        (tmp_path / "record" / cam).mkdir(parents=True, exist_ok=True)
+        (tmp_path / "record" / cam / name).write_bytes(b"clip")
+        if name != "live.mp4":  # live.mp4 is still being written
+            os.utime(tmp_path / "record" / cam / name, (hour_ago, hour_ago))
+    copy = cloud / "Wyze Tunnel" / "front" / date.fromtimestamp(hour_ago).isoformat() / "done.mp4"
+    stale = cloud / "Wyze Tunnel" / "front" / "2020-01-01" / "old.mp4"
+    theirs = cloud / "holiday.mp4"  # not written by us, so never touched
+    for path in (stale, theirs):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"old")
+        os.utime(path, (0, 0))
+
+    assert recording.back_up_clips() == 1
+    assert copy.read_bytes() == b"clip" and (tmp_path / "record" / "front" / "done.mp4").exists()
+    assert not stale.parent.exists() and theirs.exists()
+    assert not (cloud / "Wyze Tunnel" / "back").exists()  # camera not picked
+    assert recording.back_up_clips() == 0  # already copied
+    status = recording.load_cloud()
+    assert status["last"] and not status["error"]
+
+    cloud.rename(tmp_path / "unplugged")
+    assert recording.back_up_clips() == 0
+    assert "isn't there" in recording.load_cloud()["error"] and recording.load_cloud()["last"] == status["last"]
+    assert not cloud.exists()  # not recreated
+
+
+def test_cloud_backup_settings_route(tmp_path, monkeypatch):
+    from wyzebridge import recording, web_ui
+
+    monkeypatch.setattr(recording, "CLOUD_FILE", str(tmp_path / "cloud.json"))
+    monkeypatch.setattr(web_ui.WbAuth, "enabled", False)
+    import frontend
+
+    with mock.patch.object(frontend, "WyzeBridge") as bridge:
+        client = frontend.create_app().test_client()
+    bridge.return_value.streams.streams = {"front": None}
+    bridge.return_value.api.total_cams = 1
+    resp = client.post("/recordings/backup", json={"folder": "not/a/real/folder"})
+    assert resp.status_code == 400 and "already exists" in resp.json["error"]
+    with mock.patch.object(frontend, "Thread") as thread:
+        assert client.post("/recordings/backup", json={"folder": str(tmp_path), "cams": ["front"]}).json["on"]
+    assert thread.call_args.kwargs["target"] == recording.back_up_clips
+    assert recording.load_cloud()["folder"] == str(tmp_path)
+    with mock.patch.object(web_ui, "all_cams", return_value={"cameras": {"front": {"nickname": "Front", "record": True}}}):
+        page = client.get("/recordings").data.decode()
+    assert "Back up clips to the cloud" in page and f'value="{tmp_path}"' in page
+    with mock.patch.object(web_ui, "current_guest", return_value={"name": "Guest"}):
+        assert client.post("/recordings/backup", json={"folder": ""}).status_code == 403
+    assert client.post("/recordings/backup", json={"folder": ""}).json["on"] is False
+    assert recording.load_cloud() == {}

@@ -11,12 +11,13 @@ import yaml
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from wyzebridge import detect, masks, phrases, privacy, timelapse, weather, webhooks, wyze_api, wyze_stream
+from wyzebridge import detect, masks, phrases, privacy, recording, timelapse, weather, webhooks, wyze_api, wyze_stream
 from wyzebridge.config import TOKEN_PATH, VERSION
 from wyzebridge.logging import logger
 
 AUTO_FILE = TOKEN_PATH + "auto_backup.json"
 AUTO_KEEP = 7  # daily files kept in the folder
+FOLDER_EXAMPLE = r"D:\Wyze Tunnel backups" if os.name == "nt" else "/media/backups"
 
 
 def _files() -> dict[str, str]:
@@ -34,6 +35,7 @@ def _files() -> dict[str, str]:
         "zones": detect.ZONES_FILE,
         "masks": masks.MASKS_FILE,
         "location": weather.LOCATION_FILE,
+        "clip_backup": recording.CLOUD_FILE,
     }
 
 
@@ -121,6 +123,10 @@ def _location(value) -> dict:
     if not isinstance(value, dict) or not all(isinstance(value.get(k, 0), (int, float)) for k in ("lat", "lon")):
         raise ValueError
     return {k: value[k] for k in ("lat", "lon", "name", "unit", "weather") if k in value}
+def _clip_backup(value) -> dict:
+    if not isinstance(value, dict) or not isinstance(folder := value.get("folder", ""), str):
+        raise ValueError
+    return {"folder": folder, "cams": _str_list(value.get("cams", []))}
 
 
 def import_settings(backup: dict) -> list[str]:
@@ -142,6 +148,7 @@ def import_settings(backup: dict) -> list[str]:
         "zones": _zones,
         "masks": _zones,
         "location": _location,
+        "clip_backup": _clip_backup,
         "timelapse": lambda v: {"cams": _str_list(v.get("cams", []) if isinstance(v, dict) else None)},
     }
     try:
@@ -174,14 +181,18 @@ def _write_auto(settings: dict) -> None:
         json.dump(settings, f)
 
 
+def check_folder(folder: str) -> None:
+    if not os.path.isabs(folder) or not os.path.isdir(folder) or not os.access(folder, os.W_OK):
+        raise ValueError(f"Pick a folder that already exists and that Wyze Tunnel can write to, like {FOLDER_EXAMPLE}.")
+
+
 def save_auto(form: dict) -> dict:
     """Turn the daily locked backup on (a folder and passphrase) or off (an empty folder)."""
     folder = str(form.get("folder") or "").strip()
     if not folder:
         _write_auto({})
         return {}
-    if not os.path.isabs(folder) or not os.path.isdir(folder) or not os.access(folder, os.W_OK):
-        raise ValueError("Pick a folder that already exists and that Wyze Tunnel can write to, like /media/backups.")
+    check_folder(folder)
     passphrase = str(form.get("passphrase") or "") or load_auto().get("passphrase", "")
     encrypt({}, passphrase)  # raises the same "at least 8 characters" message
     settings = {"folder": folder, "passphrase": passphrase, "last": 0}
