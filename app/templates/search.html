@@ -59,7 +59,10 @@
 {% endif %}
 
 {% if enabled %}
-<div id="labels" class="seg mb-5 max-w-full overflow-x-auto" role="group" aria-label="What was seen"></div>
+<div class="mb-5 flex flex-wrap items-center gap-3">
+    <div id="labels" class="seg max-w-full overflow-x-auto" role="group" aria-label="What was seen"></div>
+    <button id="reel" class="btn ml-auto" type="button"><i class="fas fa-film"></i>Last 24 hours in a minute</button>
+</div>
 <div id="playerBox" class="mb-5 hidden overflow-hidden rounded-3xl bg-black">
     <video id="player" class="aspect-video max-h-[70vh] w-full" controls playsinline></video>
     <p id="nowPlaying" class="bg-zinc-900 px-4 py-3 text-sm text-zinc-400"></p>
@@ -153,11 +156,18 @@
         const player = document.getElementById("player");
         box.classList.remove("hidden");
         player.src = hit.clip;
-        player.onerror = () => { document.getElementById("nowPlaying").textContent = `${caption}. This part of the recording isn't available any more.`; };
+        player.onerror = () => { document.getElementById("nowPlaying").textContent = `${caption}. ${hit.missing || "This part of the recording isn't available any more."}`; };
         player.play().catch(() => { });
         document.getElementById("nowPlaying").textContent = caption;
         box.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
+
+    // The day's hits back to back, one picture a second.
+    document.getElementById("reel").addEventListener("click", () => {
+        const cam = select.value;
+        play({ clip: `detections/reel.mp4?${new URLSearchParams(cam ? { cam } : {})}&t=${Date.now()}`, missing: "Nothing was spotted in the last day." },
+            `The last 24 hours on ${cam ? cameras[cam] || cam : "every camera"}, one picture a second`);
+    });
 
     function load(append = false) {
         if (!append) {
