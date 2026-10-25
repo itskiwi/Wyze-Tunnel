@@ -58,3 +58,12 @@ def test_pages_use_plain_words(client):
     assert "<title>Live · Wyze Tunnel</title>" in live
     assert ">idle<" in live and "stopped" not in live
     assert "Account and sharing" in live and "Wyze login" not in live
+
+
+def test_menu_is_simple_until_advanced_is_on(client):
+    page = client.get("/health").get_data(as_text=True)
+    assert "Choose cameras" in page and "Show advanced" in page
+    assert 'href="network"' not in page and 'href="apps"' not in page
+    client.set_cookie("advanced", "1")
+    page = client.get("/health").get_data(as_text=True)
+    assert 'href="network"' in page and 'href="apps"' in page and "Show fewer options" in page
