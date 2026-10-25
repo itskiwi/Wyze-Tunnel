@@ -4,7 +4,8 @@
 {% block content %}
 <header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
     <h1 class="page-title">Camera health</h1>
-    <a href="diagnostics" class="btn ml-auto"><i class="fas fa-file-arrow-down"></i>Download diagnostics</a>
+    {% if cameras %}<button id="checkAll" class="btn btn-primary ml-auto" type="button" title="Watch each camera for a few seconds and say what's wrong"><i class="fas fa-stethoscope"></i>Check every camera</button>{% endif %}
+    <a href="diagnostics" class="btn {{ '' if cameras else 'ml-auto' }}"><i class="fas fa-file-arrow-down"></i>Download diagnostics</a>
 </header>
 
 {% if cameras %}
@@ -39,7 +40,7 @@
     {% if cam.net_mode == "relay" %}{% set _ = tips.append("Streaming through Wyze's relay servers, which adds delay and can drop. If the camera is on your home Wi-Fi, check that Wyze Tunnel is on the same network.") %}{% endif %}
     {% if cam.net_mode == "internet" %}{% set _ = tips.append("Connected over the internet, not your home network. It works, but uses the camera's internet upload while you watch.") %}{% endif %}
     {% if cam.is_battery %}{% set _ = tips.append("Battery camera: it sleeps between events, so it shows as idle most of the time.") %}{% endif %}
-    <article class="surface p-5">
+    <article class="surface p-5" data-cam="{{ uri }}" data-enabled="{{ cam.enabled }}">
         <div class="flex items-center gap-2">
             <i class="fas fa-circle text-[8px] {{ 'text-rose-400' if cam.status == -90 else 'text-emerald-400' if cam.status == 3 else 'text-zinc-500' }}"></i>
             <h2 class="truncate font-semibold">{{ cam.nickname }}</h2>
@@ -56,6 +57,7 @@
             <dt>Data use</dt><dd class="usage" data-cam="{{ uri }}">Not streaming</dd>
             {% if cam.status == 3 and cam.start_time %}<dt>Streaming for</dt><dd>{{ ((now - cam.start_time) / 60)|int }} min</dd>{% endif %}
         </dl>
+        <p class="check-result mt-3 hidden text-sm" role="status"></p>
         {% if tips %}
         <ul class="mt-3 space-y-2 border-t border-white/5 pt-3 text-sm text-amber-200">
             {% for tip in tips %}<li>{{ tip }}</li>{% endfor %}
@@ -69,6 +71,33 @@
     {% endfor %}
 </div>
 <p class="mt-6 text-sm text-zinc-500">Wi-Fi and SD card details appear once a camera has connected at least once.</p>
+<script>
+    // One tap watches every camera for a few seconds (the setup stream test), 3 at a time so the PC isn't swamped.
+    document.getElementById("checkAll")?.addEventListener("click", async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        const cards = [...document.querySelectorAll("article[data-cam]")];
+        cards.forEach((c) => { const r = c.querySelector(".check-result"); r.className = "check-result mt-3 text-sm text-zinc-400"; r.textContent = c.dataset.enabled === "True" ? "Waiting to check…" : "Turned off in Wyze Tunnel, so it wasn't checked."; });
+        const queue = cards.filter((c) => c.dataset.enabled === "True");
+        const total = queue.length;
+        let ok = 0;
+        async function worker() {
+            for (let card; (card = queue.shift());) {
+                const out = card.querySelector(".check-result");
+                out.textContent = "Checking…";
+                const r = await fetch(`api/${encodeURIComponent(card.dataset.cam)}/stream-test`).then((x) => x.json()).catch(() => ({ error: "no reply", warnings: ["Wyze Tunnel didn't answer. Try again."] }));
+                const good = !r.error && !(r.warnings || []).length;
+                ok += good ? 1 : 0;
+                out.className = `check-result mt-3 text-sm ${r.error ? "text-rose-300" : good ? "text-emerald-300" : "text-amber-200"}`;
+                out.textContent = r.error ? (r.warnings || [r.error]).join(" ") : `Working: ${r.width}×${r.height}, ${r.fps} frames a second. ${(r.warnings || []).join(" ")}`.trim();
+            }
+        }
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>Checking…';
+        await Promise.all([worker(), worker(), worker()]);
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fas fa-stethoscope"></i>${ok} of ${total} working fine`;
+    });
+</script>
 <script>
     // Two readings of MediaMTX's byte counters, 5 seconds apart, make a rate.
     (() => {
