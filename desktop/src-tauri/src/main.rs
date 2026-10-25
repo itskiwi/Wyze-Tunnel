@@ -4,7 +4,7 @@
 // Setup is the repo's installer scripts. The cameras themselves are in the bridge's web UI.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -353,13 +353,24 @@ fn run_installer(app: &AppHandle, res: &Path, full: bool) -> Result<i32, String>
     let result = (|| {
         let mut child = vm::install_cmd(res, full).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
         let stderr = child.stderr.take().unwrap();
-        let app2 = app.clone();
+        // Also kept in a file: an update from the tray has no window, so its output (a skipped firewall prompt, say) was lost.
+        let file = std::fs::File::create(std::env::temp_dir().join("wyze-tunnel-install.log")).map_err(|e| e.to_string())?;
+        let (app2, mut file2) = (app.clone(), file.try_clone().map_err(|e| e.to_string())?);
         let errs = std::thread::spawn(move || {
-            BufReader::new(stderr).lines().map_while(Result::ok).for_each(|l| drop(app2.emit("log", l)))
+            BufReader::new(stderr).lines().map_while(Result::ok).for_each(|l| {
+                let _ = writeln!(file2, "{l}");
+                let _ = app2.emit("log", l);
+            })
         });
-        BufReader::new(child.stdout.take().unwrap()).lines().map_while(Result::ok).for_each(|l| drop(app.emit("log", l)));
+        let mut file = file;
+        BufReader::new(child.stdout.take().unwrap()).lines().map_while(Result::ok).for_each(|l| {
+            let _ = writeln!(file, "{l}");
+            let _ = app.emit("log", l);
+        });
         let _ = errs.join();
-        child.wait().map(|s| s.code().unwrap_or(1)).map_err(|e| e.to_string())
+        let code = child.wait().map(|s| s.code().unwrap_or(1)).map_err(|e| e.to_string());
+        let _ = writeln!(file, "exit code: {code:?}");
+        code
     })();
     BUSY.store(false, Ordering::SeqCst);
     if result == Ok(0) {
