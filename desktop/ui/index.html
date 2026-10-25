@@ -58,7 +58,7 @@ async function showWhenUp(openBrowser) {
   const pw = await invoke("password");
   $("pw").textContent = pw || "(the one you set)";
   if (!pw) $("user").textContent = "(the one you set)";
-  say("Wyze Tunnel is running. It opens in your browser; log in with:");
+  say("Wyze Tunnel is running. To sign in from a phone or a browser, use:");
   $("login").hidden = $("open").hidden = false;
   if (openBrowser) invoke("open_ui");
 }

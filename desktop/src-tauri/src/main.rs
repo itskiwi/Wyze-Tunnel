@@ -356,10 +356,72 @@ async fn password() -> String {
     tauri::async_runtime::spawn_blocking(vm::password).await.unwrap_or_default()
 }
 
-/// The web UI opens in the browser: it uses HTTP basic auth, which macOS's webview can't prompt for.
 #[tauri::command]
-fn open_ui() {
+async fn open_ui(app: AppHandle) {
+    open_web(&app);
+}
+
+/// macOS opens the browser: the web UI uses HTTP basic auth, which its webview can't prompt for.
+#[cfg(not(windows))]
+fn open_web(_: &AppHandle) {
     vm::open_url(&url());
+}
+
+/// Windows shows the web UI in its own window, signed in with the generated password.
+#[cfg(windows)]
+fn open_web(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("web") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return;
+    }
+    let built = WebviewWindowBuilder::new(app, "web", WebviewUrl::External("about:blank".parse().unwrap()))
+        .title("Wyze Tunnel")
+        .inner_size(1200.0, 800.0)
+        // Other websites and new-tab links go to the browser; the window stays on the web UI.
+        .on_navigation(|u| {
+            let web = matches!(u.scheme(), "http" | "https");
+            if web && u.host_str() != Some("localhost") {
+                vm::open_url(u.as_str());
+            }
+            !web || u.host_str() == Some("localhost")
+        })
+        .on_new_window(|u, _| {
+            vm::open_url(u.as_str());
+            tauri::webview::NewWindowResponse::Deny
+        })
+        .build();
+    if let Ok(w) = built {
+        sign_in(&w, vm::password(), url());
+    }
+}
+
+/// Answers the web UI's login with the generated password, then loads it. The handler goes in before
+/// the first request so WebView2's own sign-in box never flashes up.
+#[cfg(windows)]
+fn sign_in(w: &tauri::WebviewWindow, password: String, home: String) {
+    use webview2_com::{BasicAuthenticationRequestedEventHandler, Microsoft::Web::WebView2::Win32::ICoreWebView2_10};
+    use windows::core::{Interface, HSTRING};
+    let _ = w.with_webview(move |wv| unsafe {
+        let Ok(core) = wv.controller().CoreWebView2() else { return };
+        // An empty password means a login chosen in the web UI: WebView2 asks for it instead.
+        if let (false, Ok(core10)) = (password.is_empty(), core.cast::<ICoreWebView2_10>()) {
+            let tried = AtomicBool::new(false);
+            let handler = BasicAuthenticationRequestedEventHandler::create(Box::new(move |_, args| {
+                // Once only, so a password that stopped working shows the sign-in box rather than looping.
+                if let (Some(args), false) = (args, tried.swap(true, Ordering::SeqCst)) {
+                    let r = args.Response()?;
+                    r.SetUserName(&HSTRING::from("wbadmin"))?;
+                    r.SetPassword(&HSTRING::from(password.as_str()))?;
+                }
+                Ok(())
+            }));
+            let mut token = 0;
+            let _ = core10.add_BasicAuthenticationRequested(&handler, &mut token);
+        }
+        let _ = core.Navigate(&HSTRING::from(home));
+    });
 }
 
 /// Runs the platform installer (first setup or update), streaming its output as "log" events.
@@ -455,6 +517,9 @@ fn main() {
                 &update,
                 &item("quit", "Quit")?,
             ])?;
+            // The web UI opens in the app on Windows; this keeps a browser tab one click away.
+            #[cfg(windows)]
+            menu.insert(&item("browser", "Open in browser")?, 1)?;
             // Shown only while a camera needs it; everything else runs natively.
             #[cfg(windows)]
             let (full, mut full_shown) = (item("full", "Full camera support (WSL)…")?, false);
@@ -466,7 +531,8 @@ fn main() {
                 .tooltip("Wyze Tunnel")
                 .menu(&menu)
                 .on_menu_event(|app, e| match e.id.as_ref() {
-                    "open" if bridge_up() => open_ui(),
+                    "open" if bridge_up() => open_web(app),
+                    "browser" => vm::open_url(&url()),
                     "open" => open_window(app),
                     "status" => open_window(app),
                     "start" => {
@@ -556,12 +622,12 @@ fn main() {
                 #[cfg(windows)]
                 if tick.is_multiple_of(4) && vm::needs_sdk() != full_shown {
                     full_shown = !full_shown;
-                    let _ = if full_shown { menu.insert(&full, 4) } else { menu.remove(&full) };
+                    let _ = if full_shown { menu.insert(&full, 5) } else { menu.remove(&full) };
                 }
                 #[cfg(windows)]
                 if FIREWALL_BLOCKED.load(Ordering::SeqCst) != firewall_shown {
                     firewall_shown = !firewall_shown;
-                    let _ = if firewall_shown { menu.insert(&firewall, 4) } else { menu.remove(&firewall) };
+                    let _ = if firewall_shown { menu.insert(&firewall, 5) } else { menu.remove(&firewall) };
                 }
                 tick = tick.wrapping_add(1);
                 let text = match (&updating, &desktop, &latest) {
