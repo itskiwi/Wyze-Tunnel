@@ -18,7 +18,7 @@ Then run `docker compose pull && docker compose up -d`. Your `/tokens` volume ke
 
 ## If you want to leave Docker
 
-The [Windows app](../README.md#windows-and-mac-app), the [Linux one-liner](../README.md#linux) and the [Tunnel Box](../README.md#tunnel-box-raspberry-pi-or-mini-pc) don't need Docker. To bring your settings along:
+The [Windows app](../README.md#windows-10-and-11-recommended), the [Linux one-liner](../README.md#linux) and the [Tunnel Box](../README.md#tunnel-box-raspberry-pi-or-mini-pc) don't need Docker. To bring your settings along:
 
 1. Install Wyze Tunnel and open its web page.
 2. Go to **Account**, then **Coming from docker-wyze-bridge?**, and paste your `docker-compose.yml` or `.env` file.
@@ -37,7 +37,7 @@ The converter leaves out three kinds of setting, and says which ones:
 
 - **The web page** is new: Home, Live, Recordings, Alerts, Search and Health replace the single camera grid.
 - **The stream login** for RTSP, HLS and WebRTC may change on a new machine. The **Recorders** tab under **Connect apps** shows the new links with the login filled in.
-- **On Windows without WSL**, cameras connect through go2rtc (on your network) or Wyze's cloud. Siren, lights and motion detection work through the Wyze cloud. Pan/tilt still needs **Full camera support (WSL)** from the tray menu.
+- **On Windows without WSL**, cameras connect through go2rtc (on your network) or Wyze's cloud. Camera controls work on your network, and siren, lights and motion detection go through the Wyze cloud. Only cameras away from home or on old firmware need **Full camera support (WSL)** from the tray menu.
 - **New cameras:** Cam OG and others that only stream through Wyze's cloud now work. See [How Wyze Tunnel connects to each camera](../README.md#how-wyze-tunnel-connects-to-each-camera).
 
 Something didn't carry over? [Open an issue](https://github.com/itskiwi/Wyze-Tunnel/issues) with the setting name (never your password or keys).
