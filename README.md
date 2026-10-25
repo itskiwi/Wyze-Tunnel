@@ -187,6 +187,7 @@ Pick cameras to record, or record them all, on the web UI's **Recordings** page,
 The web UI's **Search footage** page (gear menu, home screen or Recordings) finds the moments a person, car or animal showed up and plays that part of the recording. Pick cameras and, optionally, a Frigate address right on that page; no settings files needed.
 
 - Cameras you pick are watched on this computer (keyframes only, light enough for a Raspberry Pi) and also record, keeping clips as long as the search results. The model (MobileNet-SSD, 23 MB) downloads on first use. Not available on 32-bit ARM.
+- On a PC, pick **Stronger** under "How hard to look" for YOLOX-S (36 MB, downloads when you save). It spots smaller, farther people and cars, and trucks, for a few times the CPU.
 - With a [Frigate](https://frigate.video) address (its unauthenticated API port, like `http://frigate:5000`), Frigate's detections and clips are used instead, packages included if your Frigate model finds them. Name cameras the same in both (`front_door` matches `front-door`).
 - Env options still work: `DETECT_ALL=true` / `DETECT_CAM_NAME=true`, `FRIGATE_URL`, `DETECT_SCORE` (0 to 1, default `0.6`), `DETECT_KEEP` (defaults to `RECORD_KEEP`, or 7 days).
 
