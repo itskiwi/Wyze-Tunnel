@@ -112,6 +112,26 @@
         <p id="autoStatus" class="mt-2 text-sm" role="status"></p>
     </form>
 </section>
+
+<section id="move" class="surface mx-auto mt-6 max-w-xl p-5">
+    <h2 class="font-semibold">Coming from docker-wyze-bridge?</h2>
+    <p class="mt-1 text-sm text-zinc-400">Wyze Tunnel started as a copy of it, so your settings and stream links carry over as they are.
+        Paste your <code>docker-compose.yml</code> or <code>.env</code> file and you get the lines to use here.
+        Nothing is saved until you add them yourself.</p>
+    <label class="mt-3 block text-sm">Your old settings
+        <textarea id="dwbText" rows="6" spellcheck="false" class="field mt-1 w-full font-mono text-xs"
+            placeholder="services:&#10;  wyze-bridge:&#10;    environment:&#10;      - QUALITY=HD"></textarea></label>
+    <button type="button" id="dwbGo" class="btn mt-3"><i class="fas fa-right-left"></i>Convert</button>
+    <p id="dwbStatus" class="mt-2 text-sm" role="status"></p>
+    <div id="dwbOut" class="mt-3" hidden>
+        <p id="dwbWhere" class="text-sm text-zinc-300"></p>
+        <pre id="dwbEnv" class="snippet mt-2 overflow-x-auto"></pre>
+        <button type="button" id="dwbCopy" class="btn mt-2"><i class="fas fa-copy"></i>Copy</button>
+        <ul id="dwbSkipped" class="mt-3 space-y-1 text-sm text-zinc-400"></ul>
+        <p class="mt-3 text-sm"><a class="underline underline-offset-2" target="_blank" rel="noopener"
+            href="https://github.com/itskiwi/Wyze-Tunnel/blob/main/docs/coming-from-docker-wyze-bridge.md">Full moving guide</a></p>
+    </div>
+</section>
 {% endblock %}
 
 {% block javascript %}
@@ -166,6 +186,32 @@
             .then(() => say(true, "Restored. Cameras reconnect in a few seconds."))
             .catch((err) => say(false, err.message))
             .finally(() => { e.target.value = ""; });
+    });
+
+    document.getElementById("dwbGo").addEventListener("click", () => {
+        const status = document.getElementById("dwbStatus");
+        fetch("settings/from-docker-wyze-bridge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: document.getElementById("dwbText").value }) })
+            .then((resp) => resp.json().then((body) => resp.ok ? body : Promise.reject(new Error(body.error || resp.statusText))))
+            .then((body) => {
+                status.textContent = "";
+                document.getElementById("dwbWhere").textContent = body.where;
+                document.getElementById("dwbEnv").textContent = body.env;
+                const skipped = document.getElementById("dwbSkipped");
+                skipped.innerHTML = "";
+                body.skipped.forEach(({ name, why }) => {
+                    const li = document.createElement("li");
+                    li.innerHTML = `Left out <code></code>: <span></span>`;
+                    li.querySelector("code").textContent = name;
+                    li.querySelector("span").textContent = why;
+                    skipped.append(li);
+                });
+                document.getElementById("dwbOut").hidden = false;
+            })
+            .catch((err) => { status.className = "mt-2 text-sm text-rose-300"; status.textContent = err.message; });
+    });
+    document.getElementById("dwbCopy").addEventListener("click", ({ currentTarget: btn }) => {
+        navigator.clipboard.writeText(document.getElementById("dwbEnv").textContent)
+            .then(() => btn.lastChild.textContent = "Copied", () => {});
     });
 
     const pairCodes = document.getElementById("pairCodes");
