@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from threading import Thread
 
-from wyzebridge.config import TOKEN_PATH
+from wyzebridge.config import IMG_PATH, TOKEN_PATH
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import RECORD_PATH
 
@@ -103,6 +103,10 @@ def trim() -> int:
         except OSError:
             continue
         freed += size
+    # Clip-list pictures outlive their clips otherwise; recordings are kept 30 days at most.
+    for thumb in Path(IMG_PATH, "clip-thumbs").rglob("*.jpg"):
+        if _mtime(thumb) < time.time() - 31 * 86400:
+            thumb.unlink(missing_ok=True)
     if freed:
         logger.info(f"[RECORD] Deleted {freed // 1024**2} MB of the oldest clips to stay under the space limit")
     return freed
