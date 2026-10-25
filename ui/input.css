@@ -57,6 +57,10 @@
   .menu-label {
     @apply px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500;
   }
+  /* Morning, Midday, Evening, Night inside a day on the Home timeline, lined up with the event text. */
+  .daypart {
+    @apply pb-1 pl-[5.25rem] pt-3 font-display text-sm font-extrabold text-zinc-300 sm:pl-24;
+  }
   .tab {
     @apply inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-zinc-400 transition hover:text-zinc-100;
   }

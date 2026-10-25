@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 from threading import Thread
 
-from wyzebridge import config, detect, guests, integrations, recording, timelapse, webhooks
+from wyzebridge import config, detect, guests, integrations, phrases, recording, timelapse, webhooks
 from wyzebridge.auth import STREAM_AUTH, WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream
 from wyzebridge.go2rtc import lan_controls, tutk_available
@@ -148,11 +148,22 @@ class WyzeBridge(Thread):
         os._exit(0)
 
 
-def on_detect(uri: str, name: str, label: str, det_id: int, ts: float) -> None:
-    img = f"detections/{det_id}.jpg"
-    EVENT_LOG.appendleft({"uri": uri, "name": name, "ts": int(ts), "img": img, "label": label})
-    if label == "person":
-        webhooks.send_webhook("person", uri, f"Person spotted on {name}")
+def on_detect(uri: str, name: str, label: str, det_id: int | None, ts: float, state: str = "new") -> None:
+    """A new detection, a vehicle that stayed a minute ("stayed"), or a person who has gone ("cleared")."""
+    place = phrases.place_of(uri, name)
+    if state == "new":
+        text = phrases.describe(label, name, place)
+        EVENT_LOG.appendleft({"uri": uri, "name": name, "ts": int(ts), "img": f"detections/{det_id}.jpg", "label": label, "text": text})
+        if label == "person":
+            webhooks.send_webhook("person", uri, text, title=name)
+        return
+    # Update the moment on the timeline rather than adding a row.
+    if event := next((e for e in EVENT_LOG if e["uri"] == uri and e.get("label") == label), None):
+        if state == "stayed":
+            event["text"] = phrases.describe(label, name, place, "stayed")
+        elif place in phrases.OUTDOOR and not event.get("cleared"):
+            event["cleared"] = int(ts)
+            webhooks.send_webhook("cleared", uri, phrases.describe("cleared", name, place), title=name)
 
 
 if __name__ == "__main__":
