@@ -198,6 +198,12 @@ def test_zone_routes(tmp_path, monkeypatch):
     assert client.post("/api/zones/back", json={"ignore": []}).status_code == 404
     assert client.post("/api/zones/front", json={"ignore": []}).json == {"ignore": []}
     assert detect.load_zones() == {}
+    from wyzebridge import masks
+
+    monkeypatch.setattr(masks, "MASKS_FILE", str(tmp_path / "masks.json"))
+    assert client.post("/api/masks/front", json={"mask": [140, 2]}).json == {"mask": [2, 140]}
+    assert client.get("/api/heatmap/front").json["mask"] == [2, 140]
+    assert client.post("/api/masks/front", json={"mask": "all"}).status_code == 400
 
 
 def test_map_routes(tmp_path, monkeypatch):
