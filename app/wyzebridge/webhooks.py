@@ -12,7 +12,7 @@ from wyzebridge.config import TOKEN_PATH, VERSION
 from wyzebridge.logging import logger
 
 ALERTS_FILE = TOKEN_PATH + "alerts.json"
-ALERT_EVENTS = ("motion", "person", "offline")
+ALERT_EVENTS = ("motion", "person", "offline", "summary")
 # Chat apps an alert can also go to, by webhook host. Only these, so a saved URL can't reach other servers.
 CHAT_HOSTS = {"discord.com": "discord", "discordapp.com": "discord", "hooks.slack.com": "slack", "api.telegram.org": "telegram"}
 # home: no motion alerts. away (holiday): motion alerts even in quiet hours. schedule: quiet hours apply.
@@ -113,7 +113,7 @@ def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None) -
     chat = ALERTS.get("chat_url") if not env_url and (ALERTS.get(event) or event in ("test", "update", "street")) else ""
     if not url and not chat:
         return False
-    title = {"update": "Wyze Tunnel updated", "street": "Street Watch request"}.get(event) or f"{event} event".title()
+    title = {"update": "Wyze Tunnel updated", "street": "Street Watch request", "summary": "Last night at home"}.get(event) or f"{event} event".title()
     sent = bool(url) and _post(url, event, camera, msg, img, title)
     if chat:
         logger.debug(f"[WEBHOOKS] Sending {event.upper()} event for {camera} to {chat_service(chat)}")
