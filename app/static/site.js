@@ -279,6 +279,17 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("click", (e) => {
     dropdowns.forEach((d) => { if (!d.contains(e.target)) d.open = false; });
   });
+  // Camera sheet: Sound and Full screen press the player's own buttons; any action closes the sheet.
+  document.querySelectorAll("[data-proxy]").forEach((b) => b.addEventListener("click", () => {
+    b.closest(".camera").querySelector(b.dataset.proxy)?.click();
+  }));
+  document.querySelectorAll(".cam-menu").forEach((m) => m.addEventListener("click", (e) => {
+    if (e.target.closest(".menu-item")) { m.closest("details").open = false; }
+  }));
+  // Details cover the picture; a tap on them closes them.
+  document.querySelectorAll(".camera .content").forEach((c) => c.addEventListener("click", () => {
+    c.closest(".camera").querySelector(".toggle-details")?.click();
+  }));
 
   // Update preview after loading the page
   async function loadPreview(img) {
@@ -573,7 +584,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (timestamp) {
         var created = new Date(timestamp).getTime(),
           s = Math.floor((new Date() - created) / 1000),
-          age = s < 60 ? `${s}s` : s < 3600 ? `+${Math.floor(s / 60)}m` : s < 86400 ? `+${Math.floor(s / 3600)}h` : `+${Math.floor(s / 86400)}d`
+          age = s < 60 ? "just now" : s < 3600 ? `${Math.floor(s / 60)} min ago` : s < 86400 ? `${Math.floor(s / 3600)} hr ago` : (s < 172800 ? "yesterday" : `${Math.floor(s / 86400)} days ago`)
         span.textContent = age
       }
     })

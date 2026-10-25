@@ -1,4 +1,9 @@
 /* State classes toggled by site.js. Layout and look come from tailwind.css (built from ui/). */
+/* Anything too wide is cut off instead of letting the page slide sideways (with minimum-scale=1 in base.html this keeps popups centered on phones) */
+html { overflow-x: hidden; overflow-x: clip; }
+body { overflow-wrap: break-word; }  /* long names and error text wrap instead of running off */
+.preview-toggle .tab { white-space: nowrap; }
+@media (max-width: 359px) { .preview-toggle .tab { padding-inline: 10px; } }
 .is-hidden { display: none !important; }
 
 .has-text-success { color: #34d399; }
@@ -155,8 +160,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 /* Camera view: one camera fills the screen; swipe sideways for the next */
 .cam-focus-on { overflow: hidden; }
 .camera.cam-focus { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; background: #000; animation: fade .25s ease both;
-  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
-.cam-focus .card { width: min(100%, calc(100dvh * 16 / 9)); background: #000; box-shadow: none; }
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) calc(76px + env(safe-area-inset-bottom, 0px)) env(safe-area-inset-left, 0px); }  /* room for the bar below */
+.cam-focus .card { width: min(100%, calc((100dvh - 76px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * 16 / 9)); background: #000; box-shadow: none; }
 .cam-focus .card-image { border-radius: 0; }
 #camFocus { position: fixed; z-index: 71; inset: auto 0 0; display: flex; align-items: center; gap: 8px; color: #e5e5e5;
   padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
@@ -183,12 +188,6 @@ ol:has(> .num-step) { counter-reset: step; }
 @keyframes nod { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-6deg); } 60% { transform: rotate(5deg); } }
 @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
 
-/* Text on camera pictures always sits on a dark pill, so it keeps the dark-theme colors */
-.card-header-title .status-label[data-status="connecting"] { color: #fcd34d !important; }
-.card-header-title .status-label:is([data-status="offline"], [data-status="error"]) { color: #fda4af !important; }
-.card-header-title .has-text-success { color: #3dcf8e !important; }
-.card-header-title .has-text-warning { color: #f5b33c !important; }
-.card-header-title .has-text-danger { color: #ff6b7d !important; }
 @media (max-width: 767px) { .fullscreen.is-floating button { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); } #toasts { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); } }
 
 /* Update screen: an endless progress bar, since the updater can't report a percentage */
@@ -200,11 +199,19 @@ ol:has(> .num-step) { counter-reset: step; }
 .camera { scroll-margin-top: 16px; }
 .camera:target .card { box-shadow: 0 0 0 3px rgb(var(--accent)); }
 
-/* Tile buttons cover the time the camera prints in its corner, so with a mouse they appear on hover or focus */
-@media (hover: hover) {
-  .cam-acts { opacity: 0; transition: opacity .2s; }
-  .card:hover .cam-acts, .card:focus-within .cam-acts, .card:has(details[open]) .cam-acts, .card:has(.content:not(.is-hidden)) .cam-acts { opacity: 1; }
-}
+/* Camera tiles: picture on top, a bar with the name and buttons under it */
+.card > .card-image { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.tile-bar .cam-action { height: 2.25rem; width: 2.25rem; background: rgb(var(--zinc-800)); color: rgb(var(--zinc-100)); box-shadow: none; }
+.tile-bar .cam-action:hover { transform: none; background: rgb(var(--zinc-700)); }
+.vp-slot { display: contents; }
+.vp-slot .vp-bar { position: static; opacity: 1; transform: none; }
+.card:has(.vp:not(.vp-on)) .vp-slot .vp-bar, .card:has(video.hidden) .vp-slot .vp-bar { display: none; }
+.vp-slot .vp-live .vp-btn { height: 2.25rem; width: 2.25rem; background: rgb(var(--accent)); color: rgb(var(--on-accent)); box-shadow: none; }
+.vp-slot .vp-live .vp-btn:hover { transform: none; background: rgb(var(--accent-deep)); color: #fff; }
+/* With a More sheet, sound and full screen live in it; watch-only guests keep them on the bar */
+.cam-acts:has(.cam-menu) .vp-slot :is(.vp-mute, .vp-full) { display: none; }
+.vp-slot .vp-live .vp-btn:is(.vp-mute, .vp-full) { background: rgb(var(--zinc-800)); color: rgb(var(--zinc-100)); }
+.card .content { cursor: pointer; }
 
 /* Video controls drawn by player.js. Colors follow the theme; the bar floats over the picture. */
 .vp { position: relative; outline: none; }

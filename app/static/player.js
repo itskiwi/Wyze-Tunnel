@@ -26,7 +26,7 @@
     const bar = document.createElement("div");
     bar.className = `vp-bar ${live ? "vp-live fs-display-none" : ""}`;
     bar.innerHTML = live
-      ? button("vp-play", "Play", "fa-play") + button("vp-mute", "Unmute", "fa-volume-xmark") + button("vp-full", "Full screen", "fa-expand")
+      ? button("vp-play", "Play", "fa-play") + button("vp-mute", "Unmute", "fa-volume-xmark") + button("vp-snap", "Save a photo", "fa-camera") + button("vp-full", "Full screen", "fa-expand")
       : button("vp-play", "Play", "fa-play") +
         `<span class="vp-time">0:00</span>` +
         `<input class="vp-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek" />` +
@@ -35,7 +35,8 @@
         button("vp-mute", "Mute", "fa-volume-high") +
         (document.pictureInPictureEnabled ? button("vp-pip", "Picture-in-picture", "fa-clone") : "") +
         button("vp-full", "Full screen", "fa-expand");
-    box.append(bar);
+    // Camera tiles keep their buttons in the bar under the picture.
+    (live && box.closest(".camera")?.querySelector(".vp-slot") || box).append(bar);
     // Taps on the bar shouldn't reach the tile's own click handlers.
     bar.addEventListener("click", (e) => e.stopPropagation());
     const $ = (sel) => bar.querySelector(sel);
@@ -86,7 +87,11 @@
       clearTimeout(hideTimer);
       hideTimer = setTimeout(() => box.classList.remove("vp-active"), 3000);
     });
-    if (live) { return }
+    if (live) {
+      box.addEventListener("dblclick", () => $(".vp-full").click());
+      $(".vp-snap").addEventListener("click", () => savePhoto(video));
+      return;
+    }
 
     video.addEventListener("click", toggle);
     const seek = $(".vp-seek");
@@ -128,6 +133,34 @@
       if (keys[e.key] && !(e.key === " " && e.target.matches("button"))) { e.preventDefault(); e.stopPropagation(); keys[e.key]() }
     });
   }
+
+  // Downloads what the camera shows right now, named after the camera and the time.
+  function savePhoto(video) {
+    const name = video.closest(".camera")?.querySelector(".card-header-title .truncate")?.textContent || video.dataset.cam;
+    const stamp = new Date().toLocaleString([], { dateStyle: "medium", timeStyle: "short" }).replace(/[\\/:*?"<>|]/g, ".");
+    const save = (href) => Object.assign(document.createElement("a"), { href, download: `${name} ${stamp}.jpg` }).click();
+    if (video.readyState < 2 || !video.videoWidth) {  // not playing yet: the latest snapshot is the best we have
+      if (video.poster && !video.poster.endsWith("loading.svg")) { save(video.poster) }
+      return;
+    }
+    const canvas = Object.assign(document.createElement("canvas"), { width: video.videoWidth, height: video.videoHeight });
+    canvas.getContext("2d").drawImage(video, 0, 0);
+    canvas.toBlob((blob) => { const url = URL.createObjectURL(blob); save(url); setTimeout(() => URL.revokeObjectURL(url), 1000) }, "image/jpeg", 0.92);
+  }
+
+  // Keep the screen awake while any live camera plays, so a tablet or laptop used as a monitor doesn't go dark.
+  let wakeLock = null;
+  const keepAwake = async () => {
+    const playing = [...document.querySelectorAll("video[data-cam]")].some((v) => !v.paused);
+    try {
+      if (playing && !wakeLock && document.visibilityState === "visible" && navigator.wakeLock) {
+        wakeLock = await navigator.wakeLock.request("screen");
+        wakeLock.addEventListener("release", () => { wakeLock = null });
+      } else if (!playing && wakeLock) { wakeLock.release() }
+    } catch { }  // refused (battery saver, insecure page): the screen just sleeps as usual
+  };
+  ["play", "pause", "emptied"].forEach((e) => document.addEventListener(e, keepAwake, true));
+  document.addEventListener("visibilitychange", keepAwake);  // the browser drops the lock when the tab is hidden
 
   const run = () => document.querySelectorAll("video").forEach(enhance);
   document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", run) : run();

@@ -8,6 +8,7 @@ own models, including packages with Frigate+). Cameras and the Frigate address a
 
 import json
 import re
+import shutil
 import sqlite3
 import subprocess
 import time
@@ -274,6 +275,34 @@ def find_objects(model, frame, heat: list[int] | None = None, ignore=frozenset()
             if row * HEAT_W + col not in ignore:
                 found[label] = max(found.get(label, 0), float(score))
     return found
+
+
+REEL_DIR = Path(IMG_PATH, "reels")
+
+
+def reel(cam: str = "", hours: int = 24) -> Path | None:
+    """A short video of the last day's hits, one picture a second, oldest first. Remade at most every 10 minutes."""
+    out = REEL_DIR / f"{cam or 'all'}.mp4"
+    if out.exists() and time.time() - out.stat().st_mtime < 600:
+        return out
+    since = time.time() - hours * 3600
+    hits = [h for h in search(cam=cam, limit=500) if h["ts"] >= since and (THUMB_DIR / f"{h['id']}.jpg").exists()]
+    if not hits:
+        return None
+    work = REEL_DIR / f"{cam or 'all'}-frames"
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
+    for i, hit in enumerate(reversed(hits[:120])):
+        shutil.copyfile(THUMB_DIR / f"{hit['id']}.jpg", work / f"{i:04d}.jpg")
+    cmd = ["ffmpeg", "-loglevel", "error", "-y", "-framerate", "1", "-i", str(work / "%04d.jpg")]
+    cmd += ["-vf", f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,pad={WIDTH}:{HEIGHT}:-1:-1,fps=12"]
+    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out)]
+    try:
+        ok = subprocess.run(cmd, capture_output=True, timeout=300).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        ok = False
+    shutil.rmtree(work, ignore_errors=True)
+    return out if ok else None
 
 
 def load_zones() -> dict[str, list[int]]:

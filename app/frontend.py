@@ -174,6 +174,21 @@ def create_app():
             version=config.VERSION,
         )
 
+    @app.route("/glance")
+    @auth_required
+    def glance():
+        """One screen to pin to a phone: each camera's state, picture and last motion, plus the alert mode.
+        Watch-only guests can't open it: the mode tells when nobody is home."""
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return render_template(
+            "glance.html",
+            cameras={uri: cam for uri, cam in cams.items() if cam.get("enabled")},
+            last_motion={e["uri"]: e["ts"] for e in reversed(EVENT_LOG)},
+            mode=webhooks.ALERTS.get("mode") or "schedule",
+            guest=web_ui.current_guest(),
+            version=config.VERSION,
+        )
+
     @app.route("/live")
     @auth_required
     def live():
@@ -937,6 +952,17 @@ def create_app():
                 start = datetime.fromtimestamp(hit["ts"] - 5, timezone.utc).isoformat()
                 hit["clip"] = f"recordings/{quote_plus(hit['cam'])}/play?start={quote_plus(start)}&duration=30"
         return {"labels": detect.labels(), "detections": hits}
+
+    @app.route("/detections/reel.mp4")
+    @auth_required
+    def detections_reel():
+        """The last day's hits as a short video, for one camera or all of them."""
+        cam = request.args.get("cam", "")
+        if cam and cam not in wb.streams.streams:
+            return {"error": "No camera by that name"}, 404
+        if not (path := detect.reel(cam)):
+            return {"error": "Nothing was spotted in the last day."}, 404
+        return send_from_directory(path.parent, path.name, mimetype="video/mp4", max_age=0)
 
     @app.route("/detections/<int:det_id>.<any(jpg, mp4):ext>")
     @auth_required
