@@ -110,17 +110,29 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .cam-menu .btn { border-radius: 14px; }
 /* Phones: camera menus open as a sheet above the tab bar */
 @media (max-width: 767px) {
-  .cam-menu { position: fixed; left: 12px; right: 12px; width: auto; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); max-height: 65vh; animation: rise .25s ease both; }
+  .cam-menu { position: fixed; left: 12px; right: 12px; width: auto; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); max-height: 65vh; animation: rise .25s ease both;
+    box-shadow: 0 0 0 1px rgb(var(--zinc-700)), 0 0 0 100vmax rgb(0 0 0 / .45); }  /* the huge shadow dims the page behind the sheet */
 }
 
-/* Phone tab bar */
-.tabbar { position: fixed; inset: auto 0 0; z-index: 40; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
-  padding: 8px max(10px, env(safe-area-inset-left, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-right, 0px));
-  background: rgb(var(--zinc-900)); border-top: 1px solid rgb(var(--zinc-700)); border-radius: 22px 22px 0 0; }
-.tabbar a { display: grid; place-items: center; gap: 3px; padding: 6px 0; font-size: 11px; font-weight: 600; color: rgb(var(--zinc-400)); }
-.tabbar a i { font-size: 19px; }
-.tabbar a[aria-current] { color: rgb(var(--accent)); }
+/* Phone tab bar: a floating pill, lifted off the bottom edge so browser toolbars and the home bar never hide it */
+.tabbar { position: fixed; z-index: 40; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; padding: 5px;
+  left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  background: rgb(var(--zinc-800)); border-radius: 26px; box-shadow: 0 0 0 1px rgb(var(--white) / .09), 0 14px 34px -8px rgb(0 0 0 / .7); }
+.tabbar a { display: grid; place-items: center; gap: 2px; min-height: 52px; padding: 6px 0 5px; border-radius: 21px;
+  font-size: 11px; font-weight: 600; color: rgb(var(--zinc-300)); -webkit-tap-highlight-color: transparent; transition: transform .15s, background-color .2s; }
+.tabbar a i { font-size: 18px; }
+.tabbar a:active { transform: scale(.93); }
+.tabbar a[aria-current] { background: rgb(var(--accent) / .16); color: rgb(var(--accent)); }
+:root[data-theme="light"] .tabbar { background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / .07), 0 14px 32px -10px rgb(40 44 36 / .35); }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .tabbar { background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / .07), 0 14px 32px -10px rgb(40 44 36 / .35); }
+}
 @media (min-width: 768px) { .tabbar { display: none; } }
+/* Phones: keep the page end, toasts and sheets clear of the tab bar */
+@media (max-width: 767px) {
+  .footer { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  #toasts { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+}
 
 /* Setup wizard */
 .num-step { display: flex; gap: 12px; align-items: flex-start; counter-increment: step; }

@@ -33,7 +33,7 @@
             <h2 id="cams-h" class="menu-label px-0 pt-0">Cameras</h2>
             <a href="live" class="ml-auto text-sm font-semibold text-accent hover:underline">Live view</a>
         </div>
-        <ul class="-mx-4 flex snap-x scroll-px-4 gap-2.5 overflow-x-auto px-4 pb-2 sm:-mx-6 sm:scroll-px-6 sm:px-6 lg:mx-0 lg:grid lg:grid-cols-2 lg:overflow-visible lg:px-0">
+        <ul class="relative -mx-4 flex snap-x scroll-px-4 gap-2.5 overflow-x-auto px-4 pb-2 sm:-mx-6 sm:scroll-px-6 sm:px-6 lg:mx-0 lg:grid lg:grid-cols-2 lg:overflow-visible lg:px-0">
             {% for uri, cam in cameras.items() %}
             {% set state = 'live' if cam.connected else 'offline' if cam.status == -90 else 'idle' %}
             <li class="w-40 flex-none snap-start lg:w-auto">
