@@ -92,7 +92,7 @@
                     {% elif camera.status == -90 and not camera.img_url %}
                     <div class="no-preview grid h-full place-items-center text-zinc-500">
                         <div class="text-center"><i class="fas fa-plug-circle-xmark text-2xl"></i>
-                            <p class="mt-2 text-sm">Camera offline</p></div>
+                            <p class="offline-reason mt-2 text-sm">{{ camera.reason or 'Camera offline' }}</p></div>
                     </div>
                     {% elif camera.img_url or camera.connected or (camera.on_demand and camera.enabled) %}
                     <img class="refresh_img loading-preview h-full w-full object-contain {{'connected' if camera.connected}}"
@@ -111,6 +111,11 @@
                         <span class="age rounded-full bg-[#0f110f]/60 px-2 py-0.5 font-mono text-xs text-[#e5e5e5]" data-age={{camera.img_time}}></span>
                     </div>
                     {% endif %}
+                    <p class="reason pointer-events-none absolute left-2.5 top-2.5 z-10" aria-live="polite">
+                        <a class="pointer-events-auto flex items-center gap-1.5 rounded-full bg-[#0f110f]/60 px-2.5 py-1 text-xs font-medium text-[#fff] backdrop-blur {{ '' if camera.reason else 'is-hidden' }}"
+                            {% if camera.reason == 'Wyze password changed or session expired' %}href="login" title="Sign in to Wyze again"{% endif %}>
+                            <i class="fas fa-triangle-exclamation text-[#d4d4d4]" aria-hidden="true"></i><span>{{ camera.reason or '' }}</span></a>
+                    </p>
                 </figure>
             </div>
             <div class="content is-hidden absolute inset-0 z-[5] overflow-auto rounded-[22px] bg-zinc-900 px-4 pb-16 pt-4 text-xs" title="Tap to close">

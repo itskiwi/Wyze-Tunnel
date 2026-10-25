@@ -159,6 +159,7 @@ def test_trim_deletes_oldest_clips_over_the_limit(tmp_path, monkeypatch):
     monkeypatch.setattr(recording, "RECORD_PATH", str(tmp_path / "record" / "%path" / "%Y-%m-%d_%H-%M-%S-%f"))
     monkeypatch.setattr(recording, "SETTINGS_FILE", str(tmp_path / "record.json"))
     monkeypatch.setattr(recording, "MIN_FREE", 0)
+    monkeypatch.setattr(recording, "MIN_FREE_SHARE", 0)
     cam = tmp_path / "record" / "front"
     cam.mkdir(parents=True)
     old = time.time() - 3600

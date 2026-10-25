@@ -5,12 +5,13 @@ from subprocess import Popen, TimeoutExpired
 from threading import Thread
 from typing import Any, Callable, Optional, Protocol
 
-from wyzebridge import backup, guests, summary
+from wyzebridge import backup, guests, recording, summary
 from wyzebridge.config import MOTION, MQTT_DISCOVERY, SNAPSHOT_INT, SNAPSHOT_TYPE
 from wyzebridge.ffmpeg import rtsp_snap_cmd
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import bridge_status, cam_control, publish_topic, update_preview
 from wyzebridge.mtx_event import RtspEvent
+from wyzebridge.mtx_server import path_bytes
 from wyzebridge.privacy import BATTERY_FILE, PrivacySchedule
 from wyzebridge.webhooks import ALERTS
 from wyzebridge.wyze_events import EVENT_LOG, WyzeEvents
@@ -47,6 +48,33 @@ class Stream(Protocol):
     def status(self) -> str: ...
 
     def send_cmd(self, cmd: str, payload: str | list | dict = "") -> dict: ...
+
+
+STALL_SECS = 30
+
+
+class Watchdog:
+    """Spots connected streams whose video stopped arriving at MediaMTX."""
+
+    def __init__(self) -> None:
+        self.seen: dict[str, tuple[int, float]] = {}  # uri: (bytes in, when it last changed)
+
+    def check(self, streams: dict, sizes: dict, now: float) -> list[str]:
+        if not sizes:  # MediaMTX API unreachable: no evidence either way
+            return []
+        stalled = []
+        for uri, stream in streams.items():
+            got = sizes.get(uri, {}).get("in")
+            if got is None or not stream.connected:
+                self.seen.pop(uri, None)
+                continue
+            last = self.seen.get(uri)
+            if not last or got != last[0]:  # != since the count restarts with the stream
+                self.seen[uri] = (got, now)
+            elif now - last[1] > STALL_SECS:
+                stalled.append(uri)
+                del self.seen[uri]
+        return stalled
 
 
 class StreamManager:
@@ -102,6 +130,7 @@ class StreamManager:
         last_health = 0.0
         privacy = PrivacySchedule()
         battery_saver = PrivacySchedule(BATTERY_FILE, ("state", "disable", "enable"))
+        watchdog = Watchdog()
         while not self.stop_flag:
             # One bad iteration must not end monitoring, or no stream ever reconnects.
             try:
@@ -115,6 +144,9 @@ class StreamManager:
                 if time.time() - last_health >= 15:
                     last_health = time.time()
                     mtx_health()
+                    self.restart_stalled(watchdog.check(self.streams, path_bytes(), time.time()))
+                    settings = recording.load_settings()
+                    recording.keep_awake(bool(settings.get("all") or settings.get("cams")))
                     bridge_status(mqtt, self.streams)
                     privacy.check(self.streams)
                     battery_saver.check(self.streams)
@@ -124,9 +156,19 @@ class StreamManager:
             except Exception:
                 logger.exception("[MONITOR] Error in stream monitor loop")
                 time.sleep(1)
+        recording.keep_awake(False)
         if mqtt:
             mqtt.loop_stop()
         logger.info("Stream monitoring stopped")
+
+    def restart_stalled(self, uris: list[str]) -> None:
+        for uri in uris:
+            stream = self.streams[uri]
+            logger.warning(f"[WATCHDOG] {stream.camera.nickname} stopped sending video for {STALL_SECS}s, reconnecting it")
+            stream.stop()  # health_check starts it again
+            source = getattr(stream, "source", "tutk")
+            if source != "tutk" and (go2rtc := getattr(stream, "go2rtc", None)):
+                go2rtc.reset(f"{uri}_{source}")
 
     def monitor_snapshots(self) -> None:
         for cam in self.streams:
