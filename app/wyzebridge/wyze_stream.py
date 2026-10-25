@@ -144,6 +144,8 @@ class WyzeStream:
             self.go2rtc.add(f"{self.uri}_lan", lan_url(self.camera, self.options.substream))
         if "webrtc" in self.sources:
             self.go2rtc.add(f"{self.uri}_webrtc", webrtc_url(self.camera.name_uri, WbAuth.api))
+        if self.sources and not self.options.substream:
+            self.go2rtc.names[self.uri] = self.camera.nickname
         if not self.sources or self.camera.product_model == "LD_CFP":
             logger.info(
                 f"[{self.camera.product_model}] {self.camera.nickname} not supported"

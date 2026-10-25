@@ -66,6 +66,7 @@ class WyzeBridge(Thread):
         self.streams.stop_all()
         self.streams.streams.clear()  # so cameras hidden since the last start drop out
         WyzeStream.go2rtc.streams.clear()
+        WyzeStream.go2rtc.names.clear()
         self.api.get_cameras(fresh_data=True)
         self._initialize(False)
 
