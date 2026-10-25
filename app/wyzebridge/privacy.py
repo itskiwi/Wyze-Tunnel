@@ -8,17 +8,19 @@ from wyzebridge.logging import logger
 from wyzebridge.webhooks import in_quiet_hours
 
 PRIVACY_FILE = TOKEN_PATH + "privacy.json"
+# Battery saver: the same kind of window, but the camera only stops streaming in Wyze Tunnel, so it can sleep.
+BATTERY_FILE = TOKEN_PATH + "battery_saver.json"
 
 
-def load_privacy() -> dict:
+def load_privacy(path: str = "") -> dict:
     try:
-        with open(PRIVACY_FILE) as f:
+        with open(path or PRIVACY_FILE) as f:
             return json.load(f)
     except (FileNotFoundError, ValueError):
         return {}
 
 
-def save_privacy(form: dict, macs: set[str]) -> dict:
+def save_privacy(form: dict, macs: set[str], path: str = "") -> dict:
     """Validate and save. Raises ValueError with a message for the user."""
     cams = form.get("cams") or []
     if not isinstance(cams, list) or not set(cams) <= macs:
@@ -31,7 +33,7 @@ def save_privacy(form: dict, macs: set[str]) -> dict:
             if cams:
                 raise ValueError("Set a start and end time, like 22:00 to 07:00.") from None
     settings = {"cams": sorted(cams), **times}
-    with open(PRIVACY_FILE, "w") as f:
+    with open(path or PRIVACY_FILE, "w") as f:
         json.dump(settings, f)
     return settings
 
@@ -39,11 +41,12 @@ def save_privacy(form: dict, macs: set[str]) -> dict:
 class PrivacySchedule:
     """Acts only when the window starts or ends, so a camera you turn on by hand stays on."""
 
-    def __init__(self):
+    def __init__(self, path: str = "", cmd: tuple[str, str, str] = ("power", "off", "on")):
         self.was_private: Optional[bool] = None
+        self.path, self.cmd = path, cmd
 
     def check(self, streams: dict, now=None) -> None:
-        settings = load_privacy()
+        settings = load_privacy(self.path)
         if not settings.get("cams"):
             self.was_private = None
             return
@@ -53,8 +56,9 @@ class PrivacySchedule:
             self.was_private = private
             return
         self.was_private = private
-        action = "off" if private else "on"
+        cmd, off, on = self.cmd
+        action = off if private else on
         for stream in streams.values():
             if stream.camera.mac in settings["cams"] and not stream.options.substream:
-                logger.info(f"[PRIVACY] Turning {stream.uri} {action}")
-                stream.send_cmd("power", action)
+                logger.info(f"[PRIVACY] {cmd} {action}: {stream.uri}")
+                stream.send_cmd(cmd, action)
