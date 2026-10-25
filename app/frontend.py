@@ -167,6 +167,21 @@ def create_app():
             version=config.VERSION,
         )
 
+    @app.route("/glance")
+    @auth_required
+    def glance():
+        """One screen to pin to a phone: each camera's state, picture and last motion, plus the alert mode.
+        Watch-only guests can't open it: the mode tells when nobody is home."""
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return render_template(
+            "glance.html",
+            cameras={uri: cam for uri, cam in cams.items() if cam.get("enabled")},
+            last_motion={e["uri"]: e["ts"] for e in reversed(EVENT_LOG)},
+            mode=webhooks.ALERTS.get("mode") or "schedule",
+            guest=web_ui.current_guest(),
+            version=config.VERSION,
+        )
+
     @app.route("/live")
     @auth_required
     def live():
