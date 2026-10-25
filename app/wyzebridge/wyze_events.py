@@ -65,13 +65,14 @@ class WyzeEvents:
             if stream.camera.mac == mac and not stream.options.substream:
                 if img := next((f["url"] for f in files if f["type"] == 1), None):
                     stream.camera.thumbnail = img
+                clip = next((f["url"] for f in files if f["type"] == 2), None)  # Wyze's own short cloud video
                 stream.motion = self.last_ts
                 event_time = datetime.fromtimestamp(self.last_ts)
                 name = display_name(stream.camera)
                 msg = f"{'Someone rang' if ring else 'Motion detected on'} {name} at {event_time: %H:%M:%S}"
                 logger.info(f"[MOTION] {msg}")
                 EVENT_LOG.appendleft(
-                    {"uri": stream.uri, "name": name, "ts": self.last_ts, "img": img} | ({"label": "rang the doorbell"} if ring else {})
+                    {"uri": stream.uri, "name": name, "ts": self.last_ts, "img": img, "clip": clip} | ({"label": "rang the doorbell"} if ring else {})
                 )
                 send_webhook("motion", stream.uri, msg, img)
                 if ALERTS.get("siren_away") and ALERTS.get("mode") == "away":
