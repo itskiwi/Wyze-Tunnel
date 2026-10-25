@@ -172,3 +172,21 @@ def test_clip_thumb_is_made_once_and_kept(tmp_path, monkeypatch):
     assert client.get(url).data == b"jpg"
     assert client.get(url).data == b"jpg"
     assert len(calls) == 1
+
+
+def test_map_routes(tmp_path, monkeypatch):
+    import frontend
+    from wyzebridge import floorplan
+
+    monkeypatch.setattr(floorplan, "IMAGE_FILE", tmp_path / "floorplan.img")
+    monkeypatch.setattr(floorplan, "PINS_FILE", str(tmp_path / "floorplan.json"))
+    from wyzebridge import web_ui
+
+    monkeypatch.setattr(web_ui.WbAuth, "enabled", False)  # pages need the web login, not the API key
+    with mock.patch.object(frontend, "WyzeBridge") as bridge:
+        bridge.return_value.streams.streams = {"front": None}
+        client = frontend.create_app().test_client()
+    assert client.get("/map/image").status_code == 404
+    assert client.post("/map/image", data=b"\xff\xd8\xff jpeg").status_code == 200
+    assert client.get("/map/image").mimetype == "image/jpeg"
+    assert client.post("/map/pins", json={"front": [10, 20]}).json == {"pins": {"front": [10.0, 20.0]}}

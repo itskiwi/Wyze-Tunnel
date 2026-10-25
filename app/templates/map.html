@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+
+{% block title %}Home map · {% endblock %}
+{% block content %}
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Home map</h1>
+    {% if not current_guest() %}
+    <label class="btn ml-auto cursor-pointer"><i class="fas fa-image"></i>{{ 'Change floor plan' if has_image else 'Add a floor plan' }}
+        <input id="upload" type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" /></label>
+    {% endif %}
+</header>
+<p id="status" class="mb-3 text-sm text-zinc-400" role="status"></p>
+
+{% if has_image %}
+<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_16rem]">
+    <div id="plan" class="surface relative overflow-hidden p-0">
+        <img src="map/image" alt="Floor plan" class="block w-full select-none" draggable="false" />
+    </div>
+    {% if not current_guest() %}
+    <aside class="surface p-4 text-sm">
+        <p class="text-zinc-400">Pick a camera, then tap where it is on the plan.</p>
+        <ul id="pickList" class="mt-3 space-y-1">
+            {% for uri, cam in cameras.items() %}
+            <li><button type="button" class="menu-item w-full" data-cam="{{ uri }}"><i class="fas fa-location-dot w-4 {{ 'text-accent' if uri in pins else 'text-zinc-600' }}"></i>{{ cam.name }}</button></li>
+            {% endfor %}
+        </ul>
+        <button id="unpin" type="button" class="btn mt-3 hidden"><i class="fas fa-xmark"></i>Take off the map</button>
+    </aside>
+    {% endif %}
+</div>
+{% else %}
+<div class="surface mx-auto mt-10 max-w-md p-8 text-center text-zinc-400">
+    <i class="fas fa-map-location-dot text-3xl"></i>
+    <p class="mt-3 font-display text-lg font-extrabold text-zinc-50">No floor plan yet</p>
+    <p class="mt-1 text-sm">{{ "Ask the owner to add one." if current_guest() else "Add a picture of your home's layout. A photo of a sketch works fine. Then put each camera where it is, and tap a pin to watch it." }}</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block javascript %}
+<script>
+    (() => {
+        const cameras = {{ cameras|tojson }};
+        let pins = {{ pins|tojson }};
+        const plan = document.getElementById("plan"), status = document.getElementById("status");
+        let picked = "";
+
+        function draw() {
+            if (!plan) return;
+            plan.querySelectorAll(".pin").forEach((p) => p.remove());
+            for (const [uri, [x, y]] of Object.entries(pins)) {
+                const cam = cameras[uri];
+                if (!cam) continue;
+                const pin = Object.assign(document.createElement("a"), { href: `live#${encodeURIComponent(uri)}`, className: "pin absolute flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full bg-[#0f110f]/75 py-1 pl-1.5 pr-2.5 text-xs font-semibold text-[#fff] shadow-[var(--shadow)]" });
+                pin.style.left = `${x}%`;
+                pin.style.top = `${y}%`;
+                const dot = document.createElement("span");
+                dot.className = `h-2.5 w-2.5 rounded-full ${cam.connected ? "bg-accent" : cam.offline ? "bg-rose-400" : "bg-zinc-500"}`;
+                pin.append(dot, cam.name);
+                pin.title = cam.connected ? "Live" : cam.offline ? "Offline" : "Idle";
+                if (uri === picked) pin.classList.add("ring-2", "ring-accent");
+                plan.append(pin);
+            }
+        }
+
+        function save() {
+            fetch("map/pins", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pins) })
+                .then((r) => r.json().then((b) => r.ok ? b : Promise.reject(new Error(b.error || r.statusText))))
+                .then((b) => { pins = b.pins; status.textContent = "Saved."; draw(); })
+                .catch((err) => { status.textContent = err.message; });
+        }
+
+        document.querySelectorAll("#pickList [data-cam]").forEach((b) => b.addEventListener("click", () => {
+            picked = b.dataset.cam;
+            document.querySelectorAll("#pickList [data-cam]").forEach((x) => x.classList.toggle("bg-white/10", x === b));
+            document.getElementById("unpin").classList.toggle("hidden", !pins[picked]);
+            status.textContent = `Now tap where ${cameras[picked].name} is.`;
+            draw();
+        }));
+        document.getElementById("unpin")?.addEventListener("click", () => { delete pins[picked]; save(); });
+        plan?.addEventListener("click", (e) => {
+            if (!picked || e.target.closest(".pin")) return;
+            const box = plan.getBoundingClientRect();
+            pins[picked] = [(e.clientX - box.left) / box.width * 100, (e.clientY - box.top) / box.height * 100];
+            save();
+        });
+        document.getElementById("upload")?.addEventListener("change", (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            status.textContent = "Uploading…";
+            fetch("map/image", { method: "POST", body: file })
+                .then((r) => r.json().then((b) => r.ok ? b : Promise.reject(new Error(b.error || r.statusText))))
+                .then(() => location.reload())
+                .catch((err) => { status.textContent = err.message; });
+        });
+        draw();
+    })();
+</script>
+{% endblock %}

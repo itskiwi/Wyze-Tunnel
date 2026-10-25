@@ -67,6 +67,7 @@
                 <div class="menu right-0 w-64">
                     {% block settings_menu %}{% endblock %}
                     <a href="cameras" class="menu-item"><i class="fas fa-eye w-4"></i>Choose cameras</a>
+                    <a href="map" class="menu-item"><i class="fas fa-map-location-dot w-4"></i>Home map</a>
                     <a href="account" class="menu-item"><i class="fas fa-user w-4"></i>Account and sharing</a>
                     {% if not current_guest() %}<a href="account#phone" class="menu-item"><i class="fas fa-mobile-screen w-4"></i>Pair a phone</a>{% endif %}
                     {% if not current_guest() %}<a href="street-watch" class="menu-item"><i class="fas fa-house-flag w-4"></i>Street Watch</a>
