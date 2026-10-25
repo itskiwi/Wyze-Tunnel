@@ -82,6 +82,31 @@ def test_family_login_has_full_access_but_not_owner_login(setup):
     assert client.get("/", headers=mom).status_code == 401
 
 
+def test_glance_shows_cameras_and_mode_buttons_only_to_owner(setup, monkeypatch):
+    import json
+    from pathlib import Path
+
+    import frontend
+    from wyzebridge import web_ui
+
+    client, guests, _ = setup
+    cams = {"front": {"nickname": "Front Door", "enabled": True, "connected": True, "img_url": "img/front.jpg", "img_time": 1},
+            "yard": {"nickname": "Yard", "enabled": True, "connected": False, "status": -90}}
+    monkeypatch.setattr(web_ui, "all_cams", lambda *_: {"cameras": cams})
+    monkeypatch.setattr(frontend, "EVENT_LOG", [{"uri": "front", "ts": 200}, {"uri": "front", "ts": 100}])
+    page = client.get("/glance", headers=basic("owner", "ownerpass")).data.decode()
+    assert "Front Door" in page and "Streaming" not in page and "streaming" in page and "offline" in page
+    assert 'data-ts="200"' in page and 'data-mode="away"' in page
+    mom = client.post("/guests", json={"name": "Mom", "hours": 0}, headers=basic("owner", "ownerpass")).json["password"]
+    page = client.get("/glance", headers=basic("Mom", mom))
+    assert page.status_code == 200 and b"Yard" in page.data and b'data-mode="away"' not in page.data and b">Normal<" in page.data
+    sam = client.post("/guests", json={"name": "Sam", "hours": 24}, headers=basic("owner", "ownerpass")).json["password"]
+    assert client.get("/glance", headers=basic("Sam", sam)).status_code == 403
+
+    manifest = json.loads((Path(frontend.__file__).parent / "static/manifest.webmanifest").read_text())
+    assert [s["url"] for s in manifest["shortcuts"]] == ["../glance"]
+
+
 def test_viewers_share_the_tunnels_camera_connection(setup, monkeypatch):
     import frontend
     from wyzebridge import config

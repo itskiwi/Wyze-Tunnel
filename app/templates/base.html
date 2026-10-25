@@ -74,6 +74,7 @@
                     <a href="map" class="menu-item"><i class="fas fa-map-location-dot w-4"></i>Home map</a>
                     {% if not current_guest() %}<a href="search#setup" class="menu-item"><i class="fas fa-magnifying-glass w-4"></i>Footage search</a>
                     <a href="street-watch" class="menu-item"><i class="fas fa-house-flag w-4"></i>Street Watch</a>{% endif %}
+                    {% if not current_guest() or current_guest().family %}<a href="glance" class="menu-item"><i class="fas fa-mobile-screen-button w-4"></i>Glance</a>{% endif %}
                     <p class="menu-label">Sharing</p>
                     <a href="account" class="menu-item"><i class="fas fa-user w-4"></i>Account and sharing</a>
                     {% if not current_guest() %}<a href="account#phone" class="menu-item"><i class="fas fa-mobile-screen w-4"></i>Pair a phone</a>

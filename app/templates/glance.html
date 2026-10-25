@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+
+{% block title %}Glance · {% endblock %}
+{% block content %}
+{% set labels = {"home": "Home", "schedule": "Normal", "away": "Away"} %}
+<header class="flex flex-wrap items-center gap-3 pb-4 pt-2">
+    <h1 class="page-title">At a glance</h1>
+    <time class="ml-auto font-mono text-xs text-zinc-500" id="updated"></time>
+</header>
+
+<section class="surface mb-4 p-4" aria-labelledby="mode-h">
+    <h2 id="mode-h" class="menu-label px-0 pt-0">Alerts</h2>
+    {% if guest %}
+    <p class="mt-1 font-semibold text-zinc-50">{{ labels[mode] }}</p>
+    {% else %}
+    <div id="mode" class="seg mt-2 grid grid-cols-3" role="radiogroup" aria-label="Alert mode">
+        {% for value in ["home", "schedule", "away"] %}
+        <button type="button" role="radio" class="tab justify-center" data-mode="{{ value }}" aria-checked="{{ 'true' if mode == value else 'false' }}">{{ labels[value] }}</button>
+        {% endfor %}
+    </div>
+    <p id="mode-error" class="mt-2 hidden text-sm text-rose-300" role="alert"></p>
+    {% endif %}
+</section>
+
+{% if cameras %}
+<ul class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+    {% for uri, cam in cameras.items() %}
+    {% set state = 'streaming' if cam.connected else 'offline' if cam.status == -90 else 'online' %}
+    <li>
+        <a href="live#{{ uri }}" class="group block rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+            <div class="aspect-video overflow-hidden rounded-2xl bg-black">
+                {% if cam.img_url %}
+                <img src="{{ cam.img_url }}?{{ cam.img_time }}" alt="" class="h-full w-full object-cover" onerror="this.remove()" />
+                {% endif %}
+            </div>
+            <p class="mt-1.5 flex items-center gap-1.5 text-sm font-medium text-zinc-200">
+                <span class="h-2 w-2 flex-none rounded-full {{ {'streaming': 'bg-accent', 'offline': 'bg-rose-400', 'online': 'bg-zinc-600'}[state] }}"></span>
+                <span class="truncate">{{ cam.nickname }}</span>
+            </p>
+            <p class="text-xs text-zinc-500"><span class="capitalize">{{ state }}</span>
+                {%- if last_motion[uri] %} · motion <time data-ts="{{ last_motion[uri] }}"></time>{% endif %}</p>
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<div class="surface p-6 text-zinc-400">
+    <p class="font-display text-lg font-extrabold text-zinc-50">No cameras yet</p>
+    <p class="mt-1 text-sm">Add a camera in the Wyze app. Then open Settings, the gear at the top, and pick Choose cameras.</p>
+</div>
+{% endif %}
+
+<section id="pinTip" class="surface mt-6 p-4 text-sm text-zinc-400">
+    <h2 class="font-display text-lg font-extrabold text-zinc-50">Keep this on your home screen</h2>
+    <p class="mt-1">On iPhone, open this page in Safari, tap Share, then tap Add to Home Screen.
+        On Android, open the browser menu and tap Add to Home screen.</p>
+    <p class="mt-1">If Wyze Tunnel is already on your home screen, press and hold its icon and pick Glance.</p>
+    <button class="btn mt-3" type="button" onclick="try { localStorage.setItem('pinTipHidden', '1') } catch { } this.parentElement.remove()">Got it</button>
+</section>
+<script>try { (matchMedia("(display-mode: standalone)").matches || localStorage.getItem("pinTipHidden")) && document.getElementById("pinTip").remove() } catch { }</script>
+{% endblock %}
+
+{% block javascript %}
+<script>
+    (() => {
+        const time = (ts) => {
+            const d = new Date(ts * 1000);
+            return d.toDateString() === new Date().toDateString() ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                : d.toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+        };
+        document.querySelectorAll("time[data-ts]").forEach((t) => t.textContent = time(t.dataset.ts));
+        document.getElementById("updated").textContent = "Updated " + time(Date.now() / 1000);
+
+        const modes = [...document.querySelectorAll("#mode [data-mode]")], error = document.getElementById("mode-error");
+        modes.forEach((button) => button.addEventListener("click", () => {
+            fetch("alerts/mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: button.dataset.mode }) })
+                .then((resp) => resp.json().then((data) => resp.ok ? data : Promise.reject(new Error(data.error || resp.statusText))))
+                .then(() => { modes.forEach((b) => b.setAttribute("aria-checked", b === button)); error.classList.add("hidden"); })
+                .catch((err) => { error.textContent = `That didn't save: ${err.message}`; error.classList.remove("hidden"); });
+        }));
+
+        // Fresh pictures and states every 30 seconds while the page is on screen, and right away when it comes back.
+        const loaded = Date.now();
+        setInterval(() => document.hidden || location.reload(), 30000);
+        document.addEventListener("visibilitychange", () => document.hidden || Date.now() - loaded < 30000 || location.reload());
+    })();
+</script>
+{% endblock %}
