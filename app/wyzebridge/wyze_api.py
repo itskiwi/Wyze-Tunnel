@@ -439,6 +439,18 @@ def url_timestamp(url: str) -> int:
     return 0
 
 
+def wyze_media_url(url: str) -> bool:
+    """True for https links to Wyze's own media hosts, so the clip proxy can't be pointed elsewhere."""
+    try:
+        parts = urlparse(url)
+        port = parts.port
+    except ValueError:
+        return False
+    host = (parts.hostname or "").lower()
+    wyze_host = host.endswith((".wyze.com", ".wyzecam.com")) or (host.startswith("wyze") and host.endswith(".amazonaws.com"))
+    return parts.scheme == "https" and wyze_host and port in (None, 443)
+
+
 def valid_s3_url(url: Optional[str]) -> bool:
     if not url:
         return False

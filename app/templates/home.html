@@ -201,8 +201,10 @@
             row.querySelector("[data-what]").textContent = m.count === 1 ? what
                 : `${what} ${m.count} times, ${time(m.first)} to ${time(m.ts)}`;
             const link = row.querySelector("a"), records = recording.includes(m.uri);
-            link.href = records ? `recordings?cam=${encodeURIComponent(m.uri)}&t=${m.first}` : `live#${encodeURIComponent(m.uri)}`;
-            row.querySelector("[data-action]").textContent = records ? "Play the clip" : "See the camera";
+            // Not recorded here? Wyze's own cloud clip still shows what happened, even when the camera is offline now.
+            link.href = records ? `recordings?cam=${encodeURIComponent(m.uri)}&t=${m.first}`
+                : m.clip ? `wyze-clip?u=${encodeURIComponent(m.clip)}` : `live#${encodeURIComponent(m.uri)}`;
+            row.querySelector("[data-action]").textContent = records ? "Play the clip" : m.clip ? "Play Wyze's clip" : "See the camera";
             const thumb = row.querySelector("[data-thumb]");
             if (m.count > 1) thumb.classList.add("shadow-[5px_-5px_0_-1px_rgb(var(--zinc-700))]", "!overflow-visible");
             if (m.img) {
