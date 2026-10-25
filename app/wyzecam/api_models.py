@@ -34,12 +34,13 @@ NO_WEBRTC = {
     "HL_PANP",
     "WVOD1",
     "HL_WCO2",
-    "AN_RSCW",
     "WYZEDB3",
     "HL_DB2",
-    "GW_BE1",
-    "AN_RDB1",
 }
+
+# Stream only through Wyze's cloud (/v4/camera/get_streams), like the Wyze app does for them.
+# The Gwell ones (GW_*, like the Doorbell Pro) are covered by is_gwell.
+CLOUD_CAMS = {"AN_RDB1", "AN_RSCW", "LD_CFP"}
 
 
 # known 2k cameras
@@ -184,6 +185,10 @@ class WyzeCamera(BaseModel):
     @property
     def is_gwell(self) -> bool:
         return self.product_model.startswith("GW_")
+
+    @property
+    def cloud_only(self) -> bool:
+        return self.is_gwell or self.product_model in CLOUD_CAMS
 
     @property
     def is_battery(self) -> bool:

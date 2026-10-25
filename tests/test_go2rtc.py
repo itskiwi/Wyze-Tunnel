@@ -23,7 +23,8 @@ def test_auto_chain(both, monkeypatch):
     assert go2rtc.source_chain(cam(ip=None)) == ["tutk", "webrtc"]
     assert go2rtc.source_chain(cam(model="WYZEDB3")) == ["tutk", "lan"]  # no WebRTC on this model
     assert go2rtc.source_chain(cam(model="GW_GC1")) == ["webrtc"]  # Gwell (OG): cloud WebRTC only
-    assert go2rtc.source_chain(cam(model="GW_BE1")) == []  # Doorbell Pro: no WebRTC
+    for pro in ("GW_BE1", "AN_RDB1", "AN_RSCW", "LD_CFP"):  # Doorbell Pro, Pro 2, Battery Cam Pro, Floodlight Pro
+        assert go2rtc.source_chain(cam(model=pro)) == ["webrtc"]
     monkeypatch.setattr(go2rtc, "tutk_available", lambda: False)
     monkeypatch.setattr(go2rtc, "local_ipv4s", lambda: {"169.254.1.7", "192.168.3.10"})
     assert go2rtc.source_chain(cam(ip="192.168.0.27")) == ["lan", "webrtc"]  # same /22 network
@@ -66,7 +67,8 @@ def test_fallback_moves_to_next_source_after_5_failures():
     assert seen[:4] == ["tutk"] * 4 and seen[4] == "lan" and seen[9] == "webrtc" and seen[14] == "tutk"
 
 
-def test_cam_og_uses_get_streams(monkeypatch):
+@pytest.mark.parametrize("model", ["GW_GC1", "GW_BE1", "AN_RDB1", "AN_RSCW", "LD_CFP"])
+def test_cloud_cams_use_get_streams(monkeypatch, model):
     from unittest import mock
 
     from wyzecam import api
@@ -79,8 +81,8 @@ def test_cam_og_uses_get_streams(monkeypatch):
     monkeypatch.setattr(api, "API_STATS", api.Counter())
     resp = mock.Mock(headers={}, json=lambda: body)
     with mock.patch.object(api, "post", return_value=resp) as post:
-        out = api.get_cam_webrtc(WyzeCredential(access_token="tok", phone_id="p"), "MAC", "GW_GC1")
+        out = api.get_cam_webrtc(WyzeCredential(access_token="tok", phone_id="p"), "MAC", model)
     assert post.call_args.args[0].endswith("/v4/camera/get_streams")
-    assert '"device_model":"GW_GC1"' in post.call_args.kwargs["data"].replace(" ", "")
+    assert f'"device_model":"{model}"' in post.call_args.kwargs["data"].replace(" ", "")
     assert out == {"ClientId": "p", "signalingUrl": "wss://wyze-mars-webcsrv.wyzecam.com/x?X-Amz-Credential=a%2Fb",
                    "servers": [{"urls": "turn:t", "username": "u", "credential": "c"}]}

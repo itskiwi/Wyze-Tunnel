@@ -89,7 +89,8 @@ class WyzeBridge(Thread):
                 audio=bool(env_cam("enable_audio", cam.name_uri)),
                 # Spotting needs a recording to play hits from, so switching it on records the camera too.
                 record=bool(env_cam("record", cam.name_uri)) or recording.wanted(cam.name_uri) or detect.wanted(cam.name_uri),
-                reconnect=is_livestream(cam.name_uri) or not config.ON_DEMAND,
+                # Battery cams connect only while someone watches, so they don't drain.
+                reconnect=is_livestream(cam.name_uri) or (not config.ON_DEMAND and not cam.is_battery),
             )
             self.add_substream(cam, options)
             stream = WyzeStream(cam, options)
@@ -106,7 +107,7 @@ class WyzeBridge(Thread):
                 detect.watch(stream.uri, display_name(cam), on_detect)
                 watching.add(stream.uri)
             self.streams.add(stream)
-            needs_sdk += not cam.is_gwell and not lan_controls(cam, stream.sources)
+            needs_sdk += not cam.cloud_only and not lan_controls(cam, stream.sources)
         detect.stop_all(keep=frozenset(watching))  # cameras switched off since the last start
         # The Windows tray offers the WSL setup only while a camera needs the Wyze SDK (away from home, old firmware).
         if (flag := os.getenv("WT_UPDATE_FILE")) and not tutk_available():
