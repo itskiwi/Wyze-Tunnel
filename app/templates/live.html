@@ -79,33 +79,6 @@
     <div id="{{ cam_uri }}" class="camera {{'is-hidden' if not camera.enabled}}" data-enabled="{{camera.enabled}}"
         data-connected="{{camera.connected}}" data-battery="{{camera.is_battery}}" data-doorbell="{{camera.is_doorbell}}">
         <div class="card group relative rounded-[22px] bg-zinc-900 shadow-[var(--shadow)]">
-            <header class="card-header pointer-events-none absolute inset-x-2.5 top-2.5 z-10 flex items-start gap-2">
-                <div class="card-header-title pointer-events-auto flex min-w-0 items-center gap-2 rounded-full bg-[#0f110f]/60 py-1.5 pl-2.5 pr-3 text-sm font-semibold text-[#fff] backdrop-blur">
-                    <span class="icon status {{'enabled' if camera.enabled}}" data-cam="{{cam_uri}}">
-                        <i class="fas fa-circle-stop text-[#b9bdb5]" aria-hidden="true"></i>
-                    </span>
-                    <span class="truncate">{{camera.nickname}}</span>
-                    <span class="status-label rounded-full bg-[#fff]/15 px-2 py-0.5 text-[11px] font-medium text-[#e5e5e5]">{{ 'off' if not camera.enabled else 'idle' }}</span>
-                    <span class="net-mode rounded-full bg-[#fff]/15 px-2 py-0.5 text-[11px] font-medium text-[#e5e5e5] {{ '' if camera.net_mode else 'is-hidden' }}" data-mode="{{ camera.net_mode }}" title="How Wyze Tunnel reaches this camera">{{ camera.net_mode }}</span>
-                    {% if camera.substream %}
-                    <span class="icon text-[#d4d4d4]" title="Sub-stream of {{ camera.nickname }}"><i class="fas fa-object-ungroup"></i></span>
-                    {% endif %}
-                    {% if camera.camera_info %}
-                    {% if camera.camera_info.sdParm and camera.camera_info.sdParm.status == "1"%}
-                    <span class="icon text-[#d4d4d4]" title="{{ (camera.camera_info.sdParm.free|int/1024)|round(2) }} of {{ (camera.camera_info.sdParm.capacity|int/1024)|round(2) }} GB free on SD card">
-                        <i class="fas fa-sd-card"></i></span>
-                    {% endif %}
-                    {% if camera.camera_info.get("channelResquestResult", {}).get("audio") == "1" %}
-                    <span class="icon text-[#d4d4d4]" title="Audio enabled"><i class="fas fa-volume-high"></i></span>
-                    {% endif %}
-                    {% endif %}
-                    {% if camera.is_battery %}
-                    <span class="icon battery cursor-pointer text-[#d4d4d4]"><i class="fas fa-battery-empty"></i></span>
-                    {% endif %}
-                    <span class="icon motion is-hidden text-amber-400" title="Motion detected"><i class="fas fa-person-running"></i></span>
-                </div>
-                <span class="drag_handle fs-display-none pointer-events-auto ml-auto hidden h-8 w-8 flex-none cursor-move place-items-center rounded-full bg-[#0f110f]/60 text-[#fff] md:group-hover:grid" draggable="true" title="Drag to reorder"><i class="fas fa-grip pointer-events-none"></i></span>
-            </header>
             <div class="card-image relative overflow-hidden rounded-[22px] bg-black">
                 <figure class="image relative aspect-video">
                     {% if show_video and (camera.on_demand or camera.enabled) %}
@@ -140,21 +113,52 @@
                     {% endif %}
                 </figure>
             </div>
-            <div class="content is-hidden absolute inset-0 z-[5] overflow-auto rounded-[22px] bg-zinc-900 px-4 pb-16 pt-14 text-xs">
+            <div class="content is-hidden absolute inset-0 z-[5] overflow-auto rounded-[22px] bg-zinc-900 px-4 pb-16 pt-4 text-xs" title="Tap to close">
                 <table class="w-full table-fixed [&_td]:break-words [&_td]:py-1 [&_td]:align-top [&_td:first-child]:w-2/5 [&_td:first-child]:pr-3 [&_td:first-child]:text-zinc-400">
                     <tbody></tbody>
                 </table>
             </div>
-            <div class="cam-acts fs-display-none absolute bottom-2.5 right-2.5 z-10 flex gap-1.5">
-                {% if show_video %}
-                <button class="pip cam-action is-hidden" data-cam="{{cam_uri}}" title="Keep this camera on screen over other apps" aria-label="Picture-in-picture for {{ camera.nickname }}">
-                    <i class="fas fa-clone" aria-hidden="true"></i>
-                </button>
-                {% endif %}
+            {# Name, status and buttons sit in a bar under the picture, so nothing covers the video #}
+            <div class="tile-bar relative z-10 flex items-center gap-2 py-2 pl-3 pr-2">
+                <div class="card-header-title flex min-w-0 flex-1 items-center gap-2 text-sm font-semibold text-zinc-50">
+                    <span class="icon status {{'enabled' if camera.enabled}}" data-cam="{{cam_uri}}">
+                        <i class="fas fa-circle-stop text-zinc-500" aria-hidden="true"></i>
+                    </span>
+                    <span class="truncate">{{camera.nickname}}</span>
+                    <span class="status-label rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-300">{{ 'off' if not camera.enabled else 'idle' }}</span>
+                    <span class="net-mode rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-300 {{ '' if camera.net_mode else 'is-hidden' }}" data-mode="{{ camera.net_mode }}" title="How Wyze Tunnel reaches this camera">{{ camera.net_mode }}</span>
+                    {% if camera.substream %}
+                    <span class="icon text-zinc-400" title="Sub-stream of {{ camera.nickname }}"><i class="fas fa-object-ungroup"></i></span>
+                    {% endif %}
+                    {% if camera.camera_info %}
+                    {% if camera.camera_info.sdParm and camera.camera_info.sdParm.status == "1"%}
+                    <span class="icon text-zinc-400" title="{{ (camera.camera_info.sdParm.free|int/1024)|round(2) }} of {{ (camera.camera_info.sdParm.capacity|int/1024)|round(2) }} GB free on SD card">
+                        <i class="fas fa-sd-card"></i></span>
+                    {% endif %}
+                    {% if camera.camera_info.get("channelResquestResult", {}).get("audio") == "1" %}
+                    <span class="icon text-zinc-400" title="Audio enabled"><i class="fas fa-volume-high"></i></span>
+                    {% endif %}
+                    {% endif %}
+                    {% if camera.is_battery %}
+                    <span class="icon battery cursor-pointer text-zinc-400"><i class="fas fa-battery-empty"></i></span>
+                    {% endif %}
+                    <span class="icon motion is-hidden text-amber-400" title="Motion detected"><i class="fas fa-person-running"></i></span>
+                </div>
+                <span class="drag_handle fs-display-none hidden h-8 w-8 flex-none cursor-move place-items-center rounded-full text-zinc-400 md:group-hover:grid" draggable="true" title="Drag to reorder"><i class="fas fa-grip pointer-events-none"></i></span>
+            <div class="cam-acts fs-display-none flex flex-none items-center gap-1.5">
+                <span class="vp-slot"></span>
                 {% if not watch_only %}
                 <details class="dropdown">
-                    <summary class="cam-action" title="Controls" aria-label="Controls for {{ camera.nickname }}"><i class="fas fa-sliders"></i></summary>
+                    <summary class="cam-action" title="More" aria-label="More for {{ camera.nickname }}"><i class="fas fa-ellipsis"></i></summary>
                     <div class="menu cam-menu cam-control" data-cam="{{cam_uri}}">
+                        <div class="grid grid-cols-2 gap-1 p-1">
+                            {% if show_video %}
+                            <button type="button" class="menu-item" data-proxy=".vp-mute"><i class="fas fa-volume-high w-4"></i>Sound on or off</button>
+                            <button type="button" class="menu-item" data-proxy=".vp-full"><i class="fas fa-expand w-4"></i>Full screen</button>
+                            <button type="button" class="pip menu-item is-hidden" data-cam="{{cam_uri}}" title="Keep this camera on screen over other apps"><i class="fas fa-clone w-4"></i>Keep on screen</button>
+                            {% endif %}
+                            <button type="button" class="toggle-details menu-item" data-cam="{{cam_uri}}"><i class="fas fa-circle-info w-4"></i>Details</button>
+                        </div>
                         <p class="menu-label"><i class="fas fa-power-off"></i> Power</p>
                         <div class="grid grid-cols-3 gap-1 p-1">
                             <button class="button btn" data-cmd="power" data-payload="on">On</button>
@@ -272,10 +276,8 @@
                         </details>
                     </div>
                 </details>
-                <button class="toggle-details cam-action" data-cam="{{cam_uri}}" title="Camera details" aria-label="Details for {{ camera.nickname }}">
-                    <i class="fas fa-circle-info" aria-hidden="true"></i>
-                </button>
                 {% endif %}
+            </div>
             </div>
         </div>
     </div>

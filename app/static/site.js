@@ -279,6 +279,17 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("click", (e) => {
     dropdowns.forEach((d) => { if (!d.contains(e.target)) d.open = false; });
   });
+  // Camera sheet: Sound and Full screen press the player's own buttons; any action closes the sheet.
+  document.querySelectorAll("[data-proxy]").forEach((b) => b.addEventListener("click", () => {
+    b.closest(".camera").querySelector(b.dataset.proxy)?.click();
+  }));
+  document.querySelectorAll(".cam-menu").forEach((m) => m.addEventListener("click", (e) => {
+    if (e.target.closest(".menu-item")) { m.closest("details").open = false; }
+  }));
+  // Details cover the picture; a tap on them closes them.
+  document.querySelectorAll(".camera .content").forEach((c) => c.addEventListener("click", () => {
+    c.closest(".camera").querySelector(".toggle-details")?.click();
+  }));
 
   // Update preview after loading the page
   async function loadPreview(img) {

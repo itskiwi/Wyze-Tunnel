@@ -35,7 +35,8 @@
         button("vp-mute", "Mute", "fa-volume-high") +
         (document.pictureInPictureEnabled ? button("vp-pip", "Picture-in-picture", "fa-clone") : "") +
         button("vp-full", "Full screen", "fa-expand");
-    box.append(bar);
+    // Camera tiles keep their buttons in the bar under the picture.
+    (live && box.closest(".camera")?.querySelector(".vp-slot") || box).append(bar);
     // Taps on the bar shouldn't reach the tile's own click handlers.
     bar.addEventListener("click", (e) => e.stopPropagation());
     const $ = (sel) => bar.querySelector(sel);
