@@ -11,6 +11,7 @@ from subprocess import DEVNULL, PIPE, Popen
 from typing import Optional
 
 import segno
+from flask import request
 from wyzebridge import config, guests
 from wyzebridge.go2rtc import GO2RTC_BIN
 from wyzebridge.logging import logger
@@ -25,6 +26,8 @@ TAILSCALE_PATHS = "tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tails
 AWAY_BIN = os.getenv("WYZE_AWAY_BIN") or str(Path(GO2RTC_BIN).with_name("wyze-away" + Path(GO2RTC_BIN).suffix))
 AWAY_DIR = Path(config.TOKEN_PATH) / "tailscale"
 AWAY_PORT = int(os.getenv("FLASK_RUN_PORT", "5000"))
+# wyze-away sets it on every request through the public no-app link (Tailscale Funnel).
+PUBLIC_HEADER = "X-Wyze-Away-Public"
 
 _codes: dict[str, float] = {}
 
@@ -106,18 +109,23 @@ class Away:
             logger.error(f"[AWAY] wyze-away exited with code {cls.proc.returncode}, restarting")
         (AWAY_DIR / "status.json").unlink(missing_ok=True)
         # It exits when our end of its stdin closes, so it never outlives the bridge.
-        args = [AWAY_BIN, "-dir", str(AWAY_DIR), "-port", str(AWAY_PORT), "-status", str(AWAY_DIR / "status.json")]
+        args = [AWAY_BIN, "-dir", str(AWAY_DIR), "-port", str(AWAY_PORT), "-status", str(AWAY_DIR / "status.json"), "-funnel"]
         cls.proc = Popen(args, stdin=PIPE, stdout=DEVNULL)
 
     @classmethod
     def status(cls) -> dict:
-        info = {"available": cls.available(), "on": cls.on(), "state": "", "auth_url": "", "host": ""}
+        info = {"available": cls.available(), "on": cls.on(), "state": "", "auth_url": "", "host": "", "public": "", "funnel_url": ""}
         if info["on"] and cls.running():
             try:
                 info |= json.loads((AWAY_DIR / "status.json").read_text())
             except (OSError, ValueError):
                 info["state"] = "Starting"
         return info
+
+
+def public_request() -> bool:
+    """True when this request came over the public no-app link, where only paired phones may get in."""
+    return PUBLIC_HEADER in request.headers
 
 
 def tailscale_host() -> str:

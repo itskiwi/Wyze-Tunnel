@@ -53,7 +53,10 @@ def test_pair_code_expires(setup):  # noqa: F811
 FAKE_AWAY = """#!/usr/bin/env python3
 import json, sys
 args = dict(zip(sys.argv[1::2], sys.argv[2::2]))
-json.dump({"state": "Running", "auth_url": "", "host": "wyze-tunnel.tail1234.ts.net"}, open(args["-status"], "w"))
+status = {"state": "Running", "auth_url": "", "host": "wyze-tunnel.tail1234.ts.net", "public": "", "funnel_url": ""}
+if "-funnel" in sys.argv:
+    status["public"] = "https://wyze-tunnel.tail1234.ts.net"
+json.dump(status, open(args["-status"], "w"))
 sys.stdin.read()  # like wyze-away, it exits when the bridge closes its stdin
 """
 
@@ -67,14 +70,14 @@ def test_away_access_turns_on_and_heals(setup, tmp_path):  # noqa: F811
     from wyzebridge import pocket
 
     with mock.patch.object(pocket, "AWAY_BIN", str(fake)), mock.patch.object(pocket, "AWAY_DIR", tmp_path / "ts"):
-        assert client.get("/away", headers=owner).json == {"available": True, "on": False, "state": "", "auth_url": "", "host": ""}
+        assert not client.get("/away", headers=owner).json["on"]
         assert client.post("/away", json={"on": True}, headers=owner).json["on"]
         for _ in range(50):
             if pocket.Away.status()["state"] == "Running":
                 break
             pocket.time.sleep(0.1)
         codes = client.post("/pair", headers=owner).json
-        assert codes["anywhere"]["url"].startswith("http://wyze-tunnel.tail1234.ts.net/pair/")
+        assert codes["anywhere"]["url"].startswith("https://wyze-tunnel.tail1234.ts.net/pair/")
 
         pocket.Away.proc.kill()
         pocket.Away.proc.wait()
@@ -86,3 +89,20 @@ def test_away_access_turns_on_and_heals(setup, tmp_path):  # noqa: F811
         assert proc.wait(5) is not None and not pocket.Away.running()
         pocket.Away.health_check()
         assert pocket.Away.proc is None
+
+
+def test_public_link_only_lets_paired_phones_in(setup):  # noqa: F811
+    client, _, _ = setup
+    owner = basic("owner", "ownerpass")
+    public = {"X-Wyze-Away-Public": "1"}
+    # A typed password, even the right one, never works over the public link, and no other page shows.
+    assert client.get("/", headers=owner | public).status_code == 403
+    assert b"for paired phones" in client.get("/login", headers=public).data
+    assert client.get("/api", headers=public | {"api": "nope"}).status_code == 403
+    assert client.get("/static/site.css", headers=public).status_code == 200
+
+    code = client.post("/pair", headers=owner).json["home"]["url"].rpartition("/")[2]
+    phone = client.application.test_client()
+    assert phone.get("/pair/" + code, headers=IPHONE | public).status_code == 302
+    assert phone.get("/", headers=public).status_code == 200
+    assert phone.post("/away", json={"on": False}, headers=public).status_code == 403  # a family login, not the owner

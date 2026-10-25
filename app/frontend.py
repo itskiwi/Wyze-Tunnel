@@ -89,6 +89,12 @@ def create_app():
         if web_ui.cross_site_request():
             return {"error": "Cross-site request blocked"}, 403
 
+    @app.before_request
+    def public_link_paired_only():
+        # Pages without a login (Wyze sign-in, setup, shares...) stay home-only too: the public link only pairs.
+        if pocket.public_request() and not request.path.startswith(("/static/", "/pair/")) and not web_ui.verify_password("", ""):
+            return render_template("pair.html", public_only=True), 403
+
     @app.route("/login", methods=["GET", "POST"])
     def wyze_login():
         if wb.api.auth:
@@ -635,7 +641,9 @@ def create_app():
         if host in ("localhost", "127.0.0.1", "[::1]"):
             host = pocket.lan_ip()
         codes = {"home": f"{request.scheme}://{host}{port}{path}"}
-        if (ts_host := pocket.tailscale_host()) and ts_host != host:
+        if public := pocket.Away.status()["public"]:
+            codes["anywhere"] = public + path  # the phone's cookie belongs to this address, so it works anywhere
+        elif (ts_host := pocket.tailscale_host()) and ts_host != host:
             # The bundled Tailscale serves the web UI on port 80.
             codes["anywhere"] = f"http://{ts_host}{'' if ts_host == pocket.Away.status()['host'] else port}{path}"
         return {k: {"url": url, "qr": pocket.qr_svg(url)} for k, url in codes.items()}

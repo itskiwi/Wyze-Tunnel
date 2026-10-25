@@ -1,5 +1,8 @@
 // Command wyze-away puts the web UI on the user's own private Tailscale network with embedded Tailscale (tsnet),
-// so a phone with the Tailscale app can open it from anywhere. No router ports are opened and nothing is public.
+// so a phone with the Tailscale app can open it from anywhere. No router ports are opened.
+//
+// With -funnel it also asks for a public https link (Tailscale Funnel) for phones without the app. Requests
+// through it carry PublicHeader, and the bridge then lets in only phones paired by QR code.
 package main
 
 import (
@@ -10,19 +13,37 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
+	"tailscale.com/client/local"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tsnet"
 )
+
+// PublicHeader marks requests that came in over the public link. The proxy always sets it, so nobody on the
+// internet can drop it, and adding it on the home network only locks that request down further.
+const PublicHeader = "X-Wyze-Away-Public"
 
 type status struct {
 	State   string `json:"state"`
 	AuthURL string `json:"auth_url"`
 	Host    string `json:"host"`
+	// Public is the no-app link once Funnel works; FunnelURL is Tailscale's page to allow it until then.
+	Public    string `json:"public"`
+	FunnelURL string `json:"funnel_url"`
 }
+
+var (
+	mu        sync.Mutex
+	public    string
+	funnelURL string
+)
 
 func statusOf(st *ipnstate.Status) status {
 	s := status{State: st.BackendState, AuthURL: st.AuthURL}
@@ -44,6 +65,42 @@ func writeJSON(path string, v any) error {
 	return os.Rename(tmp, path)
 }
 
+func publicProxy(target string) *httputil.ReverseProxy {
+	u := &url.URL{Scheme: "http", Host: target}
+	return &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(u)
+			r.Out.Host = r.In.Host // so the bridge builds links with the public name
+			r.Out.Header.Set(PublicHeader, "1")
+		},
+		FlushInterval: -1, // live status and video stream as they come
+	}
+}
+
+// serveFunnel keeps asking for the public link; it needs a one-time "allow" in Tailscale, which may come later.
+func serveFunnel(srv *tsnet.Server, lc *local.Client, target string) {
+	for ; ; time.Sleep(5 * time.Second) {
+		ln, err := srv.ListenFunnel("tcp", ":443", tsnet.FunnelOnly())
+		if err != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if info, qerr := lc.QueryFeature(ctx, "funnel"); qerr == nil {
+				mu.Lock()
+				funnelURL = info.URL
+				mu.Unlock()
+			}
+			cancel()
+			continue
+		}
+		mu.Lock()
+		public, funnelURL = "https://"+strings.TrimSuffix(srv.CertDomains()[0], "."), ""
+		mu.Unlock()
+		log.Print(http.Serve(ln, publicProxy(target)))
+		mu.Lock()
+		public = ""
+		mu.Unlock()
+	}
+}
+
 func forward(c net.Conn, target string) {
 	defer c.Close()
 	up, err := net.Dial("tcp", target)
@@ -58,7 +115,8 @@ func forward(c net.Conn, target string) {
 func main() {
 	dir := flag.String("dir", "", "state folder; holds this computer's Tailscale key")
 	port := flag.Int("port", 5000, "web UI port on this computer; Tailscale devices reach it on port 80")
-	statusFile := flag.String("status", "", "where to keep {state, auth_url, host} as JSON")
+	statusFile := flag.String("status", "", "where to keep the status as JSON")
+	funnel := flag.Bool("funnel", false, "also serve a public https link for paired phones without the Tailscale app")
 	flag.Parse()
 
 	srv := &tsnet.Server{Dir: *dir, Hostname: "wyze-tunnel", Logf: func(string, ...any) {}}
@@ -81,11 +139,18 @@ func main() {
 			st, err := lc.StatusWithoutPeers(ctx)
 			cancel()
 			if err == nil && *statusFile != "" {
-				writeJSON(*statusFile, statusOf(st))
+				s := statusOf(st)
+				mu.Lock()
+				s.Public, s.FunnelURL = public, funnelURL
+				mu.Unlock()
+				writeJSON(*statusFile, s)
 			}
 		}
 	}()
 	target := fmt.Sprintf("127.0.0.1:%d", *port)
+	if *funnel {
+		go serveFunnel(srv, lc, target)
+	}
 	for {
 		c, err := ln.Accept()
 		if err != nil {

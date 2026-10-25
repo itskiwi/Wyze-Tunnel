@@ -25,6 +25,10 @@ GUEST_PATHS = "/hls/", "/img/", "/snapshot/", "/thumb/", "/signaling/", "/webrtc
 
 @auth.verify_password
 def verify_password(username, password):
+    if pocket.public_request():
+        # The no-app away link is on the internet: only phones paired by QR code get in, never a typed password.
+        username, password = pocket.from_cookie(request.cookies.get(pocket.COOKIE, ""))
+        return bool(WbAuth.enabled and username) and guest_login(username, password)
     if token := bearer_token():
         return verify_app_token(token)
     if config.HASS_TOKEN and request.remote_addr == "172.30.32.2":
@@ -35,12 +39,18 @@ def verify_password(username, password):
         return check_password_hash(WbAuth.hashed_password(), password)
     if not username and (paired := request.cookies.get(pocket.COOKIE)):
         username, password = pocket.from_cookie(paired)
-    if WbAuth.enabled and username and (guest := guests.check_guest(username, password)):
-        if guest["family"] or request.method == "GET" and (request.path == "/" or request.path.startswith(GUEST_PATHS)):
-            return guest
-        g.guest_denied = True
-        return False
+    if WbAuth.enabled and username:
+        return guest_login(username, password)
     return WbAuth.enabled == False
+
+
+def guest_login(username: str, password: str):
+    if not (guest := guests.check_guest(username, password)):
+        return False
+    if guest["family"] or request.method == "GET" and (request.path == "/" or request.path.startswith(GUEST_PATHS)):
+        return guest
+    g.guest_denied = True
+    return False
 
 
 def bearer_token() -> str:
