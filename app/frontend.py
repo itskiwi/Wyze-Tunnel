@@ -15,13 +15,14 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     send_from_directory,
 )
 import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, guests, integrations, network, pocket, privacy, recording, shares, street_watch, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, detect, guests, integrations, network, pocket, privacy, recording, shares, street_watch, timelapse, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_cam
 from wyzebridge.diagnostics import build_report
@@ -653,6 +654,8 @@ def create_app():
             min_free_gb=recording.MIN_FREE // 1024**3,
             default_keep=recording.DEFAULT_KEEP_DAYS,
             disk=recording.disk_use(),
+            timelapses=timelapse.videos(),
+            timelapse_cams=timelapse.load_cams(),
             selected=request.args.get("cam"),
             playback=PLAYBACK_ENABLED,
             api=WbAuth.api,
@@ -671,6 +674,24 @@ def create_app():
             return {"error": str(ex)}, 400
         Thread(target=wb.restart, daemon=True).start()
         return {"status": "saved"}
+
+    @app.route("/timelapse/settings", methods=["POST"])
+    @auth_required
+    def timelapse_settings():
+        if web_ui.current_guest():
+            return {"error": "Only the owner can change this."}, 403
+        try:
+            timelapse.save_cams((request.get_json(silent=True) or {}).get("cams"), list(wb.streams.streams))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"status": "saved"}
+
+    @app.route("/timelapse/<string:cam_name>/<string:day>.mp4")
+    @auth_required
+    def timelapse_video(cam_name: str, day: str):
+        if not (path := timelapse.video_path(cam_name, day)):
+            return {"error": "No timelapse for that day"}, 404
+        return send_file(path, mimetype="video/mp4", conditional=True)
 
     @app.route("/recordings/<string:cam_name>")
     @auth_required
