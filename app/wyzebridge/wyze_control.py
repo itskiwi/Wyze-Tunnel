@@ -312,7 +312,9 @@ def send_tutk_msg(sess: WyzeIOTCSession, cmd: tuple | str, log: str = "info") ->
             if isinstance(res, str) and res.isdigit():
                 res = int(res)
             return _response(resp, res, params, log)
-    except Empty:
+    except Empty as ex:
+        if str(ex):  # go2rtc.LanSession couldn't reach the camera
+            return resp | _error_response(cmd, ex)
         return _response(resp, log=log)
     except tutk_protocol.TutkWyzeProtocolError as ex:
         return resp | _error_response(cmd, tutk_protocol.TutkWyzeProtocolError(ex))
