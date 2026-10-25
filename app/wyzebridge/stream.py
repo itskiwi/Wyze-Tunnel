@@ -11,7 +11,7 @@ from wyzebridge.ffmpeg import rtsp_snap_cmd
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import bridge_status, cam_control, publish_topic, update_preview
 from wyzebridge.mtx_event import RtspEvent
-from wyzebridge.privacy import PrivacySchedule
+from wyzebridge.privacy import BATTERY_FILE, PrivacySchedule
 from wyzebridge.webhooks import ALERTS
 from wyzebridge.wyze_events import EVENT_LOG, WyzeEvents
 
@@ -101,6 +101,7 @@ class StreamManager:
         events = None
         last_health = 0.0
         privacy = PrivacySchedule()
+        battery_saver = PrivacySchedule(BATTERY_FILE, ("state", "disable", "enable"))
         while not self.stop_flag:
             # One bad iteration must not end monitoring, or no stream ever reconnects.
             try:
@@ -116,6 +117,7 @@ class StreamManager:
                     mtx_health()
                     bridge_status(mqtt, self.streams)
                     privacy.check(self.streams)
+                    battery_saver.check(self.streams)
                     guests.prune()
                     backup.auto_backup()
                     summary.check(list(EVENT_LOG))

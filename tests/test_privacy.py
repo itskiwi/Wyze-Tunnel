@@ -47,3 +47,15 @@ def test_startup_inside_window_turns_off():
     a = stream("AA")
     privacy.PrivacySchedule().check({"a": a}, time(2, 0))
     a.send_cmd.assert_called_once_with("power", "off")
+
+
+def test_battery_saver_stops_streaming_instead_of_power(tmp_path, monkeypatch):
+    path = str(tmp_path / "battery.json")
+    privacy.save_privacy({"cams": ["AA"], "start": "22:00", "end": "07:00"}, {"AA"}, path)
+    sent = []
+    stream = SimpleNamespace(camera=SimpleNamespace(mac="AA"), options=SimpleNamespace(substream=False), uri="cam",
+                             send_cmd=lambda *a: sent.append(a))
+    saver = privacy.PrivacySchedule(path, ("state", "disable", "enable"))
+    saver.check({"cam": stream}, time(23, 0))
+    saver.check({"cam": stream}, time(8, 0))
+    assert sent == [("state", "disable"), ("state", "enable")]
