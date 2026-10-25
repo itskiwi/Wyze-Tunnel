@@ -1,11 +1,26 @@
 import logging
 import multiprocessing
+import re
 import warnings
 from logging.handlers import RotatingFileHandler
 from os import getenv, makedirs
 from sys import stdout
 
 from wyzebridge.bridge_utils import env_bool
+
+# The web UI's api key rides in ?api=<key> URLs that werkzeug and go2rtc log; keep it out of the log file.
+_API_KEY = re.compile(r"(?i)(\bapi=)[^&\s\"'#]+")
+
+
+class _RedactFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        if "api=" in msg:
+            record.msg, record.args = _API_KEY.sub(r"\1<redacted>", msg), None
+        return True
+
+
+redact_filter = _RedactFilter()
 
 log_level: int = getattr(logging, env_bool("LOG_LEVEL").upper(), 20)
 log_time = "%X" if env_bool("LOG_TIME") else ""
@@ -28,6 +43,7 @@ def clear_handler(handler: logging.Handler):
 
 def format_logging(handler: logging.Handler, level: int, date_format: str = ""):
     clear_handler(handler)
+    handler.addFilter(redact_filter)
     log_format = "[%(processName)s] %(message)s"
     if level < logging.INFO:
         target_logger = logging.getLogger()
@@ -52,6 +68,7 @@ format_logging(logging.StreamHandler(stdout), log_level, log_time)
 from wyzebridge.diagnostics import log_buffer  # noqa: E402
 
 log_buffer.setLevel(log_level)
+log_buffer.addFilter(redact_filter)
 for name in ("WyzeBridge", "werkzeug", "wyzecam.iotc", "py.warnings"):
     logging.getLogger(name).addHandler(log_buffer)
 
