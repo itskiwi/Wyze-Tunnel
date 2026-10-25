@@ -112,10 +112,13 @@ def test_settings_pick_cameras_and_frigate_turns_local_off():
     with pytest.raises(ValueError):
         detect.save_settings({"frigate_url": "frigate:5000"}, ["front"])
     saved = detect.save_settings({"cams": ["front", "gone"]}, ["front", "back"])
-    assert saved == {"cams": ["front"], "frigate_url": ""}
+    assert saved == {"cams": ["front"], "frigate_url": "", "model": "standard"}
+    with pytest.raises(ValueError):
+        detect.save_settings({"model": "huge"}, ["front"])
     assert detect.wanted("front") and not detect.wanted("back")
     detect.save_settings({"cams": ["front"], "frigate_url": "http://frigate:5000/"}, ["front"])
     assert detect.frigate_url() == "http://frigate:5000" and not detect.wanted("front") and detect.enabled()
+    assert detect.save_settings({"model": "strong"}, ["front"])["model"] == "strong"
 
 
 def test_settings_page_saves_and_restarts_cameras(monkeypatch):
@@ -222,3 +225,21 @@ def test_map_routes(tmp_path, monkeypatch):
     assert client.post("/map/image", data=b"\xff\xd8\xff jpeg").status_code == 200
     assert client.get("/map/image").mimetype == "image/jpeg"
     assert client.post("/map/pins", json={"front": [10, 20]}).json == {"pins": {"front": [10.0, 20.0]}}
+
+
+def test_yolox_decodes_boxes_and_uses_coco_labels():
+    class Net:  # one confident person at grid cell (10, 5) of the stride-8 grid, 4x6 cells big; the rest is noise
+        def setInput(self, blob):
+            assert blob.shape == (1, 3, 640, 640)
+
+        def forward(self):
+            out = np.zeros((1, 8400, 85), np.float32)
+            out[0, :, 4] = 0.01
+            out[0, 5 * 80 + 10, :6] = [0.5, 0.5, np.log(4), np.log(6), 0.95, 0.9]
+            out[0, 5 * 80 + 11, :6] = [0, 0.5, np.log(4), np.log(6), 0.9, 0.9]  # overlaps the first: dropped
+            return out
+
+    model = detect.Yolox(Net())
+    ids, scores, boxes = model.detect(np.zeros((detect.HEIGHT, detect.WIDTH, 3), np.uint8), 0.6)
+    assert ids == [0] and round(scores[0], 3) == 0.855 and boxes == [[68, 20, 32, 48]]
+    assert detect.find_objects(model, np.zeros((detect.HEIGHT, detect.WIDTH, 3), np.uint8)) .keys() == {"person"}
