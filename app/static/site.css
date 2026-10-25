@@ -159,3 +159,48 @@ ol:has(> .num-step) { counter-reset: step; }
   .cam-acts { opacity: 0; transition: opacity .2s; }
   .card:hover .cam-acts, .card:focus-within .cam-acts, .card:has(details[open]) .cam-acts, .card:has(.content:not(.is-hidden)) .cam-acts { opacity: 1; }
 }
+
+/* Video controls drawn by player.js. Colors follow the theme; the bar floats over the picture. */
+.vp { position: relative; outline: none; }
+.vp > video { display: block; }
+.vp-bar {
+  position: absolute; left: .625rem; right: .625rem; bottom: .625rem; z-index: 6;
+  display: flex; align-items: center; gap: .25rem; padding: .25rem .5rem .25rem .25rem;
+  border-radius: 9999px; background: rgb(var(--zinc-900) / .88); color: rgb(var(--white));
+  box-shadow: 0 2px 10px rgb(0 0 0 / .25); backdrop-filter: blur(8px);
+  font: 500 .75rem/1 "Geist Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums;
+  opacity: 0; transform: translateY(4px); transition: opacity .18s, transform .18s;
+}
+.vp:not(.vp-on) > .vp-bar, .vp:has(> video.hidden) > .vp-bar { display: none; }
+.vp:hover > .vp-bar, .vp:focus-within > .vp-bar, .vp.vp-paused > .vp-bar, .vp.vp-active > .vp-bar { opacity: 1; transform: none; }
+.vp-btn {
+  display: grid; place-items: center; flex: none; height: 2.25rem; min-width: 2.25rem; padding: 0 .5rem;
+  border-radius: 9999px; color: inherit; font: inherit; cursor: pointer; transition: background .15s;
+}
+.vp-btn:hover { background: rgb(var(--white) / .1); }
+.vp-btn:focus-visible, .vp-seek:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 1px; }
+.vp-play { background: rgb(var(--accent)); color: rgb(var(--on-accent)); }
+.vp-play:hover { background: rgb(var(--accent-deep)); color: #fff; }
+.vp-time { flex: none; padding: 0 .25rem; color: rgb(var(--white) / .75); }
+.vp-seek {
+  flex: 1; min-width: 3rem; height: 1.5rem; margin: 0 .25rem; background: transparent; cursor: pointer;
+  -webkit-appearance: none; appearance: none; --vp-fill: 0%;
+}
+.vp-seek::-webkit-slider-runnable-track {
+  height: .3rem; border-radius: 9999px;
+  background: linear-gradient(to right, rgb(var(--accent)) var(--vp-fill), rgb(var(--white) / .18) var(--vp-fill));
+}
+.vp-seek::-moz-range-track { height: .3rem; border-radius: 9999px; background: rgb(var(--white) / .18); }
+.vp-seek::-moz-range-progress { height: .3rem; border-radius: 9999px; background: rgb(var(--accent)); }
+.vp-seek::-webkit-slider-thumb {
+  -webkit-appearance: none; width: .9rem; height: .9rem; margin-top: -.3rem; border-radius: 9999px;
+  background: rgb(var(--white)); box-shadow: 0 0 0 3px rgb(var(--accent) / .35);
+}
+.vp-seek::-moz-range-thumb { width: .9rem; height: .9rem; border: 0; border-radius: 9999px; background: rgb(var(--white)); }
+@media (max-width: 480px) { .vp-bar:not(.vp-live) .vp-dur { display: none; } }
+/* Camera tiles: three round buttons that match the card's other buttons, no timeline. */
+.vp-bar.vp-live { right: auto; padding: 0; gap: .375rem; background: none; box-shadow: none; backdrop-filter: none; }
+.vp-live .vp-btn { height: 2.5rem; width: 2.5rem; background: rgb(255 255 255 / .9); color: #1a1c19; box-shadow: 0 1px 4px rgb(0 0 0 / .3); }
+.vp-live .vp-btn:hover { background: #fff; transform: scale(1.05); }
+.vp:fullscreen { display: grid; place-items: center; background: #000; }
+.vp:fullscreen > video { width: 100%; height: 100%; max-height: none; object-fit: contain; }
