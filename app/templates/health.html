@@ -4,8 +4,10 @@
 {% block content %}
 <header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
     <h1 class="page-title">Camera health</h1>
-    {% if cameras %}<button id="checkAll" class="btn btn-primary ml-auto" type="button" title="Watch each camera for a few seconds and say what's wrong"><i class="fas fa-stethoscope"></i>Check every camera</button>{% endif %}
-    <a href="diagnostics" class="btn {{ '' if cameras else 'ml-auto' }}"><i class="fas fa-file-arrow-down"></i>Download diagnostics</a>
+    <div class="flex flex-wrap gap-2 sm:ml-auto">
+    {% if cameras %}<button id="checkAll" class="btn btn-primary" type="button" title="Watch each camera for a few seconds and say what's wrong"><i class="fas fa-stethoscope"></i>Check every camera</button>{% endif %}
+    <a href="diagnostics" class="btn"><i class="fas fa-file-arrow-down"></i>Download diagnostics</a>
+    </div>
 </header>
 
 {% if cameras %}
