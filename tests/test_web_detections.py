@@ -243,3 +243,27 @@ def test_yolox_decodes_boxes_and_uses_coco_labels():
     ids, scores, boxes = model.detect(np.zeros((detect.HEIGHT, detect.WIDTH, 3), np.uint8), 0.6)
     assert ids == [0] and round(scores[0], 3) == 0.855 and boxes == [[68, 20, 32, 48]]
     assert detect.find_objects(model, np.zeros((detect.HEIGHT, detect.WIDTH, 3), np.uint8)) .keys() == {"person"}
+
+
+def test_reel_of_the_last_day(tmp_path, monkeypatch):
+    import time
+
+    monkeypatch.setattr(detect, "REEL_DIR", tmp_path / "reels")
+    detect.THUMB_DIR.mkdir(parents=True, exist_ok=True)
+    old = detect.add("front", "car", 0.9, time.time() - 2 * 86400)
+    for label in ("person", "dog"):
+        (detect.THUMB_DIR / f"{detect.add('front', label, 0.9, time.time())}.jpg").write_bytes(b"jpg")
+    (detect.THUMB_DIR / f"{old}.jpg").write_bytes(b"old")
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(sorted(p.read_bytes() for p in Path(cmd[cmd.index("-i") + 1]).parent.glob("*.jpg")))
+        Path(cmd[-1]).write_bytes(b"mp4")
+        return mock.Mock(returncode=0)
+
+    monkeypatch.setattr(detect.subprocess, "run", fake_run)
+    assert detect.reel("front").read_bytes() == b"mp4"
+    assert calls == [[b"jpg", b"jpg"]]  # yesterday's hit is left out
+    detect.reel("front")
+    assert len(calls) == 1  # reused for 10 minutes
+    assert detect.reel("back") is None
