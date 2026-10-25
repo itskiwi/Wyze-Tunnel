@@ -57,7 +57,7 @@
                 <option value="{{ gb }}" {{ 'selected' if gb == settings.get('max_gb', 0) }}>{{ gb ~ ' GB' if gb else 'No limit' }}</option>
                 {% endfor %}
             </select>
-            <span class="mt-1 block text-sm text-zinc-500">The oldest clips go first. At least 15% of the drive, and never less than {{ min_free_gb }} GB, is always left free.</span>
+            <span class="mt-1 block text-sm text-zinc-500">The oldest clips go first. 15% of the drive (between {{ min_free_gb }} and 20 GB) is always left free.</span>
         </label>
         <div class="flex flex-wrap items-center gap-3">
             <button class="btn btn-primary" type="submit">Save</button>
