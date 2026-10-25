@@ -275,6 +275,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const dropdowns = document.querySelectorAll("details.dropdown");
   dropdowns.forEach((d) => d.addEventListener("toggle", () => {
     if (d.open) dropdowns.forEach((o) => { if (o !== d) o.open = false; });
+    // A top-row camera's menu can be taller than the space above the card; shrink it so it scrolls instead of being cut off.
+    const menu = d.querySelector(".cam-menu");
+    if (d.open && menu && menu.getBoundingClientRect().top < 0) menu.style.maxHeight = `${menu.getBoundingClientRect().bottom - 8}px`;
   }));
   document.addEventListener("click", (e) => {
     dropdowns.forEach((d) => { if (!d.contains(e.target)) d.open = false; });
