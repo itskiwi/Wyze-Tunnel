@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import IntEnum
 from queue import Empty, Full
 from subprocess import PIPE, Popen
-from threading import Thread
+from threading import Lock, Thread
 from time import sleep, time
 from typing import Optional
 
@@ -116,6 +116,7 @@ class WyzeStream:
         "failures",
         "sources",
         "source_idx",
+        "stopped_at",
     )
 
     def __init__(self, camera: WyzeCamera, options: WyzeStreamOptions) -> None:
@@ -135,6 +136,7 @@ class WyzeStream:
         self.failures: int = 0
         self.sources: list[str] = []
         self.source_idx: int = 0
+        self.stopped_at: float = 0
         self.setup()
 
     def setup(self):
@@ -220,20 +222,27 @@ class WyzeStream:
         )
 
     def start(self) -> bool:
-        if self.health_check(False) != StreamStatus.STOPPED:
-            return False
-        self.state = StreamStatus.CONNECTING
+        # The monitor, MediaMTX hooks and the web UI all call this; two at once would open two camera sessions.
+        with _start_lock:
+            if self.health_check(False) != StreamStatus.STOPPED:
+                return False
+            self.state = StreamStatus.CONNECTING
+        return self._start()
+
+    def _start(self) -> bool:
         logger.info(
             f"🎉 Connecting to WyzeCam {self.camera.model_name} - {self.camera.nickname} on {self.camera.ip}"
         )
-        self.start_time = time()
+        # A Cam OG takes two viewers; give it time to free our last session so the Wyze app keeps its slot.
+        wait = max(0, self.stopped_at + SLOT_GAP - time()) if self.camera.is_gwell else 0
+        self.start_time = time() + wait
         self.cam_resp = mp.Queue(1)
         self.cam_cmd = mp.Queue(1)
         if self.source != "tutk":
-            logger.info(f"[{self.source.upper()}] {self.camera.nickname} via go2rtc")
+            logger.info(f"[{self.source.upper()}] {self.camera.nickname} via go2rtc" + (f" in {wait:.0f}s" if wait else ""))
             self.process = mp.Process(
                 target=start_relay_stream,
-                args=(self.uri, f"{self.uri}_{self.source}", self._state),
+                args=(self.uri, f"{self.uri}_{self.source}", self._state, wait),
                 name=self.uri,
             )
             self.process.start()
@@ -266,6 +275,7 @@ class WyzeStream:
                     self.process.join(1)
 
         self.process = None
+        self.stopped_at = time()
         self.state = StreamStatus.STOPPED
         return True
 
@@ -621,6 +631,9 @@ class WyzeStream:
 
 AUTO_RESTART_EVERY = 6 * 3600
 _last_restart: dict[str, float] = {}
+_start_lock = Lock()
+# Seconds between Cam OG sessions: one opened sooner fails while the camera still holds the last (tested ~15s).
+SLOT_GAP = env_bool("OG_RECONNECT_GAP", "15", style="int")
 
 
 def auto_restart(stream: "WyzeStream") -> bool:
@@ -683,9 +696,10 @@ def _check_internet() -> None:
         _internet["up"] = False
 
 
-def start_relay_stream(uri: str, src: str, state: c_int):
+def start_relay_stream(uri: str, src: str, state: c_int, wait: float = 0):
     """Copy a go2rtc stream into MediaMTX. FAILED if no video ever arrived."""
     state.value = StreamStatus.CONNECTING
+    sleep(wait)
 
     def flowing():
         if state.value == StreamStatus.CONNECTING:
