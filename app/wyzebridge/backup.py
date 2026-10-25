@@ -11,7 +11,7 @@ import yaml
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from wyzebridge import detect, masks, privacy, timelapse, webhooks, wyze_api, wyze_stream
+from wyzebridge import detect, masks, phrases, privacy, timelapse, webhooks, wyze_api, wyze_stream
 from wyzebridge.config import TOKEN_PATH, VERSION
 from wyzebridge.logging import logger
 
@@ -25,6 +25,7 @@ def _files() -> dict[str, str]:
         "alerts": webhooks.ALERTS_FILE,
         "hidden_cams": wyze_api.HIDDEN_CAMS_FILE,
         "cam_names": wyze_api.CAM_NAMES_FILE,
+        "cam_places": phrases.PLACES_FILE,
         "net_modes": wyze_stream.NET_MODES_FILE,
         "quality": wyze_stream.QUALITY_FILE,
         "privacy": privacy.PRIVACY_FILE,

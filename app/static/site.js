@@ -423,9 +423,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (motionIcon.classList.contains("is-hidden")) {
           if (card.dataset.doorbell === "True") {
             chime();
-            sendNotification("Someone's at the door", `Motion at ${cam}`, "warning");
+            sendNotification("Someone's at the door", `Movement at ${cam}`, "warning");
           } else {
-            sendNotification('Motion', `Motion detected on ${cam}`, "info");
+            sendNotification('Movement', `Something's moving on ${cam}`, "info");
           }
         }
         motionIcon.classList.remove("is-hidden");

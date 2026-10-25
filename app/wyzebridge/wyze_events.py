@@ -1,10 +1,9 @@
 import time
 from collections import deque
 from threading import Thread
-from datetime import datetime
 from typing import Any
 
-from wyzebridge import visitors
+from wyzebridge import phrases, visitors
 from wyzebridge.config import MOTION_INT, MOTION_START
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import update_preview
@@ -15,6 +14,8 @@ from wyzebridge.wyze_stream import WyzeStream
 
 # shortcut: kept in memory, so the history clears on restart; persist it if people want older events.
 EVENT_LOG: deque[dict] = deque(maxlen=100)
+# Wyze's own AI tags (Cam Plus); without them an event is plain movement.
+WYZE_TAGS = {101: "person", 102: "vehicle", 103: "pet", 104: "package"}
 
 
 SIREN_SECONDS = 30
@@ -60,21 +61,22 @@ class WyzeEvents:
             logger.debug(f"[MOTION] Got {len(resp)} events")
         return resp
 
-    def set_motion(self, mac: str, files: list, ring: bool = False) -> None:
+    def set_motion(self, mac: str, files: list, ring: bool = False, tags: list | None = None) -> None:
         for stream in self.streams.values():
             if stream.camera.mac == mac and not stream.options.substream:
                 if img := next((f["url"] for f in files if f["type"] == 1), None):
                     stream.camera.thumbnail = img
                 clip = next((f["url"] for f in files if f["type"] == 2), None)  # Wyze's own short cloud video
                 stream.motion = self.last_ts
-                event_time = datetime.fromtimestamp(self.last_ts)
                 name = display_name(stream.camera)
-                msg = f"{'Someone rang' if ring else 'Motion detected on'} {name} at {event_time: %H:%M:%S}"
-                logger.info(f"[MOTION] {msg}")
+                label = "ring" if ring else next((WYZE_TAGS[t] for t in tags or [] if t in WYZE_TAGS), "motion")
+                msg = phrases.describe(label, name, phrases.place_of(stream.uri, name))
+                logger.info(f"[MOTION] {msg} ({name})")
                 EVENT_LOG.appendleft(
-                    {"uri": stream.uri, "name": name, "ts": self.last_ts, "img": img, "clip": clip} | ({"label": "rang the doorbell"} if ring else {})
+                    {"uri": stream.uri, "name": name, "ts": self.last_ts, "img": img, "clip": clip, "text": msg}
+                    | ({"label": "rang the doorbell"} if ring else {"label": label} if label != "motion" else {})
                 )
-                send_webhook("motion", stream.uri, msg, img)
+                send_webhook("motion", stream.uri, msg, img, title=name)
                 if ALERTS.get("siren_away") and ALERTS.get("mode") == "away":
                     sound_siren(stream)
                 if MOTION_START:
@@ -93,7 +95,8 @@ class WyzeEvents:
         if time.time() - self.last_ts < 30:
             # v2 uses device_mac and v4 uses device_id
             # event_value 10 is a doorbell press (wyze-sdk's EventAlarmType.DOORBELL_RANG)
-            self.set_motion(event["device_id"], event["file_list"], str(event.get("event_value")) == "10")
+            tags = [t for t in event.get("tag_list") or [] if isinstance(t, int)]
+            self.set_motion(event["device_id"], event["file_list"], str(event.get("event_value")) == "10", tags)
 
     def check_motion(self):
         if time.time() - self.last_check < MOTION_INT:

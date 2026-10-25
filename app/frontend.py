@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, floorplan, go2rtc, guests, homekit, integrations, masks, network, pocket, privacy, recording, shares, street_watch, timelapse, visitors, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, detect, floorplan, go2rtc, guests, homekit, integrations, masks, network, phrases, pocket, privacy, recording, shares, street_watch, timelapse, visitors, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_cam
 from wyzebridge.diagnostics import build_report
@@ -539,11 +539,25 @@ def create_app():
                 # refresh_cams runs the stream monitor loop, so it can't run in this request.
                 Thread(target=wb.refresh_cams, daemon=True).start()
             return {"status": "saved"}
-        hidden = wyze_api.load_hidden_cams()
+        hidden, places = wyze_api.load_hidden_cams(), phrases.load_places()
         return [
-            {"mac": c.mac, "nickname": wyze_api.display_name(c), "model": c.model_name, "hidden": c.mac in hidden}
+            {"mac": c.mac, "nickname": wyze_api.display_name(c), "model": c.model_name, "hidden": c.mac in hidden,
+             "uri": c.name_uri, "place": places.get(c.name_uri, ""), "guess": phrases.guess(wyze_api.display_name(c))}
             for c in cams
         ]
+
+    @app.route("/cameras/place", methods=["POST"])
+    @auth_required
+    def camera_place():
+        """Where a camera points, for alerts like "Someone walked up to the door". Empty goes back to the guess."""
+        data = request.get_json(silent=True) or {}
+        if data.get("uri") not in {cam.name_uri for cam in wb.api.get_cameras() or []}:
+            return {"error": "Unknown camera."}, 400
+        try:
+            phrases.save_place(data["uri"], str(data.get("place") or ""))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        return {"status": "saved"}
 
     @app.route("/privacy", methods=["GET", "POST"])
     @app.route("/battery-saver", methods=["GET", "POST"], endpoint="battery_saver")

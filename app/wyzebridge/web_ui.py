@@ -10,7 +10,7 @@ from flask import url_for as _url_for
 from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import check_password_hash
 from wyzebridge import config
-from wyzebridge import guests, integrations, pocket
+from wyzebridge import guests, integrations, phrases, pocket
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
@@ -190,7 +190,11 @@ def format_streams(cams: dict) -> dict[str, dict]:
     Returns:
     - dict: cam info with hostname.
     """
-    return {uri: cam | format_stream(uri) for uri, cam in cams.items()}
+    places = phrases.load_places()
+    return {
+        uri: cam | format_stream(uri) | {"outdoor": (places.get(uri) or phrases.guess(cam.get("nickname") or uri)) in phrases.OUTDOOR}
+        for uri, cam in cams.items()
+    }
 
 
 def all_cams(streams: StreamManager, total: int) -> dict:
