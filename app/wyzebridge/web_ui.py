@@ -232,7 +232,7 @@ def setup_steps(cams: dict[str, dict]) -> list[dict]:
         {"title": "Back up your settings every day", "href": "account#backup", "done": bool(backup.load_auto().get("folder"))},
     ]
 
-# timelapse holds finished day videos (MP4s the user keeps), like recordings.
+# Kept by "Start over": the web login, the downloaded detection models, and finished timelapse videos.
 KEEP_ON_START_OVER = {"wb_login", "wb_password", "wb_api", "models", "timelapse"}
 
 
