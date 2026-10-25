@@ -149,8 +149,9 @@ class LanSession:
         try:
             reply = lan_ioctl(self.camera, msg)
         except (OSError, SubprocessError, ValueError) as ex:
-            logger.warning(f"[CONTROL] {self.camera.nickname}: {getattr(ex, 'stderr', '') or ex}")
-            reply = Empty()
+            error = (getattr(ex, "stderr", "") or str(ex)).strip()
+            logger.warning(f"[CONTROL] {self.camera.nickname}: {error}")
+            reply = Empty(f"{self.camera.nickname} didn't answer over the network ({error})")
 
         class Future:
             def result(self, block: bool = True, timeout: Optional[float] = None) -> Any:
