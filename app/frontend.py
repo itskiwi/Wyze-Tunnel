@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, guests, integrations, network, pocket, privacy, recording, shares, street_watch, timelapse, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, detect, guests, integrations, network, pocket, privacy, recording, shares, street_watch, timelapse, visitors, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_cam
 from wyzebridge.diagnostics import build_report
@@ -158,6 +158,7 @@ def create_app():
             "home.html",
             cameras={uri: cam for uri, cam in cams.items() if cam.get("enabled")},
             events=list(EVENT_LOG),
+            visits=visitors.load()[:6],
             motion_on=bool(config.MOTION or webhooks.ALERTS.get("motion")),
             api="" if guest else WbAuth.api,
             guest=guest,
@@ -434,6 +435,11 @@ def create_app():
             keys_saved=network.lan_keys_saved(wyze_api.LAN_KEYS_FILE),
             now=time.time(),
         )
+
+    @app.route("/visitors/<path:pic>")
+    @auth_required
+    def visitor_pic(pic: str):
+        return send_from_directory(visitors.PIC_DIR, pic)
 
     @app.route("/events")
     def events():

@@ -4,6 +4,7 @@ from threading import Thread
 from datetime import datetime
 from typing import Any
 
+from wyzebridge import visitors
 from wyzebridge.config import MOTION_INT, MOTION_START
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import update_preview
@@ -59,7 +60,7 @@ class WyzeEvents:
             logger.debug(f"[MOTION] Got {len(resp)} events")
         return resp
 
-    def set_motion(self, mac: str, files: list) -> None:
+    def set_motion(self, mac: str, files: list, ring: bool = False) -> None:
         for stream in self.streams.values():
             if stream.camera.mac == mac and not stream.options.substream:
                 if img := next((f["url"] for f in files if f["type"] == 1), None):
@@ -67,10 +68,10 @@ class WyzeEvents:
                 stream.motion = self.last_ts
                 event_time = datetime.fromtimestamp(self.last_ts)
                 name = display_name(stream.camera)
-                msg = f"Motion detected on {name} at {event_time: %H:%M:%S}"
+                msg = f"{'Someone rang' if ring else 'Motion detected on'} {name} at {event_time: %H:%M:%S}"
                 logger.info(f"[MOTION] {msg}")
                 EVENT_LOG.appendleft(
-                    {"uri": stream.uri, "name": name, "ts": self.last_ts, "img": img}
+                    {"uri": stream.uri, "name": name, "ts": self.last_ts, "img": img} | ({"label": "rang the doorbell"} if ring else {})
                 )
                 send_webhook("motion", stream.uri, msg, img)
                 if ALERTS.get("siren_away") and ALERTS.get("mode") == "away":
@@ -79,6 +80,8 @@ class WyzeEvents:
                     stream.start()
                 if img and self.api.save_thumbnail(stream.camera.name_uri, img):
                     update_preview(stream.camera.name_uri)
+                if ring:
+                    visitors.add(stream.uri, name, self.last_ts)
 
     def process_event(self, event: dict):
         if event["event_id"] in self.events:
@@ -88,7 +91,8 @@ class WyzeEvents:
         self.last_ts = int(event["event_ts"] / 1000)
         if time.time() - self.last_ts < 30:
             # v2 uses device_mac and v4 uses device_id
-            self.set_motion(event["device_id"], event["file_list"])
+            # event_value 10 is a doorbell press (wyze-sdk's EventAlarmType.DOORBELL_RANG)
+            self.set_motion(event["device_id"], event["file_list"], str(event.get("event_value")) == "10")
 
     def check_motion(self):
         if time.time() - self.last_check < MOTION_INT:
