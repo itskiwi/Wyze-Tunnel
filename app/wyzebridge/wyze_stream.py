@@ -28,6 +28,8 @@ from wyzebridge.wyze_control import camera_control
 from wyzecam import TutkError, WyzeAccount, WyzeCamera, WyzeIOTC, WyzeIOTCSession
 
 NET_MODE = {0: "P2P", 1: "RELAY", 2: "LAN"}
+# Commands the Wyze cloud can do when there's no direct (TUTK) connection, and the property each reads.
+CLOUD_PROPS = {"alarm": "P1049", "floodlight": "P1056", "spotlight": "P1056", "motion_detection": "P1047"}
 # How the web UI names each mode: on the home network, direct over the internet, or through Wyze's relay servers.
 NET_MODE_LABEL = {0: "internet", 1: "relay", 2: "local"}
 # Connection choices from the web UI, saved per camera; they override NET_MODE env vars.
@@ -464,6 +466,26 @@ class WyzeStream:
 
         return dict(resp, value=value)
 
+    def cloud_control(self, cmd: str, payload: str) -> dict:
+        """Siren, lights and motion detection through the Wyze cloud, for cameras streamed by go2rtc (no TUTK commands).
+        Endpoints and values as used by wyzeapy (GPL-3.0), reimplemented here."""
+        pid = CLOUD_PROPS[cmd]
+        if payload not in {"on", "off"}:
+            resp = self.api.get_device_info(self.camera, pid)
+            return dict(resp, value="on" if resp.get("value") == "1" else "off")
+        on = payload == "on"
+        if cmd == "alarm":
+            resp = self.api.run_action(self.camera, f"siren_{payload}")
+        elif cmd == "motion_detection":
+            # Newer cams need both; older ones ignore P1001.
+            resp = self.api.set_property(self.camera, "P1047", "1" if on else "0")
+            self.api.set_property(self.camera, "P1001", "1" if on else "0")
+        elif self.camera.product_model == "HL_BC":
+            resp = self.api.run_action(self.camera, f"floodlight_{payload}")
+        else:
+            resp = self.api.set_property(self.camera, pid, "1" if on else "2")
+        return dict(resp, value=None if resp.get("status") == "error" else payload)
+
     def tz_control(self, payload: str) -> dict:
         try:
             zone = zoneinfo.ZoneInfo(payload)
@@ -508,6 +530,9 @@ class WyzeStream:
                 "value": self.motion if cmd == "motion" else self.motion_ts,
             }
 
+        if cmd in CLOUD_PROPS and self.source != "tutk" and not env_bool("disable_control"):
+            return self.cloud_control(cmd, str(payload).lower())
+
         if self.state < StreamStatus.STOPPED:
             return {"response": self.status()}
 
@@ -530,7 +555,7 @@ class WyzeStream:
             return {"response": "invalid command"}
 
         if self.source != "tutk":
-            return {"response": f"Controls need the direct connection, and {self.camera.nickname} is using {self.source}"}
+            return {"response": f"Only the siren, lights and motion detection work for {self.camera.nickname} on this computer. Night vision and moving the camera need the full camera connection"}
 
         if on_demand := not self.connected:
             logger.info(f"[CONTROL] Connecting to {self.uri}")
