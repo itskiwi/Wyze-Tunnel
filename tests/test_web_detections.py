@@ -85,6 +85,28 @@ def test_watcher_saves_thumbnail_once_per_cooldown():
     assert hit["score"] == 0.9 and (detect.THUMB_DIR / "1.jpg").exists()
 
 
+def test_watcher_says_when_a_car_stays_and_a_person_leaves(monkeypatch):
+    seen, clock = [], [1_800_000_000.0]
+    monkeypatch.setattr(detect.time, "time", lambda: clock[0])
+    watcher = detect.Watcher("drive", "Driveway", lambda *args: seen.append((args[2], args[5] if len(args) > 5 else "new")))
+    frame = np.zeros((detect.HEIGHT, detect.WIDTH, 3), np.uint8)
+    both, nobody = FakeModel([(15, 0.9), (7, 0.9)]), FakeModel([])
+    for step in (0, 30, 61, 90):  # both stay in view for a minute and a half
+        clock[0] += step and 30
+        watcher.check(both, frame)
+    clock[0] += detect.CLEAR_AFTER + 1
+    watcher.check(nobody, frame)
+    watcher.check(nobody, frame)
+    assert seen == [("person", "new"), ("car", "new"), ("car", "stayed"), ("person", "cleared")]
+
+
+def test_soft_glow_dims_around_the_subject_not_on_it():
+    frame = np.full((detect.HEIGHT, detect.WIDTH, 3), 200, np.uint8)
+    out = detect.soft_glow(frame, (300, 150, 40, 60))
+    assert out[180, 320].min() > 190 and out[10, 10].max() < 160
+    assert out[10, 10, 2] > out[10, 10, 0]  # warm: more red than blue
+
+
 def test_api_links_local_hits_to_recordings_and_frigate_to_its_clips():
     detect.add("front", "person", 0.9, 1_800_000_000)
     detect.add("back", "package", 0.8, 1_800_000_100, "frigate", "e1")

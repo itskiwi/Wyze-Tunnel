@@ -11,7 +11,7 @@ import yaml
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from wyzebridge import detect, masks, privacy, recording, timelapse, webhooks, wyze_api, wyze_stream
+from wyzebridge import detect, masks, phrases, privacy, recording, timelapse, weather, webhooks, wyze_api, wyze_stream
 from wyzebridge.config import TOKEN_PATH, VERSION
 from wyzebridge.logging import logger
 
@@ -26,6 +26,7 @@ def _files() -> dict[str, str]:
         "alerts": webhooks.ALERTS_FILE,
         "hidden_cams": wyze_api.HIDDEN_CAMS_FILE,
         "cam_names": wyze_api.CAM_NAMES_FILE,
+        "cam_places": phrases.PLACES_FILE,
         "net_modes": wyze_stream.NET_MODES_FILE,
         "quality": wyze_stream.QUALITY_FILE,
         "privacy": privacy.PRIVACY_FILE,
@@ -33,6 +34,7 @@ def _files() -> dict[str, str]:
         "timelapse": timelapse.SETTINGS_FILE,
         "zones": detect.ZONES_FILE,
         "masks": masks.MASKS_FILE,
+        "location": weather.LOCATION_FILE,
         "clip_backup": recording.CLOUD_FILE,
     }
 
@@ -117,6 +119,10 @@ def _zones(value) -> dict:
     return value
 
 
+def _location(value) -> dict:
+    if not isinstance(value, dict) or not all(isinstance(value.get(k, 0), (int, float)) for k in ("lat", "lon")):
+        raise ValueError
+    return {k: value[k] for k in ("lat", "lon", "name", "unit", "weather") if k in value}
 def _clip_backup(value) -> dict:
     if not isinstance(value, dict) or not isinstance(folder := value.get("folder", ""), str):
         raise ValueError
@@ -133,6 +139,7 @@ def import_settings(backup: dict) -> list[str]:
     checked = {
         "hidden_cams": _str_list,
         "cam_names": lambda v: {k: n[:64] for k, n in _str_map(v).items()},
+        "cam_places": lambda v: _str_map(v, set(phrases.PLACE_CHOICES)),
         "net_modes": lambda v: _str_map(v, set(wyze_stream.NET_MODE_CHOICES.values())),
         "quality": lambda v: _str_map(v, set(wyze_stream.QUALITY_CHOICES.values())),
         "alerts": _alerts,
@@ -140,6 +147,7 @@ def import_settings(backup: dict) -> list[str]:
         "battery_saver": _privacy,
         "zones": _zones,
         "masks": _zones,
+        "location": _location,
         "clip_backup": _clip_backup,
         "timelapse": lambda v: {"cams": _str_list(v.get("cams", []) if isinstance(v, dict) else None)},
     }

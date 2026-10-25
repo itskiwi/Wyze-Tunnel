@@ -12,7 +12,7 @@ from wyzebridge.config import TOKEN_PATH, VERSION
 from wyzebridge.logging import logger
 
 ALERTS_FILE = TOKEN_PATH + "alerts.json"
-ALERT_EVENTS = ("motion", "person", "offline", "summary")
+ALERT_EVENTS = ("motion", "person", "offline", "summary", "cleared")
 # Chat apps an alert can also go to, by webhook host. Only these, so a saved URL can't reach other servers.
 CHAT_HOSTS = {"discord.com": "discord", "discordapp.com": "discord", "hooks.slack.com": "slack", "api.telegram.org": "telegram"}
 # home: no motion alerts. away (holiday): motion alerts even in quiet hours. schedule: quiet hours apply.
@@ -101,19 +101,19 @@ def in_quiet_hours(settings: dict, now: Optional[time] = None) -> bool:
     return start <= now < end if start <= end else now >= start or now < end
 
 
-def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None) -> bool:
+def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None, title: str = "") -> bool:
     if event != "test":
         integrations.dispatch(event, camera, msg, img)
     url = env_url = env_cam(f"{event}_webhooks", camera, style="original")
     if not url:
         mode = ALERTS.get("mode", "schedule")
-        if event in ("motion", "person") and (mode == "home" or (mode == "schedule" and in_quiet_hours(ALERTS))):
+        if event in ("motion", "person", "cleared") and (mode == "home" or (mode == "schedule" and in_quiet_hours(ALERTS))):
             return False
         url = alert_url(event)
     chat = ALERTS.get("chat_url") if not env_url and (ALERTS.get(event) or event in ("test", "update", "street")) else ""
     if not url and not chat:
         return False
-    title = {"update": "Wyze Tunnel updated", "street": "Street Watch request", "summary": "Last night at home"}.get(event) or f"{event} event".title()
+    title = title or {"update": "Wyze Tunnel updated", "street": "Street Watch request", "summary": "Last night at home"}.get(event) or f"{event} event".title()
     sent = bool(url) and _post(url, event, camera, msg, img, title)
     if chat:
         logger.debug(f"[WEBHOOKS] Sending {event.upper()} event for {camera} to {chat_service(chat)}")
