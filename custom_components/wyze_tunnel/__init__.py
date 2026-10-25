@@ -17,7 +17,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpda
 
 DOMAIN = "wyze_tunnel"
 PLATFORMS = [
-    Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SWITCH, Platform.EVENT, Platform.SENSOR, Platform.BUTTON, Platform.SELECT
+    Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SWITCH, Platform.EVENT, Platform.SENSOR, Platform.BUTTON, Platform.SELECT,
+    Platform.IMAGE,
 ]
 # Wyze Tunnel keeps a camera's motion flag up for 20 seconds, so polling every 5 can't miss one.
 SCAN_INTERVAL = timedelta(seconds=5)
@@ -76,6 +77,19 @@ class WyzeTunnelApi:
     async def command(self, cam: str, cmd: str, value=None) -> dict:
         return await self.request("POST", f"cameras/{cam}/commands/{cmd}", json={"value": value}, timeout=30)
 
+    async def last_event_image(self, cam: str) -> bytes | None:
+        try:
+            body = await self.request("GET", f"cameras/{cam}/last-event.jpg", timeout=15)
+        except (UpdateFailed, aiohttp.ClientError, TimeoutError):
+            return None
+        return body if isinstance(body, bytes) else None
+
+    async def recordings(self, cam: str) -> list[dict]:
+        return await self.request("GET", f"cameras/{cam}/recordings")
+
+    def play_url(self, cam: str) -> str:
+        return f"{self.url}/api/v1/cameras/{cam}/recordings/play"
+
     async def mode(self) -> str:
         return (await self.request("GET", "mode"))["mode"]
 
@@ -98,6 +112,13 @@ class WyzeTunnelCoordinator(DataUpdateCoordinator[dict[str, dict]]):
             raise ConfigEntryAuthFailed("The token was removed in Wyze Tunnel") from ex
         except (aiohttp.ClientError, TimeoutError) as ex:
             raise UpdateFailed(f"Can't reach Wyze Tunnel at {self.api.url}") from ex
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    from .media_source import ClipView
+
+    hass.http.register_view(ClipView())
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
