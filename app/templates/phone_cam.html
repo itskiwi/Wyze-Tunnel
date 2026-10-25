@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-zinc-950 antialiased">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{{ name or 'Phone camera' }}</title>
+    <link rel="stylesheet" href="../static/tailwind.css" />
+    <link rel="stylesheet" href="../static/site.css" />
+    <link rel="stylesheet" href="../static/fontawesome/css/all.min.css" />
+</head>
+
+<body class="flex min-h-full items-start justify-center px-4 py-10 font-sans text-[15px] text-zinc-100">
+    <main class="surface w-full max-w-md p-6">
+        {% if name %}
+        <h1 class="font-display text-2xl font-extrabold text-zinc-50">{{ name }}</h1>
+        <p class="mt-1 text-sm text-zinc-400">This phone sends its camera to Wyze Tunnel. Keep it plugged in, with this page open
+            and the screen on.</p>
+        <p id="insecure" class="mt-4 hidden rounded-2xl bg-amber-500/10 p-3 text-sm text-amber-200">Your browser only lets secure
+            pages use the camera, and this link starts with http://. Ask whoever set up Wyze Tunnel for a link that starts with
+            https://. On the computer running Wyze Tunnel, the link also works when it starts with http://localhost.</p>
+        <div id="controls">
+            <video id="preview" class="mt-4 aspect-video w-full rounded-2xl bg-black" muted playsinline></video>
+            <div class="seg mt-4" role="radiogroup" aria-label="Which camera">
+                <button type="button" role="radio" class="tab" data-facing="environment" aria-checked="true">Back camera</button>
+                <button type="button" role="radio" class="tab" data-facing="user" aria-checked="false">Front camera</button>
+            </div>
+            <label class="mt-3 flex items-center gap-2 text-sm">
+                <input id="sound" type="checkbox" class="h-4 w-4" /> Send sound too
+            </label>
+            <button id="start" type="button" class="btn btn-primary mt-4 w-full justify-center"><i class="fas fa-play"></i>Start</button>
+            <p id="out" class="mt-3 text-sm text-zinc-400" role="status"></p>
+        </div>
+        {% else %}
+        <h1 class="font-display text-2xl font-extrabold text-zinc-50">Link not found</h1>
+        <p class="mt-1 text-sm text-zinc-400">This camera was removed, or the link isn't complete.</p>
+        {% endif %}
+    </main>
+    {% if name %}
+    <script>
+        const out = document.getElementById("out"), startBtn = document.getElementById("start"), preview = document.getElementById("preview");
+        let facing = "environment", media = null, pc = null, lock = null, running = false, retry = null;
+
+        const say = (text, bad) => { out.className = `mt-3 text-sm ${bad ? "text-rose-300" : "text-zinc-400"}`; out.textContent = text; };
+        const setButton = (on) => startBtn.innerHTML = on ? '<i class="fas fa-stop"></i>Stop' : '<i class="fas fa-play"></i>Start';
+
+        if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+            document.getElementById("insecure").classList.remove("hidden");
+            document.getElementById("controls").classList.add("hidden");
+        }
+
+        document.querySelectorAll("[data-facing]").forEach((b) => b.addEventListener("click", () => {
+            facing = b.dataset.facing;
+            document.querySelectorAll("[data-facing]").forEach((x) => x.setAttribute("aria-checked", x === b));
+            if (running) { stop(); start(); }
+        }));
+
+        // Wait for this phone's network addresses, so the offer holds them all and nothing has to follow it.
+        const gathered = () => new Promise((done) => {
+            if (pc.iceGatheringState === "complete") return done();
+            pc.addEventListener("icegatheringstatechange", () => pc.iceGatheringState === "complete" && done());
+            setTimeout(done, 3000);
+        });
+
+        async function connect() {
+            pc?.close();
+            pc = new RTCPeerConnection();
+            media.getTracks().forEach((track) => pc.addTransceiver(track, { direction: "sendonly" }));
+            // H.264 first: recordings and the live player in Wyze Tunnel can't use the VP8 browsers pick by default.
+            // Newer browsers check the list against what they can send, older ones against what they can receive.
+            const video = pc.getTransceivers().find((t) => t.sender.track?.kind === "video");
+            for (const side of [RTCRtpSender, RTCRtpReceiver]) {
+                const codecs = side.getCapabilities?.("video")?.codecs || [];
+                codecs.sort((a, b) => (b.mimeType === "video/H264") - (a.mimeType === "video/H264"));
+                try { video.setCodecPreferences(codecs); break; } catch { }
+            }
+            pc.onconnectionstatechange = () => {
+                if (pc.connectionState === "connected") say("Streaming to Wyze Tunnel.");
+                if (["failed", "disconnected"].includes(pc.connectionState) && running) reconnect("Lost the connection. Trying again…");
+            };
+            await pc.setLocalDescription(await pc.createOffer());
+            await gathered();
+            const resp = await fetch(location.pathname.replace(/\/$/, "") + "/whip", {
+                method: "POST", headers: { "Content-Type": "application/sdp" }, body: pc.localDescription.sdp,
+            });
+            if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || "Wyze Tunnel didn't answer.");
+            await pc.setRemoteDescription({ type: "answer", sdp: await resp.text() });
+        }
+
+        function reconnect(text) {
+            say(text, true);
+            clearTimeout(retry);
+            retry = setTimeout(() => running && pc?.connectionState !== "connected" && connect().catch((err) => reconnect(`${err.message} Trying again…`)), 5000);
+        }
+
+        async function start() {
+            running = true;
+            setButton(true);
+            say("Starting the camera…");
+            try {
+                media = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: document.getElementById("sound").checked,
+                });
+            } catch (err) {
+                running = false;
+                setButton(false);
+                return say(err.name === "NotAllowedError"
+                    ? "The camera is blocked for this page. Allow camera access in your browser's site settings, then tap Start again."
+                    : "Couldn't open the camera. Close other apps that use it, then tap Start again.", true);
+            }
+            preview.srcObject = media;
+            preview.play().catch(() => { });
+            lock = await navigator.wakeLock?.request("screen").catch(() => null);
+            connect().catch((err) => reconnect(`${err.message} Trying again…`));
+        }
+
+        function stop() {
+            running = false;
+            clearTimeout(retry);
+            pc?.close();
+            media?.getTracks().forEach((t) => t.stop());
+            lock?.release().catch(() => { });
+            pc = media = lock = null;
+            preview.srcObject = null;
+            setButton(false);
+            say("Stopped.");
+        }
+
+        startBtn.addEventListener("click", () => running ? stop() : start());
+        // Phones drop the screen lock when the page is hidden; take it back when it shows again.
+        document.addEventListener("visibilitychange", async () => {
+            if (running && document.visibilityState === "visible") lock = await navigator.wakeLock?.request("screen").catch(() => null);
+        });
+    </script>
+    {% endif %}
+</body>
+
+</html>
