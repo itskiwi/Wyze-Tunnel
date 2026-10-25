@@ -18,6 +18,8 @@ Wyze Tunnel builds on other people's work. Thank you to these projects.
 - **FFmpeg** (LGPL/GPL). https://ffmpeg.org
 - **MobileNet-SSD** by chuanqi305 (MIT). Downloaded on first use for built-in detection.
   https://github.com/chuanqi305/MobileNet-SSD
+- **YOLOX** by Megvii (Apache-2.0). Its YOLOX-S model downloads only if "Stronger" detection is picked.
+  https://github.com/Megvii-BaseDetection/YOLOX
 - **OpenCV** (Apache-2.0). Runs the detection model. https://opencv.org
 - **Frigate** (MIT). Search reads its events API; no Frigate code is included. https://frigate.video
 - **Font Awesome Free** 6.1.1 by Fonticons (icons CC BY 4.0, fonts SIL OFL 1.1, code MIT). Bundled in
