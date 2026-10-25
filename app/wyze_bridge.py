@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 from threading import Thread
 
-from wyzebridge import config, detect, guests, integrations, pocket, recording, timelapse, webhooks
+from wyzebridge import config, detect, guests, integrations, phone_cams, pocket, recording, timelapse, webhooks
 from wyzebridge.auth import STREAM_AUTH, WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream
 from wyzebridge.go2rtc import lan_controls, tutk_available
@@ -110,10 +110,18 @@ class WyzeBridge(Thread):
             self.streams.add(stream)
             needs_sdk += not cam.cloud_only and not lan_controls(cam, stream.sources)
         detect.stop_all(keep=frozenset(watching))  # cameras switched off since the last start
+        for phone in phone_cams.list_cams():
+            self.add_phone_path(phone["uri"])
         # The Windows tray offers the WSL setup only while a camera needs the Wyze SDK (away from home, old firmware).
         if (flag := os.getenv("WT_UPDATE_FILE")) and not tutk_available():
             with contextlib.suppress(OSError):
                 Path(flag).with_name("needs-sdk").write_text(str(needs_sdk))
+
+    def add_phone_path(self, uri: str) -> None:
+        """A path a phone publishes to. It isn't a Wyze stream, so it only lives in MediaMTX."""
+        self.mtx.add_path(uri, False)
+        if recording.wanted(uri):
+            self.mtx.record(uri, recording.keep())
 
     def rtsp_fw_proxy(self, cam: WyzeCamera, stream: WyzeStream) -> bool:
         if rtsp_fw := env_bool("rtsp_fw").lower():
