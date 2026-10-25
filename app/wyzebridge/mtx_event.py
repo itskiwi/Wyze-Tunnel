@@ -91,8 +91,9 @@ class RtspEvent:
         elif event in {"read", "unread"}:
             read_event(uri, event)
         elif event in {"ready", "notready"}:
-            if event == "notready":
-                self.streams.get(uri).stop()
+            # Phone cameras have a path but no stream to stop.
+            if event == "notready" and (stream := self.streams.get(uri)):
+                stream.stop()
             ready_event(uri, event)
 
 

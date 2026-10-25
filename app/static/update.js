@@ -1,13 +1,20 @@
-function toast(title, message, type) {
+// Toasts: newest on top, at most 3, a repeat replaces the old one, and good news goes away fast.
+const TOAST_MS = { success: 3000, primary: 3000, info: 3000, warning: 6000, danger: 10000 };
+function toast(title, message, type = "primary") {
   const box = document.getElementById("toasts");
   if (!box) return;
+  const key = `${title}\n${message}`;
+  [...box.children].forEach((old) => old.dataset.key === key && old.remove());
   const t = Object.assign(document.createElement("div"), {
     className: `toast toast-${type} pointer-events-auto rounded-xl bg-zinc-900/95 px-4 py-3 text-sm shadow-2xl ring-1 ring-white/10 backdrop-blur`,
+    title: "Tap to dismiss",
   });
+  t.dataset.key = key;
   t.append(Object.assign(document.createElement("strong"), { textContent: title }), document.createElement("br"), message);
   t.addEventListener("click", () => t.remove());
   box.prepend(t);
-  setTimeout(() => t.remove(), 8000);
+  while (box.children.length > 3) box.lastElementChild.remove();
+  setTimeout(() => t.remove(), TOAST_MS[type] || 5000);
 }
 
 // Updates: a banner when a release is out, a waiting screen while it installs, and a note once it's done.

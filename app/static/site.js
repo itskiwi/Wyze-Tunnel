@@ -279,6 +279,17 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("click", (e) => {
     dropdowns.forEach((d) => { if (!d.contains(e.target)) d.open = false; });
   });
+  // Camera sheet: Sound and Full screen press the player's own buttons; any action closes the sheet.
+  document.querySelectorAll("[data-proxy]").forEach((b) => b.addEventListener("click", () => {
+    b.closest(".camera").querySelector(b.dataset.proxy)?.click();
+  }));
+  document.querySelectorAll(".cam-menu").forEach((m) => m.addEventListener("click", (e) => {
+    if (e.target.closest(".menu-item")) { m.closest("details").open = false; }
+  }));
+  // Details cover the picture; a tap on them closes them.
+  document.querySelectorAll(".camera .content").forEach((c) => c.addEventListener("click", () => {
+    c.closest(".camera").querySelector(".toggle-details")?.click();
+  }));
 
   // Update preview after loading the page
   async function loadPreview(img) {
@@ -407,7 +418,6 @@ document.addEventListener("DOMContentLoaded", () => {
         netMode.dataset.mode = messageData.net_mode || "";
         netMode.classList.toggle("is-hidden", !messageData.net_mode);
       }
-      const connected = card.dataset.connected.toLowerCase() === "true";
       updateBatteryLevel(card);
 
       card.dataset.connected = false;
@@ -421,11 +431,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (messageData.motion) {
         if (motionIcon.classList.contains("is-hidden")) {
+          // Only the doorbell speaks up; other cameras just light their motion icon.
           if (card.dataset.doorbell === "True") {
             chime();
-            sendNotification("Someone's at the door", `Movement at ${cam}`, "warning");
-          } else {
-            sendNotification('Movement', `Something's moving on ${cam}`, "info");
+            sendNotification("Someone's at the door", card.querySelector(".card-header-title .truncate")?.textContent || cam, "warning");
           }
         }
         motionIcon.classList.remove("is-hidden");
@@ -435,9 +444,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       switch (messageData.status) {
         case "connected":
-          if (!connected) {
-            sendNotification('Connected', `Connected to ${cam}`, "success");
-          }
           card.dataset.connected = true;
           statusIcon.classList.add("fa-circle-play", "has-text-success");
           statusIcon.parentElement.title = "Click/tap to pause";
@@ -461,25 +467,16 @@ document.addEventListener("DOMContentLoaded", () => {
           break;
 
         case "stopped":
-          if (connected) {
-            sendNotification('Disconnected', `Disconnected from ${cam}`, "danger");
-          }
           statusIcon.classList.add("fa-circle-pause");
           statusIcon.parentElement.title = "Click/tap to play";
           break;
 
         case "offline":
-          if (connected) {
-            sendNotification('Offline', `${cam} is offline`, "danger");
-          }
           statusIcon.classList.add("fa-ghost");
           statusIcon.parentElement.title = "Camera offline";
           break;
 
         default:
-          if (connected) {
-            sendNotification('Disconnected', `Disconnected from ${cam}`, "danger");
-          }
           statusIcon.className = "fas fa-circle-exclamation";
           statusIcon.parentElement.title = "Not Connected";
           break;
@@ -637,13 +634,13 @@ document.addEventListener("DOMContentLoaded", () => {
     button.addEventListener("click", () => {
       // Read the link after addApiKey() has added the login to it.
       const url = button.closest(".menu").querySelector('a.stream-link[href^="rtsp"]').getAttribute("href");
-      const copied = () => showToast("Copied", "RTSP link is on your clipboard.", "success");
+      const copied = () => toast("Copied", "RTSP link is on your clipboard.", "success");
       // Clipboard API needs HTTPS; most installs are plain http on the LAN, so fall back to execCommand.
       const fallback = () => {
         const area = Object.assign(document.createElement("textarea"), { value: url });
         document.body.append(area);
         area.select();
-        document.execCommand("copy") ? copied() : showToast("Couldn't copy, here's the link", url, "warning");
+        document.execCommand("copy") ? copied() : toast("Couldn't copy, here's the link", url, "warning");
         area.remove();
       };
       navigator.clipboard?.writeText(url).then(copied, fallback) ?? fallback();
@@ -822,13 +819,8 @@ document.addEventListener("DOMContentLoaded", () => {
     e.addEventListener("mouseleave", () => { e.closest("div.card").classList.remove("drag_hover") })
   })
 
-  function notificationEnabled() {
-    if ("Notification" in window === false || window.isSecureContext === false) { return }
-    if (Notification.permission === "granted") { return true }
-    Notification.requestPermission().then((permission) => {
-      if (permission === "granted") { return true }
-    });
-  }
+  // Desktop alerts are only for the doorbell, so only a home with one gets asked, once, on its first tap.
+  const notificationEnabled = () => "Notification" in window && window.isSecureContext && Notification.permission === "granted";
 
   // Two-tone door chime. Browsers only allow sound after the page has been clicked or tapped once.
   function chime() {
@@ -846,27 +838,18 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
   // Unlock audio on the first interaction so a later ring can play.
-  document.addEventListener("pointerdown", () => { chime.ctx ||= new (window.AudioContext || window.webkitAudioContext)(); chime.ctx.resume?.() }, { once: true });
+  document.addEventListener("pointerdown", () => {
+    chime.ctx ||= new (window.AudioContext || window.webkitAudioContext)(); chime.ctx.resume?.();
+    if (document.querySelector('[data-doorbell="True"]') && window.Notification?.permission === "default" && window.isSecureContext) { Notification.requestPermission() }
+  }, { once: true });
 
   function sendNotification(title, message, type = "primary") {
     if (getCookie("fullscreen")) { return }
-    if (notificationEnabled() === true && document.visibilityState != "visible") {
+    if (notificationEnabled() && document.visibilityState != "visible") {
       new Notification(title, { body: message });
     } else {
-      showToast(title, message, type);
+      toast(title, message, type);
     }
-  }
-  function showToast(title, message, type) {
-    const container = document.getElementById("toasts");
-    if (!container) { return; }
-    const toast = document.createElement("div");
-    toast.className = `toast toast-${type} pointer-events-auto rounded-xl bg-zinc-900/95 px-4 py-3 text-sm shadow-2xl ring-1 ring-white/10 backdrop-blur`;
-    const strong = document.createElement("strong");
-    strong.textContent = title;
-    toast.append(strong, document.createElement("br"), document.createTextNode(message));
-    toast.addEventListener("click", () => toast.remove());
-    container.prepend(toast);
-    setTimeout(() => toast.remove(), 8000);
   }
   function updateBatteryLevel(card) {
     if (card.dataset.battery?.toLowerCase() !== "true") { return; }

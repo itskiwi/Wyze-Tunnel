@@ -18,7 +18,7 @@ from wyzebridge.mtx_server import MtxInterface
 
 APPS_FILE = TOKEN_PATH + "apps.json"
 SCOPES = ("view", "control")
-HOOK_EVENTS = ("motion", "offline", "street", "update")
+HOOK_EVENTS = ("motion", "person", "offline", "street", "update")
 MAX_TOKENS, MAX_HOOKS = 20, 10
 # The stream server's read-only login for apps. A new key each time a token is removed.
 STREAM_USER = "apps"

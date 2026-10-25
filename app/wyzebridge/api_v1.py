@@ -3,6 +3,7 @@ import base64
 import json
 from pathlib import Path
 
+import requests
 from flask import Blueprint, request, send_from_directory
 from wyzebridge import config, integrations, web_ui, webhooks
 from wyzebridge.auth import WbAuth
@@ -11,6 +12,11 @@ from wyzebridge.wyze_events import EVENT_LOG
 from wyzebridge.wyze_stream import StreamStatus
 
 MCP_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
+
+
+def event_type(label) -> str:
+    """motion, doorbell, or what the detector saw (person, car, ...)."""
+    return {None: "motion", "": "motion", "rang the doorbell": "doorbell"}.get(label, label)
 
 
 def camera_json(uri: str, cam: dict) -> dict:
@@ -25,6 +31,9 @@ def camera_json(uri: str, cam: dict) -> dict:
         state = StreamStatus(status).name.lower()
     except ValueError:
         state = "unknown"
+    info = cam.get("camera_info") or {}
+    wifi = web_ui._int((info.get("basicInfo") or {}).get("wifidb"))
+    last = next((e for e in EVENT_LOG if e.get("uri") == uri), None)
     return {
         "id": uri,
         "name": cam.get("nickname") or uri,
@@ -36,6 +45,9 @@ def camera_json(uri: str, cam: dict) -> dict:
         "motion": bool(cam.get("motion")),
         "last_motion": cam.get("motion_ts") or None,
         "recording": bool(cam.get("record")),
+        "wifi": wifi if wifi >= 0 else None,
+        "issues": [i["issue"] for i in web_ui.bridge_issues({uri: cam})],
+        "last_event": last and {"type": event_type(last.get("label")), "ts": last.get("ts")},
         "features": {f: bool(cam.get(f"is_{f}")) for f in ("doorbell", "pan_cam", "floodlight", "spotlight", "battery")},
         "streams": {
             "rtsp": cam["rtsp_url"].replace("rtsp://", f"rtsp://{login}", 1),
@@ -111,6 +123,23 @@ def blueprint(wb, auth_required) -> Blueprint:
         if img := snapshot_file(cam):
             return send_from_directory(config.IMG_PATH, img, max_age=0)
         return {"error": "No picture yet. Try again once the camera is online."}, 503
+
+    @api.get("/cameras/<string:cam>/last-event.jpg")
+    @auth_required
+    def get_last_event_image(cam: str):
+        """The picture from this camera's newest event: Wyze's cloud thumbnail or the detector's crop."""
+        last = next((e for e in EVENT_LOG if e.get("uri") == cam), None)
+        img = (last or {}).get("img") or ""
+        if img.startswith("https://"):
+            try:
+                resp = requests.get(img, timeout=10)
+            except requests.RequestException:
+                return {"error": "Couldn't get the picture from Wyze."}, 502
+            if resp.ok:
+                return resp.content, 200, {"Content-Type": "image/jpeg", "Cache-Control": "no-store"}
+        elif img and Path(config.IMG_PATH, img).is_file():
+            return send_from_directory(config.IMG_PATH, img, max_age=0)
+        return {"error": "No picture for the last event."}, 404
 
     @api.post("/cameras/<string:cam>/commands/<string:cmd>")
     @auth_required
