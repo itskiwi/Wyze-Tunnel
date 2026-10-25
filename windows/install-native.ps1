@@ -13,11 +13,11 @@ $Bundle = 'wyze-tunnel-windows-x86_64.zip'
 
 function Say($m) { Write-Output "`n==> $m" }
 
-# Phones reach the web app (python.exe), cameras answer go2rtc and wyze-ioctl over UDP and other devices reach MediaMTX,
-# so all need inbound firewall rules. One Windows permission prompt, only when a rule is missing
-# or a Block rule (from a canceled firewall prompt) exists.
+# Phones reach the web app (python.exe), cameras answer go2rtc and wyze-ioctl over UDP, other devices reach MediaMTX,
+# and phones away from home connect straight to wyze-away (embedded Tailscale), so all need inbound firewall rules.
+# One Windows permission prompt, only when a rule is missing or a Block rule (from a canceled firewall prompt) exists.
 # Only Wyze Tunnel's own programs are touched (approved by the project owner, 2026-10-24).
-$Exes = 'go2rtc.exe', 'mediamtx.exe', 'wyze-ioctl.exe', 'python\python.exe' | ForEach-Object { Join-Path $Native "wyze-tunnel\$_" }
+$Exes = 'go2rtc.exe', 'mediamtx.exe', 'wyze-ioctl.exe', 'wyze-away.exe', 'python\python.exe' | ForEach-Object { Join-Path $Native "wyze-tunnel\$_" }
 function Get-Blocked {
     $Exes | Where-Object {
         $rules = Get-NetFirewallApplicationFilter -Program $_ -ErrorAction SilentlyContinue | Get-NetFirewallRule -ErrorAction SilentlyContinue |

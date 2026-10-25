@@ -1,18 +1,23 @@
 """Which cameras record, picked on the Recordings page instead of RECORD_* env vars, and how much disk that takes."""
 
+import contextlib
 import json
 import os
 import shutil
 import sys
 import time
+from datetime import date
 from pathlib import Path
-from threading import Thread
+from threading import Lock, Thread
 
 from wyzebridge.config import IMG_PATH, TOKEN_PATH
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import RECORD_PATH
 
 SETTINGS_FILE = TOKEN_PATH + "record.json"
+CLOUD_FILE = TOKEN_PATH + "clip_backup.json"
+CLOUD_DIR = "Wyze Tunnel"  # copies go only under <folder>/Wyze Tunnel, and pruning looks nowhere else
+_cloud_lock = Lock()  # the trim loop and a fresh save from the page must not copy the same clip at once
 KEEP_CHOICES = (1, 3, 7, 14, 30)
 MAX_GB_CHOICES = (0, 25, 50, 100, 250, 500, 1000)  # 0 is no limit
 MIN_FREE = 5 * 1024**3  # always leave this much of the drive free, whatever the settings
@@ -116,6 +121,96 @@ def trim() -> int:
     return freed
 
 
+def load_cloud() -> dict:
+    """{"folder": str, "cams": [uri, ...] (empty is every camera), "last": time of the last good run, "error": str}."""
+    try:
+        with open(CLOUD_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def _write_cloud(settings: dict) -> None:
+    with open(CLOUD_FILE, "w") as f:
+        json.dump(settings, f)
+
+
+def save_cloud(form: dict, uris: list[str]) -> dict:
+    """Turn copying clips to a folder on (a folder) or off (an empty folder). Raises ValueError with a message for the user."""
+    from wyzebridge import backup  # backup imports this module
+
+    cams = form.get("cams") or []
+    if not isinstance(cams, list) or not all(isinstance(c, str) for c in cams):
+        raise ValueError("Pick cameras from the list.")
+    settings = {}
+    if folder := str(form.get("folder") or "").strip():
+        backup.check_folder(folder)
+        settings = {"folder": folder, "cams": [c for c in cams if c in uris], "last": 0, "error": ""}
+    _write_cloud(settings)
+    return settings
+
+
+def back_up_clips(now: float | None = None, budget: float = 240) -> int:
+    """Copy finished clips into the chosen folder, then delete copies older than the keep time. Returns clips copied."""
+    if not _cloud_lock.acquire(blocking=False):
+        return 0  # a run is already going
+    try:
+        return _back_up_clips(now, budget)
+    finally:
+        _cloud_lock.release()
+
+
+def _back_up_clips(now: float | None, budget: float) -> int:
+    settings = load_cloud()
+    if not (folder := settings.get("folder")):
+        return 0
+    now = time.time() if now is None else now
+    root, dest = record_root(), Path(folder, CLOUD_DIR)
+    cutoff = now - (load_settings().get("keep_days") or DEFAULT_KEEP_DAYS) * 86400
+    cams, copied, error = settings.get("cams") or [], 0, ""
+    started = time.time()
+    try:
+        if not Path(folder).is_dir():  # an unplugged drive or a removed cloud app; don't recreate it on the wrong drive
+            raise FileNotFoundError(2, "the folder isn't there any more")
+        for clip in sorted(root.rglob("*.mp4"), key=_mtime):
+            if time.time() - started > budget:  # the rest go on the next run, so trimming isn't held up
+                break
+            mtime, rel = _mtime(clip), clip.relative_to(root)
+            # shortcut: takes the camera from the first folder under the record root, as the default RECORD_PATH has it.
+            cam = rel.parts[0] if len(rel.parts) > 1 else "other"
+            # Clips still being written, and ones about to be deleted anyway, are skipped.
+            if not cutoff < mtime < now - 120 or (cams and cam not in cams):
+                continue
+            target = dest / cam / date.fromtimestamp(mtime).isoformat() / clip.name
+            if target.exists() and target.stat().st_size == _size(clip):
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            part = target.with_name(target.name + ".part")  # a half-copied clip never looks finished
+            try:
+                shutil.copy2(clip, part)
+            except FileNotFoundError:
+                if clip.exists():
+                    raise
+                continue  # deleted by MediaMTX while we copied
+            part.replace(target)
+            copied += 1
+        for old in dest.glob("*/*/*.mp4"):
+            if _mtime(old) < cutoff:
+                old.unlink(missing_ok=True)
+        for day in dest.glob("*/*"):
+            with contextlib.suppress(OSError):
+                day.rmdir()  # only empty day folders go
+    except OSError as ex:
+        error = f"Couldn't copy clips to {folder}: {ex.strerror or ex}. Trying again in 5 minutes."
+        if error != settings.get("error"):
+            logger.warning(f"[RECORD] {error}")
+    if copied:
+        logger.info(f"[RECORD] Backed up {copied} clip{'s'[:copied ^ 1]} to {dest}")
+    if (current := load_cloud()).get("folder") == folder:  # not turned off or moved while we copied
+        _write_cloud({**current, "last": current.get("last", 0) if error else now, "error": error})
+    return copied
+
+
 def start_trimming() -> None:
     def loop():
         while True:
@@ -123,6 +218,7 @@ def start_trimming() -> None:
                 trim()
             except OSError as ex:
                 logger.warning(f"[RECORD] Couldn't clean up old clips: {ex}")
+            back_up_clips()
             time.sleep(300)
 
     Thread(target=loop, name="record-trim", daemon=True).start()

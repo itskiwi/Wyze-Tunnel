@@ -8,12 +8,12 @@ import pytest
 @pytest.fixture
 def setup(monkeypatch, tmp_path):
     import frontend
-    from wyzebridge import detect, privacy, timelapse, web_ui, webhooks, wyze_api, wyze_stream
+    from wyzebridge import detect, privacy, recording, timelapse, web_ui, webhooks, wyze_api, wyze_stream
 
     for mod, attr in [(webhooks, "ALERTS_FILE"), (wyze_api, "HIDDEN_CAMS_FILE"), (wyze_api, "CAM_NAMES_FILE"),
                       (wyze_stream, "NET_MODES_FILE"), (wyze_stream, "QUALITY_FILE"), (privacy, "PRIVACY_FILE"),
                       (privacy, "BATTERY_FILE"), (timelapse, "SETTINGS_FILE"),
-                      (detect, "ZONES_FILE")]:
+                      (detect, "ZONES_FILE"), (recording, "CLOUD_FILE")]:
         monkeypatch.setattr(mod, attr, str(tmp_path / f"{attr}.json"))
     monkeypatch.setattr(webhooks, "ALERTS", {})
     monkeypatch.setattr(web_ui.auth, "verify_password_callback", lambda user, password: True)
@@ -47,12 +47,20 @@ def test_restore_schedules_and_timelapse(setup):
     night = {"cams": ["AA"], "start": "22:00", "end": "07:00"}
     from wyzebridge import detect
 
+    from wyzebridge import recording
+
     zones = {"front": [0, 5]}
-    saved = {"wyze_tunnel_backup": 1, "settings": {"battery_saver": night, "timelapse": {"cams": ["front"]}, "zones": zones}}
+    cloud = {"folder": "/media/cloud", "cams": ["front"], "last": 5, "error": "old"}
+    saved = {"wyze_tunnel_backup": 1, "settings": {"battery_saver": night, "timelapse": {"cams": ["front"]}, "zones": zones,
+                                                    "clip_backup": cloud}}
     assert client.post("/settings/restore", json=saved).json["status"] == "restored"
     assert privacy.load_privacy(privacy.BATTERY_FILE) == night
     assert timelapse.load_cams() == ["front"]
     assert detect.load_zones() == zones
+    assert recording.load_cloud() == {"folder": "/media/cloud", "cams": ["front"]}  # this computer's status isn't carried over
+    saved["settings"]["clip_backup"] = {"folder": 5}
+    assert client.post("/settings/restore", json=saved).status_code == 400
+    saved["settings"]["clip_backup"] = cloud
     saved["settings"]["timelapse"] = {"cams": "front"}
     assert client.post("/settings/restore", json=saved).status_code == 400
 

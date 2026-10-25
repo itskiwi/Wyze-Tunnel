@@ -85,14 +85,14 @@ def source_chain(cam: WyzeCamera) -> list[str]:
 
     chain = []
     tutk = tutk_available()
-    if tutk and not cam.is_gwell:
+    if tutk and not cam.cloud_only:
         chain.append("tutk")
     if go2rtc_available():
         # Without the Wyze SDK, a camera at another site would fail LAN discovery before reaching the cloud stream.
         reachable = tutk or on_local_network(cam.ip or "")
-        if cam.ip and cam.dtls and not cam.parent_dtls and not cam.is_gwell and reachable:
+        if cam.ip and cam.dtls and not cam.parent_dtls and not cam.cloud_only and reachable:
             chain.append("lan")
-        # shortcut: unverified whether Gwell cameras (OG) answer Wyze's Kinesis WebRTC; if not, port the Gwell P2P client.
+        # shortcut: the Pro models (cloud_only) follow IDisposable's get_streams path untested here; SOURCE_<MODEL> overrides.
         if cam.webrtc_support:
             chain.append("webrtc")
     return chain

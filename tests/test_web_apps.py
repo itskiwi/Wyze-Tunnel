@@ -81,6 +81,40 @@ def test_view_token_reads_but_cannot_control(client):
     assert as_app(c, {"Authorization": "Bearer wt_nope"}, "GET", "/api/v1/cameras").status_code == 401
 
 
+def test_cameras_carry_health_and_last_event(client, monkeypatch):
+    from wyzebridge import api_v1
+
+    c = client[0]
+    h = make(c, "view")
+    monkeypatch.setattr(api_v1, "EVENT_LOG", [
+        {"uri": "back", "ts": 9, "label": "person"},
+        {"uri": "front", "ts": 8, "label": "rang the doorbell"},
+        {"uri": "front", "ts": 7},
+    ])
+    with mock.patch.dict(CAMS["front"], {"camera_info": {"basicInfo": {"wifidb": "30"}}}):
+        cam = as_app(c, h, "GET", "/api/v1/cameras").json[0]
+    assert cam["wifi"] == 30 and cam["issues"] == ["weak_wifi"]
+    assert cam["last_event"] == {"type": "doorbell", "ts": 8}
+
+
+def test_last_event_picture_and_recordings_for_apps(client, monkeypatch, tmp_path):
+    from wyzebridge import api_v1, config
+
+    c = client[0]
+    h = make(c, "view")
+    monkeypatch.setattr(config, "IMG_PATH", str(tmp_path))
+    (tmp_path / "detections").mkdir()
+    (tmp_path / "detections" / "5.jpg").write_bytes(b"jpeg")
+    monkeypatch.setattr(api_v1, "EVENT_LOG", [{"uri": "front", "ts": 8, "img": "detections/5.jpg", "label": "person"}])
+    resp = as_app(c, h, "GET", "/api/v1/cameras/front/last-event.jpg")
+    assert resp.status_code == 200 and resp.data == b"jpeg"
+    monkeypatch.setattr(api_v1, "EVENT_LOG", [{"uri": "front", "ts": 9, "img": "../../etc/passwd"}])
+    assert as_app(c, h, "GET", "/api/v1/cameras/front/last-event.jpg").status_code == 404
+    # The recordings list is open to app keys; MediaMTX isn't running here, so it can't list any.
+    assert as_app(c, h, "GET", "/api/v1/cameras/front/recordings").status_code not in (401, 403)
+    assert as_app(c, h, "GET", "/api/v1/cameras/front/recordings/play").status_code == 400
+
+
 def test_control_token_sends_commands_and_removal_ends_access(client):
     c, streams, integrations, tmp_path = client
     h = make(c, "control")

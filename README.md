@@ -90,7 +90,7 @@ The Mac app and Terminal installer still exist, but they're on hold while Window
 
 ## Away from home
 
-Nothing to open on your router. Install [Tailscale](https://tailscale.com/download) on the computer running Wyze Tunnel and on your phone, then open the gear menu, **Pair a phone**, and scan the **Anywhere** code. Your phone reaches the cameras over your private Tailscale network, wherever it is.
+Nothing to open on your router. In the Windows app, open the gear menu, **Pair a phone**, click **Turn on away access** and sign in to Tailscale (free, built in). Click **Allow the phone link** once, then scan the **Anywhere** code: it's an https link that works on the phone with no app, and only phones paired with that code can open it. To keep everything private instead, install the [Tailscale app](https://tailscale.com/download) on the phone and sign in with the same account. On other installs, put Tailscale on the computer and the phone.
 
 Please don't forward ports or put Wyze Tunnel in your router's DMZ.
 
@@ -119,7 +119,7 @@ Already on docker-wyze-bridge? Your settings and stream links carry over. See [C
 | Wyze Cam Outdoor, Outdoor v2 | WVOD1, HL_WCO2 | Yes |
 | Wyze Video Doorbell, Doorbell v2 | WYZEDB3, HL_DB2 | Yes |
 | Wyze Cam OG, OG Telephoto 3x | GW_GC1, GW_GC2 | Yes, through Wyze's cloud |
-| Doorbell Pro, Doorbell Pro 2, Battery Cam Pro, Floodlight Pro | GW_BE1, AN_RDB1, AN_RSCW, LD_CFP | Not yet |
+| Doorbell Pro, Doorbell Pro 2, Battery Cam Pro, Floodlight Pro | GW_BE1, AN_RDB1, AN_RSCW, LD_CFP | Yes, through Wyze's cloud (new; tell us if yours doesn't connect) |
 
 Some newer firmware blocks remote (P2P) connections. On your home network they still work.
 
@@ -131,7 +131,7 @@ Each camera has a list of ways to connect, and Wyze Tunnel moves to the next one
 2. `lan`: [go2rtc](https://github.com/AlexxIT/go2rtc)'s built-in Wyze client. Works on your network, for cameras with DTLS firmware.
 3. `webrtc`: Wyze's cloud WebRTC, through go2rtc. Works for cameras the Wyze app streams over WebRTC.
 
-To pick the order yourself, set `SOURCE_<CAMERA_NAME>`, `SOURCE_<MODEL>` or `SOURCE`, like `SOURCE_FRONT_DOOR=lan,tutk` or `SOURCE_HL_CAM4=webrtc`. Use `auto` for the default. OG cameras try `webrtc` only. Stream links stay the same whichever way a camera connects.
+To pick the order yourself, set `SOURCE_<CAMERA_NAME>`, `SOURCE_<MODEL>` or `SOURCE`, like `SOURCE_FRONT_DOOR=lan,tutk` or `SOURCE_HL_CAM4=webrtc`. Use `auto` for the default. OG and the Pro cameras above try `webrtc` only. Battery cameras connect only while someone is watching, so they don't drain. Stream links stay the same whichever way a camera connects.
 
 ## Settings and stream links
 
