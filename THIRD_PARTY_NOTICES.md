@@ -12,6 +12,8 @@ Wyze Tunnel builds on other people's work. Thank you to these projects.
   its `node-one` branch. https://github.com/REEF-RESEARCH-LABS/node-wyze-bridge
 - **go2rtc** by AlexxIT (MIT). Bundled as a separate program for the `lan` (wyze://, by seydx)
   and `webrtc` camera connections. https://github.com/AlexxIT/go2rtc
+  Its Wyze client (`pkg/wyze`, `pkg/tutk`) is also compiled into `native/wyze-ioctl`, which sends
+  camera commands over the LAN on Windows.
 - **IDisposable's wyze-bridge** also inspired falling back to another connection after 5 failures in a row
   and the per-model override.
 - **MediaMTX** by bluenviron (MIT). https://github.com/bluenviron/mediamtx
