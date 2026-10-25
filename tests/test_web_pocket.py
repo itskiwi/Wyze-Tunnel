@@ -106,3 +106,14 @@ def test_public_link_only_lets_paired_phones_in(setup):  # noqa: F811
     assert phone.get("/pair/" + code, headers=IPHONE | public).status_code == 302
     assert phone.get("/", headers=public).status_code == 200
     assert phone.post("/away", json={"on": False}, headers=public).status_code == 403  # a family login, not the owner
+
+
+def test_alerts_once_when_tailscale_signs_out(tmp_path):
+    from wyzebridge import pocket
+
+    states = iter(["Running", "NeedsLogin", "NeedsLogin"])
+    with mock.patch.object(pocket, "AWAY_DIR", tmp_path), mock.patch.object(pocket.Away, "status", lambda: {"state": next(states)}), \
+            mock.patch.object(pocket.webhooks, "send_webhook") as send:
+        for _ in range(3):
+            pocket.Away.check_sign_in()
+    assert send.call_count == 1 and send.call_args.args[0] == "away"
