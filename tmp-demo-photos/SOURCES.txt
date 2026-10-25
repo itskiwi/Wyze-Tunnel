@@ -1,0 +1,8 @@
+Stock photos used as made-up demo camera snapshots. All from Unsplash, under the Unsplash License (https://unsplash.com/license). Downloaded at 1600px wide.
+
+front-door.jpg   https://unsplash.com/photos/black-front-door-on-wooden-porch-yGw9lt7MJOE  - Eli Chamoun (@nvision_3d) - Unsplash License
+driveway.jpg     https://unsplash.com/photos/a-car-parked-in-a-narrow-driveway-between-houses-WvkEiDEMshM  - Lerone Pieters (@leronep) - Unsplash License
+backyard.jpg     https://unsplash.com/photos/a-backyard-with-a-table-and-chairs-and-an-umbrella-wd3L9AMXcUU  - Tile Merchant Ireland (@tilemerchant) - Unsplash License
+garage.jpg       https://unsplash.com/photos/a-white-truck-parked-in-a-garage-next-to-a-garage-door-6r6Elg5qAws  - Brian Wangenheim (@brianwangenheim) - Unsplash License
+living-room.jpg  https://unsplash.com/photos/gray-2-seat-sofa-near-brown-wooden-coffee-table-77JACslA8G0  - Katja Rooke (@rooke) - Unsplash License
+porch.jpg        https://unsplash.com/photos/blue-porch-with-wicker-furniture-XcVm8mn7NUM  - Francesca Tosolini (@fromitaly) - Unsplash License
