@@ -8,11 +8,12 @@ import pytest
 @pytest.fixture
 def setup(monkeypatch, tmp_path):
     import frontend
-    from wyzebridge import privacy, timelapse, web_ui, webhooks, wyze_api, wyze_stream
+    from wyzebridge import detect, privacy, timelapse, web_ui, webhooks, wyze_api, wyze_stream
 
     for mod, attr in [(webhooks, "ALERTS_FILE"), (wyze_api, "HIDDEN_CAMS_FILE"), (wyze_api, "CAM_NAMES_FILE"),
                       (wyze_stream, "NET_MODES_FILE"), (wyze_stream, "QUALITY_FILE"), (privacy, "PRIVACY_FILE"),
-                      (privacy, "BATTERY_FILE"), (timelapse, "SETTINGS_FILE")]:
+                      (privacy, "BATTERY_FILE"), (timelapse, "SETTINGS_FILE"),
+                      (detect, "ZONES_FILE")]:
         monkeypatch.setattr(mod, attr, str(tmp_path / f"{attr}.json"))
     monkeypatch.setattr(webhooks, "ALERTS", {})
     monkeypatch.setattr(web_ui.auth, "verify_password_callback", lambda user, password: True)
@@ -44,10 +45,14 @@ def test_restore_schedules_and_timelapse(setup):
 
     client = setup[0]
     night = {"cams": ["AA"], "start": "22:00", "end": "07:00"}
-    saved = {"wyze_tunnel_backup": 1, "settings": {"battery_saver": night, "timelapse": {"cams": ["front"]}}}
+    from wyzebridge import detect
+
+    zones = {"front": [0, 5]}
+    saved = {"wyze_tunnel_backup": 1, "settings": {"battery_saver": night, "timelapse": {"cams": ["front"]}, "zones": zones}}
     assert client.post("/settings/restore", json=saved).json["status"] == "restored"
     assert privacy.load_privacy(privacy.BATTERY_FILE) == night
     assert timelapse.load_cams() == ["front"]
+    assert detect.load_zones() == zones
     saved["settings"]["timelapse"] = {"cams": "front"}
     assert client.post("/settings/restore", json=saved).status_code == 400
 

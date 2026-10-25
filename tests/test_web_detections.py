@@ -174,6 +174,32 @@ def test_clip_thumb_is_made_once_and_kept(tmp_path, monkeypatch):
     assert len(calls) == 1
 
 
+def test_ignored_zone_hides_objects_but_keeps_heat():
+    heat = [0] * detect.HEAT_W * detect.HEAT_H
+    model = FakeModel([(15, 0.9)])  # top-left corner, cell 0
+    assert detect.find_objects(model, None, heat, frozenset({0})) == {}
+    assert heat[0] == 1
+    assert detect.find_objects(model, None, None, frozenset({1})) == {"person": 0.9}
+
+
+def test_zone_routes(tmp_path, monkeypatch):
+    import frontend
+    from wyzebridge import web_ui
+
+    monkeypatch.setattr(detect, "ZONES_FILE", str(tmp_path / "zones.json"))
+    monkeypatch.setattr(web_ui.WbAuth, "enabled", False)
+    with mock.patch.object(frontend, "WyzeBridge") as bridge:
+        bridge.return_value.streams.streams = {"front": None}
+        client = frontend.create_app().test_client()
+    assert client.post("/api/zones/front", json={"ignore": [3, 1, 3]}).json == {"ignore": [1, 3]}
+    assert client.get("/api/heatmap/front").json["ignore"] == [1, 3]
+    assert client.post("/api/zones/front", json={"ignore": [999]}).status_code == 400
+    assert client.post("/api/zones/front", json={"ignore": list(range(144))}).status_code == 400
+    assert client.post("/api/zones/back", json={"ignore": []}).status_code == 404
+    assert client.post("/api/zones/front", json={"ignore": []}).json == {"ignore": []}
+    assert detect.load_zones() == {}
+
+
 def test_map_routes(tmp_path, monkeypatch):
     import frontend
     from wyzebridge import floorplan

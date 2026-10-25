@@ -841,7 +841,18 @@ def create_app():
     def api_heatmap(cam_name: str):
         """Where things showed up on this camera: a grid of counts, row by row from the top left."""
         grid = detect.load_heat().get(cam_name) or detect.HEAT.get(cam_name) or []
-        return {"w": detect.HEAT_W, "h": detect.HEAT_H, "grid": grid}
+        return {"w": detect.HEAT_W, "h": detect.HEAT_H, "grid": grid, "ignore": detect.load_zones().get(cam_name, [])}
+
+    @app.route("/api/zones/<string:cam_name>", methods=["POST"])
+    @owner_only
+    def api_zones(cam_name: str):
+        """Save the squares of the picture detection should ignore on this camera."""
+        if cam_name not in wb.streams.streams:
+            return {"error": "No camera by that name"}, 404
+        try:
+            return {"ignore": detect.save_zone(cam_name, (request.get_json(silent=True) or {}).get("ignore"))}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
 
     @app.route("/search/settings", methods=["POST"])
     @auth_required
