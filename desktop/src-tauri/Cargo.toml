@@ -13,5 +13,9 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
 serde_json = "1"
 
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39" # same as tauri's, for the web UI window's auto sign-in
+windows = "0.62"
+
 [profile.release]
 strip = true
