@@ -67,6 +67,12 @@
     @apply inline-flex items-center gap-0.5 rounded-full bg-zinc-900 p-1 shadow-[var(--shadow)];
   }
   .seg .tab.is-active, .seg .tab[aria-checked="true"] { @apply bg-zinc-100 text-zinc-950; }
+  /* Heatmap square; --heat is how busy it is. Crossed-out squares are ignored by detection. */
+  .zone-cell { background: rgb(var(--accent) / var(--heat, 0)); }
+  .is-editing .zone-cell { @apply cursor-pointer ring-1 ring-inset ring-white/20; }
+  .zone-cell.zone-off {
+    background: repeating-linear-gradient(135deg, rgb(14 16 14 / .75) 0 4px, rgb(248 249 246 / .35) 4px 6px);
+  }
   /* Numbered step bubble in a how-to list */
   .step {
     @apply grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent font-display font-extrabold text-on-accent;

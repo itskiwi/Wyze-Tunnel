@@ -62,6 +62,8 @@ HEAT_FILE = TOKEN_PATH + "heatmap.json"
 HEAT: dict[str, list[int]] = {}
 _heat_lock = Lock()
 _heat_saved = 0.0
+# Activity zones: heat grid cells to ignore per camera (a busy road, a tree), so they don't fill Search or send alerts.
+ZONES_FILE = TOKEN_PATH + "zones.json"
 
 
 def _db() -> sqlite3.Connection:
@@ -191,18 +193,46 @@ def load_model():
     return model
 
 
-def find_objects(model, frame, heat: list[int] | None = None) -> dict[str, float]:
-    """Best score per label in one frame. Adds each object's center to the heat grid if given."""
+def find_objects(model, frame, heat: list[int] | None = None, ignore=frozenset()) -> dict[str, float]:
+    """Best score per label in one frame, skipping objects centered in ignored cells.
+
+    Adds every object's center to the heat grid if given, ignored or not, so the heatmap still shows the busy spots.
+    """
     found: dict[str, float] = {}
     class_ids, scores, boxes = model.detect(frame, MIN_SCORE)
     for class_id, score, (x, y, w, h) in zip(class_ids, scores, boxes):
         if label := LABELS.get(int(class_id)):
-            found[label] = max(found.get(label, 0), float(score))
+            col = min(max(int((x + w / 2) / WIDTH * HEAT_W), 0), HEAT_W - 1)
+            row = min(max(int((y + h / 2) / HEIGHT * HEAT_H), 0), HEAT_H - 1)
             if heat is not None:
-                col = min(max(int((x + w / 2) / WIDTH * HEAT_W), 0), HEAT_W - 1)
-                row = min(max(int((y + h / 2) / HEIGHT * HEAT_H), 0), HEAT_H - 1)
                 heat[row * HEAT_W + col] += 1
+            if row * HEAT_W + col not in ignore:
+                found[label] = max(found.get(label, 0), float(score))
     return found
+
+
+def load_zones() -> dict[str, list[int]]:
+    try:
+        with open(ZONES_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def save_zone(uri: str, ignore) -> list[int]:
+    """Save the cells to ignore on one camera. Raises ValueError with a message for the user."""
+    cells = HEAT_W * HEAT_H
+    if not isinstance(ignore, list) or not all(isinstance(i, int) and 0 <= i < cells for i in ignore):
+        raise ValueError("Pick squares on the picture to ignore.")
+    if len(set(ignore)) == cells:
+        raise ValueError("That ignores the whole picture. Turn off detection for this camera instead.")
+    zones = load_zones()
+    zones[uri] = sorted(set(ignore))
+    if not zones[uri]:
+        del zones[uri]
+    with open(ZONES_FILE, "w") as f:
+        json.dump(zones, f)
+    return zones.get(uri, [])
 
 
 def load_heat() -> dict[str, list[int]]:
@@ -278,7 +308,7 @@ class Watcher(Thread):
     def check(self, model, frame):
         global _heat_saved
         now = time.time()
-        found = find_objects(model, frame, heat_grid(self.uri))
+        found = find_objects(model, frame, heat_grid(self.uri), frozenset(load_zones().get(self.uri, ())))
         if now - _heat_saved > 300:
             _heat_saved = now
             save_heat()
