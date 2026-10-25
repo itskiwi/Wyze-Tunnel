@@ -97,6 +97,24 @@ def test_cameras_carry_health_and_last_event(client, monkeypatch):
     assert cam["last_event"] == {"type": "doorbell", "ts": 8}
 
 
+def test_last_event_picture_and_recordings_for_apps(client, monkeypatch, tmp_path):
+    from wyzebridge import api_v1, config
+
+    c = client[0]
+    h = make(c, "view")
+    monkeypatch.setattr(config, "IMG_PATH", str(tmp_path))
+    (tmp_path / "detections").mkdir()
+    (tmp_path / "detections" / "5.jpg").write_bytes(b"jpeg")
+    monkeypatch.setattr(api_v1, "EVENT_LOG", [{"uri": "front", "ts": 8, "img": "detections/5.jpg", "label": "person"}])
+    resp = as_app(c, h, "GET", "/api/v1/cameras/front/last-event.jpg")
+    assert resp.status_code == 200 and resp.data == b"jpeg"
+    monkeypatch.setattr(api_v1, "EVENT_LOG", [{"uri": "front", "ts": 9, "img": "../../etc/passwd"}])
+    assert as_app(c, h, "GET", "/api/v1/cameras/front/last-event.jpg").status_code == 404
+    # The recordings list is open to app keys; MediaMTX isn't running here, so it can't list any.
+    assert as_app(c, h, "GET", "/api/v1/cameras/front/recordings").status_code not in (401, 403)
+    assert as_app(c, h, "GET", "/api/v1/cameras/front/recordings/play").status_code == 400
+
+
 def test_control_token_sends_commands_and_removal_ends_access(client):
     c, streams, integrations, tmp_path = client
     h = make(c, "control")

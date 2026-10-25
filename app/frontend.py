@@ -789,6 +789,7 @@ def create_app():
         return send_file(path, mimetype="video/mp4", conditional=True)
 
     @app.route("/recordings/<string:cam_name>")
+    @app.route("/api/v1/cameras/<string:cam_name>/recordings")  # for apps, like Home Assistant's media browser
     @auth_required
     def recordings(cam_name: str):
         """List recorded segments: [{"start": RFC3339, "duration": seconds}]."""
@@ -798,6 +799,7 @@ def create_app():
         return [{"start": r["start"], "duration": r["duration"]} for r in resp.json()]
 
     @app.route("/recordings/<string:cam_name>/play")
+    @app.route("/api/v1/cameras/<string:cam_name>/recordings/play")
     @auth_required
     def play_recording(cam_name: str):
         """Stream an MP4 of a recording. Needs ?start=<RFC3339>&duration=<seconds>."""

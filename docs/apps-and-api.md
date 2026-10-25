@@ -35,9 +35,14 @@ You get a camera with live video for each Wyze camera, plus:
   Use it to start automations: trigger on its state, and pick the kind in a condition on `event_type`.
 - **Motion** and **Last motion**, **Online**, **Wi-Fi signal**, and **Problem**, which turns on when the Health page has
   something to fix for that camera (offline, weak Wi-Fi, full SD card).
-- If your key can control things: switches for the stream and for spotlights and floodlights, **Pan left/right** and
-  **Tilt up/down** buttons for cameras that move, and **Alert mode** (Normal, Home, Away) on the Wyze Tunnel device, so
-  presence automations can switch it.
+- **Last event**, the picture from the newest event, ready for a phone notification or a dashboard.
+- If your key can control things: switches for the stream, spotlights, floodlights and the siren, **Night vision** (auto,
+  on, off), **Pan left/right** and **Tilt up/down** buttons for cameras that move, and **Alert mode** (Normal, Home, Away)
+  on the Wyze Tunnel device, so presence automations can switch it. Cameras don't report their siren, light or night
+  vision, so those show what Home Assistant last told them.
+
+Recordings are in the **Media** panel under **Wyze Tunnel**, by camera, newest first. They play through Home Assistant, so
+they work wherever Home Assistant does.
 
 You don't need MQTT. If something isn't working, **Download diagnostics** on the integration gives a file with your
 cameras' state and no passwords or keys.
@@ -88,6 +93,25 @@ actions:
   - action: light.turn_on
     target:
       entity_id: light.porch
+```
+
+### Get a phone notification with the picture
+
+```yaml
+alias: Person at the front door
+triggers:
+  - trigger: state
+    entity_id: event.front_door_activity
+conditions:
+  - condition: template
+    value_template: "{{ trigger.to_state.attributes.event_type == 'person' }}"
+actions:
+  - delay: 2  # give Wyze Tunnel a moment to save the picture
+  - action: notify.mobile_app_your_phone
+    data:
+      message: Someone's at the front door
+      data:
+        image: /api/image_proxy/image.front_door_last_event
 ```
 
 ## Node-RED, openHAB, Homey, Google and Alexa
@@ -168,6 +192,9 @@ The full reference is in [openapi.json](../app/static/openapi.json). Your Wyze T
 | `GET /api/v1/cameras` | Every camera | Look only |
 | `GET /api/v1/cameras/{id}` | One camera | Look only |
 | `GET /api/v1/cameras/{id}/snapshot` | A JPEG picture | Look only |
+| `GET /api/v1/cameras/{id}/last-event.jpg` | The picture from the newest event | Look only |
+| `GET /api/v1/cameras/{id}/recordings` | Recorded clips: `[{"start", "duration"}]` | Look only |
+| `GET /api/v1/cameras/{id}/recordings/play?start=…&duration=…` | Part of a recording as MP4 | Look only |
 | `GET /api/v1/events?limit=20` | Recent motion, newest first | Look only |
 | `GET /api/v1/health` | `ok` or `degraded`, with each problem | Look only |
 | `GET /api/v1/mode` | The alert mode: `schedule` (normal), `home` or `away` | Look only |

@@ -15,9 +15,12 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
     entities = []
     for cam_id, cam in coordinator.data.items():
         entities.append(StreamSwitch(coordinator, cam_id))
+        features = cam.get("features") or {}
         for light in ("spotlight", "floodlight"):
-            if (cam.get("features") or {}).get(light):
+            if features.get(light):
                 entities.append(LightSwitch(coordinator, cam_id, light))
+        if not features.get("doorbell") and not features.get("battery"):  # plugged-in cams have a siren
+            entities.append(LightSwitch(coordinator, cam_id, "alarm", "siren"))
     async_add_entities(entities)
 
 
@@ -44,16 +47,20 @@ class StreamSwitch(WyzeTunnelEntity, SwitchEntity):
 
 
 class LightSwitch(WyzeTunnelEntity, SwitchEntity):
-    """The camera doesn't report its light, so this remembers the last thing it was told."""
+    """The camera doesn't report its light or siren, so this remembers the last thing it was told."""
 
     _attr_assumed_state = True
     _attr_is_on = False
-    _attr_icon = "mdi:spotlight-beam"
 
-    def __init__(self, coordinator, cam_id: str, light: str) -> None:
-        super().__init__(coordinator, cam_id, light)
+    def __init__(self, coordinator, cam_id: str, light: str, key: str | None = None) -> None:
+        super().__init__(coordinator, cam_id, key or light)
         self.light = light
-        self._attr_name = light.title()
+        if key:
+            self._attr_translation_key = key
+            self._attr_icon = "mdi:alarm-light"
+        else:
+            self._attr_name = light.title()
+            self._attr_icon = "mdi:spotlight-beam"
 
     async def async_turn_on(self, **kwargs) -> None:
         await self.coordinator.api.command(self.cam_id, self.light, "on")

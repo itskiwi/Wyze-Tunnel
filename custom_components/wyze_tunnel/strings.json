@@ -90,6 +90,24 @@
           "home": "Home (no motion alerts)",
           "away": "Away (always alert)"
         }
+      },
+      "night_vision": {
+        "name": "Night vision",
+        "state": {
+          "auto": "Auto",
+          "on": "On",
+          "off": "Off"
+        }
+      }
+    },
+    "image": {
+      "last_event": {
+        "name": "Last event"
+      }
+    },
+    "switch": {
+      "siren": {
+        "name": "Siren"
       }
     }
   }

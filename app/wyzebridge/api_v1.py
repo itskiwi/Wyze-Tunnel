@@ -3,6 +3,7 @@ import base64
 import json
 from pathlib import Path
 
+import requests
 from flask import Blueprint, request, send_from_directory
 from wyzebridge import config, integrations, web_ui, webhooks
 from wyzebridge.auth import WbAuth
@@ -122,6 +123,23 @@ def blueprint(wb, auth_required) -> Blueprint:
         if img := snapshot_file(cam):
             return send_from_directory(config.IMG_PATH, img, max_age=0)
         return {"error": "No picture yet. Try again once the camera is online."}, 503
+
+    @api.get("/cameras/<string:cam>/last-event.jpg")
+    @auth_required
+    def get_last_event_image(cam: str):
+        """The picture from this camera's newest event: Wyze's cloud thumbnail or the detector's crop."""
+        last = next((e for e in EVENT_LOG if e.get("uri") == cam), None)
+        img = (last or {}).get("img") or ""
+        if img.startswith("https://"):
+            try:
+                resp = requests.get(img, timeout=10)
+            except requests.RequestException:
+                return {"error": "Couldn't get the picture from Wyze."}, 502
+            if resp.ok:
+                return resp.content, 200, {"Content-Type": "image/jpeg", "Cache-Control": "no-store"}
+        elif img and Path(config.IMG_PATH, img).is_file():
+            return send_from_directory(config.IMG_PATH, img, max_age=0)
+        return {"error": "No picture for the last event."}, 404
 
     @api.post("/cameras/<string:cam>/commands/<string:cmd>")
     @auth_required

@@ -25,6 +25,9 @@ def mock_bridge(aioclient_mock, scope="control"):
     aioclient_mock.get(f"{URL}/api/v1/mode", json={"mode": "schedule"})
     aioclient_mock.post(f"{URL}/api/v1/mode", json={"mode": "away"})
     aioclient_mock.post(f"{URL}/api/v1/cameras/front/commands/rotary_action", json={"status": "success"})
+    aioclient_mock.get(f"{URL}/api/v1/cameras/front/last-event.jpg", content=b"jpeg", headers={"Content-Type": "image/jpeg"})
+    aioclient_mock.get(f"{URL}/api/v1/cameras/front/recordings", json=[{"start": "2026-10-24T18:00:00Z", "duration": 600.0}])
+    aioclient_mock.get(f"{URL}/api/v1/cameras/front/recordings/play", content=b"mp4data", headers={"Content-Type": "video/mp4"})
     aioclient_mock.post(f"{URL}/api/v1/cameras/front/commands/spotlight", json={"status": "success"})
     aioclient_mock.post(f"{URL}/api/v1/cameras/front/commands/night_vision", json={"status": "success"})
 
@@ -143,3 +146,38 @@ async def test_diagnostics_hide_secrets(hass: HomeAssistant, aioclient_mock):
     diag = await async_get_config_entry_diagnostics(hass, entry)
     assert TOKEN not in json.dumps(diag) and "apps:k" not in json.dumps(diag)
     assert diag["cameras"]["front"]["wifi"] == 72
+
+
+async def test_last_event_picture_and_night_vision(hass: HomeAssistant, aioclient_mock, hass_client):
+    await setup(hass, aioclient_mock)
+    assert hass.states.get("switch.front_door_siren") is None  # doorbells have no siren
+    client = await hass_client()
+    resp = await client.get(hass.states.get("image.front_door_last_event").attributes["entity_picture"])
+    assert resp.status == 200 and await resp.read() == b"jpeg"
+
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": "select.front_door_night_vision", "option": "auto"}, blocking=True
+    )
+    assert hass.states.get("select.front_door_night_vision").state == "auto"
+
+
+async def test_recordings_in_media_browser(hass: HomeAssistant, aioclient_mock, hass_client, hass_client_no_auth):
+    from homeassistant.components import media_source
+    from homeassistant.setup import async_setup_component
+
+    assert await async_setup_component(hass, "media_source", {})
+    entry = await setup(hass, aioclient_mock)
+    root = await media_source.async_browse_media(hass, f"media-source://{DOMAIN}")
+    assert [c.title for c in root.children] == ["Front Door"]
+    cam = await media_source.async_browse_media(hass, root.children[0].media_content_id)
+    assert len(cam.children) == 1 and cam.children[0].title.endswith("10 min")
+    play = await media_source.async_resolve_media(hass, cam.children[0].media_content_id, None)
+    assert play.mime_type == "video/mp4" and play.url.startswith(f"/api/wyze_tunnel/clip/{entry.entry_id}/front/")
+
+    client = await hass_client()
+    resp = await client.get(play.url)
+    assert resp.status == 200 and await resp.read() == b"mp4data"
+    sent = [c for c in aioclient_mock.mock_calls if c[1].path.endswith("/recordings/play")][-1]
+    assert sent[3]["Authorization"] == f"Bearer {TOKEN}"
+    unsigned = await (await hass_client_no_auth()).get(play.url.split("?")[0])
+    assert unsigned.status == 401  # only the signed link from the Media browser plays without a login
