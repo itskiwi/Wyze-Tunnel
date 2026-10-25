@@ -1,4 +1,4 @@
-<p align="center"><img src="app/static/icon.svg" width="96" alt=""></p>
+<p align="center"><img src="docs/img/logo.png" width="96" alt=""></p>
 
 <h1 align="center">Wyze Tunnel</h1>
 
