@@ -65,6 +65,11 @@
                 <span class="text-sm text-zinc-400">Turn on spotting for a camera under <a class="underline underline-offset-2" href="search#setup">Search footage</a> first. Follows Home, Away and quiet hours like motion.</span></span>
         </label>
         <label class="mt-3 flex items-start gap-3">
+            <input type="checkbox" name="cleared" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.cleared }} />
+            <span><span class="block">When it clears</span>
+                <span class="text-sm text-zinc-400">After someone at the door or in the yard has gone for 2 minutes, for example "The porch has cleared". Handy while Away.</span></span>
+        </label>
+        <label class="mt-3 flex items-start gap-3">
             <input type="checkbox" name="offline" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.offline }} />
             <span><span class="block">A camera goes offline</span>
                 <span class="text-sm text-zinc-400">For example when it loses power or Wi-Fi.</span></span>

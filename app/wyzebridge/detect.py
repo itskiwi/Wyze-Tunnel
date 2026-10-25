@@ -34,6 +34,8 @@ FRIGATE_URL = env_bool("FRIGATE_URL", style="original").rstrip("/")
 SETTINGS_FILE = TOKEN_PATH + "detect.json"
 MIN_SCORE = float(env_bool("DETECT_SCORE") or 0.6)
 COOLDOWN = 60  # one row per camera and label a minute, not one per keyframe
+CLEAR_AFTER = 120  # a person not seen for this long has gone
+VEHICLES = {"car", "truck", "bus", "motorcycle"}
 KEEP = parse_timedelta("DETECT_KEEP") or parse_timedelta("RECORD_KEEP") or timedelta(days=7)
 # Cameras switched on in the web UI record too, so every hit has a clip; keep those clips as long as the hits.
 AUTO_RECORD_KEEP = f"{int(KEEP.total_seconds())}s"
@@ -258,10 +260,11 @@ class Yolox:
         return [class_ids[i] for i in picked], [scores[i] for i in picked], [boxes[i] for i in picked]
 
 
-def find_objects(model, frame, heat: list[int] | None = None, ignore=frozenset()) -> dict[str, float]:
+def find_objects(model, frame, heat: list[int] | None = None, ignore=frozenset(), best: dict | None = None) -> dict[str, float]:
     """Best score per label in one frame, skipping objects centered in ignored cells.
 
     Adds every object's center to the heat grid if given, ignored or not, so the heatmap still shows the busy spots.
+    Fills `best` with each label's best x, y, w, h if given.
     """
     found: dict[str, float] = {}
     class_ids, scores, boxes = model.detect(frame, MIN_SCORE)
@@ -272,9 +275,21 @@ def find_objects(model, frame, heat: list[int] | None = None, ignore=frozenset()
             row = min(max(int((y + h / 2) / HEIGHT * HEAT_H), 0), HEAT_H - 1)
             if heat is not None:
                 heat[row * HEAT_W + col] += 1
-            if row * HEAT_W + col not in ignore:
-                found[label] = max(found.get(label, 0), float(score))
+            if row * HEAT_W + col not in ignore and score > found.get(label, 0):
+                found[label] = float(score)
+                if best is not None:
+                    best[label] = (int(x), int(y), int(w), int(h))
     return found
+
+
+def soft_glow(frame, box: tuple):
+    """A soft, warm light on the subject instead of a hard box: the rest of the picture dims a little."""
+    x, y, w, h = box
+    mask = np.zeros(frame.shape[:2], np.float32)
+    cv2.ellipse(mask, (x + w // 2, y + h // 2), (max(w * 2 // 3, 24), max(h * 2 // 3, 24)), 0, 0, 360, 1.0, -1)
+    mask = cv2.GaussianBlur(mask, (0, 0), max(w, h, 40) / 4)[..., None]
+    dim = frame * np.array([0.62, 0.68, 0.76], np.float32)  # BGR: darker and a touch amber
+    return (frame * mask + dim * (1 - mask)).astype(np.uint8)
 
 
 REEL_DIR = Path(IMG_PATH, "reels")
@@ -362,6 +377,7 @@ class Watcher(Thread):
         self.stop_flag = Event()
         self.proc: subprocess.Popen | None = None
         self.last_seen: dict[str, float] = {}
+        self.first_seen: dict[str, float] = {}  # start of the current visit, per label
 
     def run(self):
         if not (model := load_model()):
@@ -402,20 +418,32 @@ class Watcher(Thread):
     def check(self, model, frame):
         global _heat_saved
         now = time.time()
-        found = find_objects(model, frame, heat_grid(self.uri), frozenset(load_zones().get(self.uri, ())))
+        boxes: dict[str, tuple] = {}
+        found = find_objects(model, frame, heat_grid(self.uri), frozenset(load_zones().get(self.uri, ())), boxes)
         if now - _heat_saved > 300:
             _heat_saved = now
             save_heat()
+        if "person" in self.first_seen and "person" not in found and now - self.last_seen["person"] > CLEAR_AFTER:
+            del self.first_seen["person"]
+            if self.on_detect:
+                self.on_detect(self.uri, self.cam_name, "person", None, now, "cleared")
         for label, score in found.items():
             if now - self.last_seen.get(label, 0) < COOLDOWN:
                 self.last_seen[label] = now  # still there: extend, don't repeat
+                # A vehicle still here after a minute pulled in rather than drove past.
+                if label in VEHICLES and now - self.first_seen.get(label, now) >= COOLDOWN:
+                    del self.first_seen[label]
+                    if self.on_detect:
+                        self.on_detect(self.uri, self.cam_name, label, None, now, "stayed")
                 continue
             self.last_seen[label] = now
+            if label in VEHICLES or label == "person":
+                self.first_seen[label] = now
             if det_id := add(self.uri, label, score, now):
                 THUMB_DIR.mkdir(parents=True, exist_ok=True)
                 cv2.imwrite(
                     str(THUMB_DIR / f"{det_id}.jpg"),
-                    frame,
+                    soft_glow(frame, boxes[label]) if label in boxes else frame,
                     [cv2.IMWRITE_JPEG_QUALITY, 80],
                 )
                 logger.info(f"[DETECT] {label.capitalize()} on {self.uri} ({score:.0%})")

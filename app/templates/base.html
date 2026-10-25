@@ -5,23 +5,57 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="dark light" />
+    <script src="static/sun.js?v={{ version }}"></script>
     <script>
-        // Theme: "light", "dark", or unset to follow the system. Runs before paint to avoid a flash.
+        // Theme: "light", "dark", "sun" (light from sunrise to sunset), or unset to follow the system. Runs before paint to avoid a flash.
         (() => {
-            const icons = { light: "fa-sun", dark: "fa-moon" }, next = { light: "dark", dark: "", "": "light" };
+            const icons = { light: "fa-sun", dark: "fa-moon", sun: "fa-cloud-sun" }, next = { light: "dark", dark: "sun", sun: "", "": "light" };
+            const names = { light: "Light", dark: "Dark", sun: "Follow the sun" }, root = document.documentElement;
             const get = () => { try { return localStorage.getItem("theme") || ""; } catch { return ""; } };
-            const apply = (t) => {
-                t ? document.documentElement.dataset.theme = t : delete document.documentElement.dataset.theme;
-                const light = t ? t === "light" : matchMedia("(prefers-color-scheme: light)").matches;
-                document.querySelectorAll("meta[name=theme-color]").forEach((m) => m.content = light ? "#f4f3ef" : "#0e100e");
+            const cached = () => { try { return JSON.parse(localStorage.getItem("sun")) || {}; } catch { return {}; } };
+            const today = (s) => s.sunrise && new Date(s.sunrise * 1000).toDateString() === new Date().toDateString();
+            // Today's times from the last /weather, else worked out from the saved spot, else a 6:30 to 18:30 day.
+            const sun = () => {
+                const s = cached(), d = new Date();
+                if (today(s)) return s;
+                if (s.lat != null && typeof sunTimes === "function") return sunTimes(d, s.lat, s.lon);
+                return { sunrise: d.setHours(6, 30, 0, 0) / 1000, sunset: d.setHours(18, 30, 0, 0) / 1000 };
+            };
+            let tried = 0;
+            const refresh = () => {
+                if (today(cached()) || Date.now() - tried < 36e5) return;
+                tried = Date.now();
+                fetch("weather").then((r) => r.json()).then((w) => {
+                    if (w.lat == null) return;
+                    try { localStorage.setItem("sun", JSON.stringify({ sunrise: w.sunrise, sunset: w.sunset, lat: w.lat, lon: w.lon })); } catch { }
+                    apply(get(), true);
+                }).catch(() => { });
+            };
+            const apply = (t, fade) => {
+                let mode = t, golden = false;
+                if (t === "sun") {
+                    const s = sun(), p = typeof sunPhase === "function" ? sunPhase(Date.now() / 1000, s.sunrise, s.sunset) : { light: true };
+                    mode = p.light ? "light" : "dark", golden = !!p.golden;
+                }
+                // Only a change the sun makes fades; a tap or a page load switches at once.
+                if (fade && (root.dataset.theme !== mode || !!root.dataset.golden !== golden)) {
+                    root.classList.add("theme-fade");
+                    setTimeout(() => root.classList.remove("theme-fade"), 1600);
+                }
+                mode ? root.dataset.theme = mode : delete root.dataset.theme;
+                golden ? root.dataset.golden = "1" : delete root.dataset.golden;
+                const light = mode ? mode === "light" : matchMedia("(prefers-color-scheme: light)").matches;
+                document.querySelectorAll("meta[name=theme-color]").forEach((m) => m.content = golden ? "#f7f1e6" : light ? "#f4f3ef" : "#0e100e");
                 document.querySelectorAll(".theme-toggle").forEach((b) => {
                     b.querySelector("i").className = "fas w-4 " + (icons[t] || "fa-circle-half-stroke");
-                    b.title = "Theme: " + (t || "system");
-                    b.querySelector("[data-theme-name]")?.replaceChildren({ light: "Light", dark: "Dark" }[t] || "Match phone");
+                    b.title = "Theme: " + (names[t] || "system").toLowerCase();
+                    b.querySelector("[data-theme-name]")?.replaceChildren(names[t] || "Match phone");
                 });
+                if (t === "sun") refresh();
             };
             apply(get());
             document.addEventListener("DOMContentLoaded", () => apply(get()));
+            setInterval(() => get() === "sun" && apply("sun", true), 60000);
             document.addEventListener("click", (e) => {
                 if (!e.target.closest(".theme-toggle")) return;
                 const t = next[get()];

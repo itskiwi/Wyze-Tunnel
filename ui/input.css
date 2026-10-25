@@ -33,6 +33,14 @@
   --accent: 21 137 90; --accent-deep: 14 107 69; --on-accent: 255 255 255;
   --shadow: 0 1px 2px rgb(0 0 0 / .06), 0 10px 26px rgb(40 44 36 / .08);
 }
+/* Follow the sun: golden hour after sunrise and before sunset warms the light scale toward cream. */
+:root[data-golden] {
+  --zinc-400: 99 95 86; --zinc-500: 132 126 113; --zinc-600: 178 171 156; --zinc-700: 229 220 204;
+  --zinc-800: 241 234 221; --zinc-900: 255 252 245; --zinc-950: 247 241 230;
+  --accent: 40 134 80; --accent-deep: 29 104 60;
+}
+/* The sun flipping the theme fades over a moment instead of snapping. */
+:root.theme-fade, :root.theme-fade * { transition: background-color 1.5s, color 1.5s, border-color 1.5s, fill 1.5s !important; }
 
 @layer components {
   .btn {
@@ -56,6 +64,10 @@
   }
   .menu-label {
     @apply px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500;
+  }
+  /* Morning, Midday, Evening, Night inside a day on the Home timeline, lined up with the event text. */
+  .daypart {
+    @apply pb-1 pl-[5.25rem] pt-3 font-display text-sm font-extrabold text-zinc-300 sm:pl-24;
   }
   .tab {
     @apply inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-zinc-400 transition hover:text-zinc-100;

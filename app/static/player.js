@@ -60,15 +60,16 @@
     const sync = () => {
       box.classList.toggle("vp-paused", video.paused);
       setIcon($(".vp-play"), video.paused ? "fa-play" : "fa-pause", video.paused ? "Play" : "Pause");
-      const quiet = video.muted || video.volume === 0;
+      const quiet = !sound.on() && (video.muted || video.volume === 0);
       setIcon($(".vp-mute"), quiet ? "fa-volume-xmark" : "fa-volume-high", quiet ? "Unmute" : "Mute");
     };
+    const sound = warmSound(video, () => sync());
     ["play", "pause", "volumechange", "emptied"].forEach((e) => video.addEventListener(e, sync));
     sync();
 
     const toggle = () => { video.paused ? video.play().catch(() => { }) : video.pause() };
     $(".vp-play").addEventListener("click", toggle);
-    $(".vp-mute").addEventListener("click", () => { video.muted = !video.muted; if (!video.muted && !video.volume) { video.volume = 1 } });
+    $(".vp-mute").addEventListener("click", sound.toggle);
     $(".vp-full").addEventListener("click", () => {
       if (document.fullscreenElement) { document.exitFullscreen(); return }
       // iPhone Safari can only full-screen the video itself, with its own controls.
@@ -88,6 +89,7 @@
       hideTimer = setTimeout(() => box.classList.remove("vp-active"), 3000);
     });
     if (live) {
+      freezeFrame(video);
       box.addEventListener("dblclick", () => $(".vp-full").click());
       $(".vp-snap").addEventListener("click", () => savePhoto(video));
       return;
@@ -103,8 +105,17 @@
       seek.style.setProperty("--vp-fill", `${seek.value / 10}%`);
     };
     ["timeupdate", "durationchange", "loadedmetadata", "emptied"].forEach((e) => video.addEventListener(e, progress));
+    // Touch drags tick the phone every 5% of travel, a firmer tick on each minute mark.
+    let touch = false, tickAt = 0, minute = -1;
+    seek.addEventListener("pointerdown", (e) => { touch = e.pointerType !== "mouse" && !!navigator.vibrate; tickAt = +seek.value; minute = -1 });
     seek.addEventListener("input", () => {
       dragging = true;
+      if (touch) {
+        const m = Math.floor(((seek.value / 1000) * video.duration) / 60) || 0;
+        if (minute >= 0 && m !== minute) { navigator.vibrate(10); tickAt = +seek.value }
+        else if (Math.abs(seek.value - tickAt) >= 50) { navigator.vibrate(4); tickAt = +seek.value }
+        minute = m;
+      }
       if (video.duration) { video.currentTime = (seek.value / 1000) * video.duration }
       progress();
     });
@@ -132,6 +143,108 @@
       };
       if (keys[e.key] && !(e.key === " " && e.target.matches("button"))) { e.preventDefault(); e.stopPropagation(); keys[e.key]() }
     });
+  }
+
+  // Hiss gate decision: feed it RMS levels (dB) every 20 ms, it returns the gain to aim for.
+  // The noise floor is the quietest level of the last ~5 s; 6 dB over it is a sound worth hearing.
+  const gate = (size = 250, hold = 200) => {
+    const ring = [];
+    let loudAt = -Infinity;
+    return (db, t) => {
+      db = Math.max(db, -100);  // digital silence is -Infinity
+      ring.push(db);
+      if (ring.length > size) { ring.shift() }
+      if (db >= Math.min(...ring) + 6) { loudAt = t }
+      return t - loudAt < hold ? 1 : 0.18;  // -15 dB, not silence: hiss that drops out entirely sounds broken
+    };
+  };
+  window.vpGate = gate;
+
+  // Unmute fades in through an 80 Hz highpass and the hiss gate. Anything Web Audio can't take gets the plain muted toggle.
+  let ctx;
+  function warmSound(video, sync) {
+    let g, on = false, tick, aim = 1;  // g: the audio graph once built, false once it failed
+    const decide = gate();
+    const source = () => {  // true when the sound goes through the graph
+      if (g === false) { return false }
+      try {
+        ctx ||= new (window.AudioContext || window.webkitAudioContext)();
+        ctx.resume();
+        if (!g) {
+          g = { hp: ctx.createBiquadFilter(), gate: ctx.createGain(), fade: ctx.createGain(), an: ctx.createAnalyser() };
+          g.hp.type = "highpass"; g.hp.frequency.value = 80; g.fade.gain.value = 0;
+          g.hp.connect(g.gate).connect(g.fade).connect(ctx.destination);
+          g.hp.connect(g.an);
+          g.buf = new Float32Array(g.an.fftSize);
+        }
+        if (g.el) { return true }  // an element can only be captured once, and it stays captured
+        const s = video.srcObject;
+        if (s instanceof MediaStream) {  // WebRTC: Chrome won't route srcObject through the element, so tap the stream
+          if (!s.getAudioTracks().length) { return false }
+          if (g.stream !== s) { g.src?.disconnect(); g.src = ctx.createMediaStreamSource(s); g.src.connect(g.hp); g.stream = s }
+          return true;
+        }
+        // A cross-origin src without CORS would play as silence through the graph.
+        const url = video.currentSrc && new URL(video.currentSrc, location.href);
+        if (!url || (url.protocol !== "blob:" && url.origin !== location.origin)) { return false }
+        g.src = ctx.createMediaElementSource(video); g.src.connect(g.hp); g.el = true;
+        return true;
+      } catch { g = false; return false }
+    };
+    const ramp = (to, secs) => {
+      const t = ctx.currentTime, p = g.fade.gain;
+      p.cancelScheduledValues(t); p.setValueAtTime(to ? 0 : p.value, t); p.linearRampToValueAtTime(to, t + secs);
+    };
+    const listen = () => {
+      g.an.getFloatTimeDomainData(g.buf);
+      let sum = 0;
+      for (const x of g.buf) { sum += x * x }
+      const want = decide(10 * Math.log10(sum / g.buf.length + 1e-12), performance.now());
+      // Opens in ~10 ms so words keep their first sound; closes over ~300 ms.
+      if (want !== aim) { aim = want; g.gate.gain.setTargetAtTime(want, ctx.currentTime, want === 1 ? 0.01 : 0.1) }
+    };
+    const fadeIn = () => { ramp(1, 0.5); clearInterval(tick); if (!video.paused) { tick = setInterval(listen, 20) } };
+    const unmute = () => {
+      const graph = source();
+      if (!g?.stream) { video.muted = false; if (!video.volume) { video.volume = 1 } }  // a tapped stream keeps the element muted, or it plays twice
+      if (graph) { on = true; fadeIn(); sync() }
+    };
+    const mute = () => {
+      if (!on) { video.muted = true; return }
+      on = false; clearInterval(tick); sync();
+      ramp(0, 0.15);
+      setTimeout(() => { if (!on) { video.muted = true } }, 150);
+    };
+    video.addEventListener("playing", () => { if (on) { source() ? fadeIn() : (on = false, sync()) } });  // a reconnect fades in too
+    video.addEventListener("pause", () => clearInterval(tick));
+    // Something else muted the element (a stream reload), so the sound is off.
+    video.addEventListener("volumechange", () => { if (on && g.el && video.muted) { on = false; clearInterval(tick); sync() } });
+    return {
+      on: () => on,
+      toggle: () => { on || !(video.muted || video.volume === 0) ? mute() : unmute() },
+    };
+  }
+
+  // While a live camera plays, keep its picture every few seconds, to show instead of black when the feed drops.
+  function freezeFrame(video) {
+    const img = Object.assign(document.createElement("img"), { className: "vp-freeze", alt: "", hidden: true });
+    video.after(img);
+    const canvas = document.createElement("canvas");
+    setInterval(() => {
+      if (video.paused || video.readyState < 2 || !video.videoWidth || document.hidden) { return }
+      try {
+        canvas.width = Math.min(640, video.videoWidth);
+        canvas.height = Math.round((canvas.width * video.videoHeight) / video.videoWidth);
+        canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+        img.src = canvas.toDataURL("image/jpeg", 0.7);
+      } catch { }  // a cross-origin stream taints the canvas: no frozen frame, as before
+    }, 3000);
+    ["emptied", "waiting", "abort"].forEach((e) => video.addEventListener(e, () => {
+      if (!img.getAttribute("src")) { return }
+      img.style.objectFit = getComputedStyle(video).objectFit;
+      img.hidden = false;
+    }));
+    video.addEventListener("playing", () => { img.hidden = true });
   }
 
   // Downloads what the camera shows right now, named after the camera and the time.
