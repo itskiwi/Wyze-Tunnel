@@ -642,6 +642,8 @@ def create_app():
             locked=locked,
             settings=recording.load_settings(),
             keep_choices=recording.KEEP_CHOICES,
+            max_gb_choices=recording.MAX_GB_CHOICES,
+            min_free_gb=recording.MIN_FREE // 1024**3,
             default_keep=recording.DEFAULT_KEEP_DAYS,
             disk=recording.disk_use(),
             selected=request.args.get("cam"),

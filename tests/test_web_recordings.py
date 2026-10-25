@@ -131,3 +131,31 @@ def test_disk_use_counts_clips(tmp_path, monkeypatch):
     (tmp_path / "record" / "front" / "a.mp4").write_bytes(b"x" * 10)
     use = recording.disk_use()
     assert use["used"] == 10 and use["free"] > 0
+
+
+def test_trim_deletes_oldest_clips_over_the_limit(tmp_path, monkeypatch):
+    import time
+
+    from wyzebridge import recording
+
+    monkeypatch.setattr(recording, "RECORD_PATH", str(tmp_path / "record" / "%path" / "%Y-%m-%d_%H-%M-%S-%f"))
+    monkeypatch.setattr(recording, "SETTINGS_FILE", str(tmp_path / "record.json"))
+    monkeypatch.setattr(recording, "MIN_FREE", 0)
+    cam = tmp_path / "record" / "front"
+    cam.mkdir(parents=True)
+    old = time.time() - 3600
+    for i in range(4):
+        clip = cam / f"{i}.mp4"
+        clip.write_bytes(b"x" * 1024**2)
+        os.utime(clip, (old + i, old + i))
+    (cam / "live.mp4").write_bytes(b"x" * 1024**2)  # still being written
+    assert recording.trim() == 0  # no limit set
+    with pytest.raises(ValueError):
+        recording.save_settings({"max_gb": 7}, [])
+    recording.save_settings({"max_gb": 25}, [])
+    monkeypatch.setattr(recording, "disk_use", lambda: {"used": 25 * 1024**3 + 2 * 1024**2, "free": 10**12})
+    assert recording.trim() == 2 * 1024**2
+    assert sorted(f.name for f in cam.iterdir()) == ["2.mp4", "3.mp4", "live.mp4"]
+    monkeypatch.setattr(recording, "MIN_FREE", 10**12 + 1024**2)  # drive nearly full
+    monkeypatch.setattr(recording, "disk_use", lambda: {"used": 0, "free": 10**12})
+    assert recording.trim() == 1024**2 and not (cam / "2.mp4").exists()
