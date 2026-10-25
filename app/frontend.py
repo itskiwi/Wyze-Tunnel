@@ -479,6 +479,24 @@ def create_app():
         except ValueError as ex:
             return {"error": str(ex)}, 400
 
+    @app.route("/wyze-clip")
+    @auth_required
+    def wyze_clip():
+        """Play Wyze's cloud clip of a motion event. Only Wyze's own hosts are fetched."""
+        url = request.args.get("u", "")
+        if not wyze_api.wyze_media_url(url):
+            return {"error": "Not a Wyze clip"}, 400
+        try:
+            resp = requests.get(url, stream=True, timeout=15, allow_redirects=False)
+            if resp.status_code == 401 and wb.api.auth:
+                headers = {"Authorization": wb.api.auth.access_token}
+                resp = requests.get(url, stream=True, timeout=15, allow_redirects=False, headers=headers)
+        except requests.RequestException as ex:
+            return {"error": str(ex)}, 502
+        if not resp.ok:
+            return {"error": "Wyze's clip has expired or isn't ready yet."}, 404
+        return Response(resp.iter_content(64 * 1024), mimetype=resp.headers.get("Content-Type", "video/mp4"))
+
     @app.route("/events")
     def events():
         return redirect("./")  # The event list now lives on the home timeline.
