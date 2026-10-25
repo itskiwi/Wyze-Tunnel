@@ -30,10 +30,17 @@ if ($Installed -ne $Latest) {
 
     Say 'Installing'
     $New = "$Native.new"
-    Remove-Item -Recurse -Force $New -ErrorAction SilentlyContinue
+    $Old = "$Native.old"
+    Remove-Item -Recurse -Force $New, $Old -ErrorAction SilentlyContinue
     Expand-Archive $Zip $New
-    Remove-Item -Recurse -Force $Native -ErrorAction SilentlyContinue
+    # A bridge the desktop app no longer tracks (say, one left running across an app update) holds files open.
+    Get-Process | Where-Object { $_.Path -like "$Native\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep 2
+    # Swap whole folders: if a file is still locked the rename fails and the old install stays intact,
+    # instead of a delete that removes half the files.
+    if (Test-Path $Native) { Rename-Item $Native $Old }
     Rename-Item $New $Native
+    Remove-Item -Recurse -Force $Old -ErrorAction SilentlyContinue  # retried on the next update if still locked
     Remove-Item $Zip
 } else {
     Say "Wyze Tunnel $Latest is up to date"
