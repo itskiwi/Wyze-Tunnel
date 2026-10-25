@@ -55,6 +55,13 @@
     <video id="player" class="aspect-video max-h-[70vh] w-full" controls playsinline></video>
     <p id="nowPlaying" class="bg-zinc-900 px-4 py-3 text-sm text-zinc-400"></p>
 </div>
+<figure id="heatBox" class="surface mb-5 hidden p-4">
+    <div class="relative mx-auto aspect-video max-w-xl overflow-hidden rounded-2xl bg-black">
+        <img id="heatImg" class="h-full w-full object-cover" style="opacity:.7" alt="" onerror="this.style.visibility='hidden'" />
+        <div id="heatGrid" class="absolute inset-0 grid"></div>
+    </div>
+    <figcaption id="heatCaption" class="mt-2 text-center text-sm text-zinc-400"></figcaption>
+</figure>
 <ul id="hits" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></ul>
 <p id="status" class="mt-6 text-center text-sm text-zinc-500" role="status">Loading…</p>
 <div class="mt-4 text-center"><button id="more" class="btn hidden" type="button">Show older</button></div>
@@ -156,6 +163,27 @@
             .catch((err) => { status.textContent = `Couldn't search. ${err.message}.`; });
     }
 
+    // Heatmap: brighter squares are where people, cars and animals showed up most.
+    function heatmap() {
+        const box = document.getElementById("heatBox"), cam = select.value;
+        box.classList.toggle("hidden", !cam);
+        if (!cam) return;
+        const img = document.getElementById("heatImg");
+        img.style.visibility = "";
+        img.src = `img/${encodeURIComponent(cam)}.jpg`;
+        fetch(`api/heatmap/${encodeURIComponent(cam)}`).then((r) => r.json()).then(({ w, h, grid }) => {
+            const el = document.getElementById("heatGrid"), top = Math.max(0, ...grid);
+            el.style.gridTemplateColumns = `repeat(${w}, 1fr)`;
+            el.style.gridTemplateRows = `repeat(${h}, 1fr)`;
+            el.replaceChildren(...Array.from({ length: w * h }, (_, i) => Object.assign(document.createElement("span"), {
+                className: "bg-accent", style: `opacity:${top ? Math.sqrt((grid[i] || 0) / top) * 0.75 : 0}` })));
+            document.getElementById("heatCaption").textContent = top
+                ? `Where things showed up on ${cameras[cam] || cam}. Brighter means more often.`
+                : `Nothing spotted on ${cameras[cam] || cam} yet, so there's no heatmap.`;
+        }).catch(() => box.classList.add("hidden"));
+    }
+    select.addEventListener("change", heatmap);
+    heatmap();
     select.addEventListener("change", () => load());
     more.addEventListener("click", () => load(true));
     load();

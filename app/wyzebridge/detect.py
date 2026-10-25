@@ -56,6 +56,12 @@ WIDTH, HEIGHT = 640, 360
 _db_lock = Lock()
 _model_lock = Lock()
 _watchers: dict[str, "Watcher"] = {}
+# Motion heatmap: centers of everything spotted, counted on a coarse grid over the picture.
+HEAT_W, HEAT_H = 16, 9
+HEAT_FILE = TOKEN_PATH + "heatmap.json"
+HEAT: dict[str, list[int]] = {}
+_heat_lock = Lock()
+_heat_saved = 0.0
 
 
 def _db() -> sqlite3.Connection:
@@ -185,14 +191,42 @@ def load_model():
     return model
 
 
-def find_objects(model, frame) -> dict[str, float]:
-    """Best score per label in one frame."""
+def find_objects(model, frame, heat: list[int] | None = None) -> dict[str, float]:
+    """Best score per label in one frame. Adds each object's center to the heat grid if given."""
     found: dict[str, float] = {}
-    class_ids, scores, _ = model.detect(frame, MIN_SCORE)
-    for class_id, score in zip(class_ids, scores):
+    class_ids, scores, boxes = model.detect(frame, MIN_SCORE)
+    for class_id, score, (x, y, w, h) in zip(class_ids, scores, boxes):
         if label := LABELS.get(int(class_id)):
             found[label] = max(found.get(label, 0), float(score))
+            if heat is not None:
+                col = min(max(int((x + w / 2) / WIDTH * HEAT_W), 0), HEAT_W - 1)
+                row = min(max(int((y + h / 2) / HEIGHT * HEAT_H), 0), HEAT_H - 1)
+                heat[row * HEAT_W + col] += 1
     return found
+
+
+def load_heat() -> dict[str, list[int]]:
+    try:
+        with open(HEAT_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def heat_grid(uri: str) -> list[int]:
+    """Where things showed up on this camera, as HEAT_W x HEAT_H counts (row by row)."""
+    with _heat_lock:
+        if not HEAT:
+            HEAT.update(load_heat())
+        grid = HEAT.setdefault(uri, [0] * HEAT_W * HEAT_H)
+        if len(grid) != HEAT_W * HEAT_H:
+            grid[:] = [0] * HEAT_W * HEAT_H
+        return grid
+
+
+def save_heat() -> None:
+    with _heat_lock, open(HEAT_FILE, "w") as f:
+        json.dump(HEAT, f)
 
 
 class Watcher(Thread):
@@ -242,8 +276,13 @@ class Watcher(Thread):
         )
 
     def check(self, model, frame):
+        global _heat_saved
         now = time.time()
-        for label, score in find_objects(model, frame).items():
+        found = find_objects(model, frame, heat_grid(self.uri))
+        if now - _heat_saved > 300:
+            _heat_saved = now
+            save_heat()
+        for label, score in found.items():
             if now - self.last_seen.get(label, 0) < COOLDOWN:
                 self.last_seen[label] = now  # still there: extend, don't repeat
                 continue

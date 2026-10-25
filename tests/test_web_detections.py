@@ -148,3 +148,10 @@ def test_old_cpu_turns_detection_off():
         "assert detect.cv2 is None\n"
     )
     subprocess.run([sys.executable, "-c", code], check=True, cwd=Path(__file__).parents[1] / "app")
+
+
+def test_heatmap_counts_object_centers():
+    heat = [0] * detect.HEAT_W * detect.HEAT_H
+    model = FakeModel([(15, 0.9)])  # its box is the top-left corner
+    detect.find_objects(model, None, heat)
+    assert heat[0] == 1 and sum(heat) == 1

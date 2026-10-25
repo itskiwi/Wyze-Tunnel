@@ -756,6 +756,13 @@ def create_app():
             version=config.VERSION,
         )
 
+    @app.route("/api/heatmap/<string:cam_name>")
+    @auth_required
+    def api_heatmap(cam_name: str):
+        """Where things showed up on this camera: a grid of counts, row by row from the top left."""
+        grid = detect.load_heat().get(cam_name) or detect.HEAT.get(cam_name) or []
+        return {"w": detect.HEAT_W, "h": detect.HEAT_H, "grid": grid}
+
     @app.route("/search/settings", methods=["POST"])
     @auth_required
     def search_settings():
