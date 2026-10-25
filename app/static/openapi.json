@@ -494,6 +494,98 @@
           }
         }
       }
+    },
+    "/mode": {
+      "get": {
+        "summary": "Alert mode: schedule (normal), home (no motion alerts) or away (alerts even in quiet hours)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "schedule",
+                        "home",
+                        "away"
+                      ]
+                    },
+                    "modes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "schedule",
+                          "home",
+                          "away"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Switch the alert mode, for phone shortcuts and location automations. Needs a control token.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "schedule",
+                      "home",
+                      "away"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "schedule",
+                        "home",
+                        "away"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown mode"
+          },
+          "403": {
+            "description": "This token can only view"
+          }
+        }
+      }
     }
   }
 }
