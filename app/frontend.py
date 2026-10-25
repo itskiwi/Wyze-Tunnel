@@ -609,7 +609,7 @@ def create_app():
             "account.html",
             guests=guests.list_guests(),
             auto_folder=backup.load_auto().get("folder", ""),
-            folder_example=r"D:\Wyze Tunnel backups" if os.name == "nt" else "/media/backups",
+            folder_example=backup.FOLDER_EXAMPLE,
             member=web_ui.current_guest(),
             guest_hours=guests.GUEST_HOURS,
             username=WbAuth.username,
@@ -749,6 +749,8 @@ def create_app():
             min_free_gb=recording.MIN_FREE // 1024**3,
             default_keep=recording.DEFAULT_KEEP_DAYS,
             disk=recording.disk_use(),
+            cloud=recording.load_cloud(),
+            folder_example=backup.FOLDER_EXAMPLE,
             timelapses=timelapse.videos(),
             timelapse_cams=timelapse.load_cams(),
             selected=request.args.get("cam"),
@@ -769,6 +771,17 @@ def create_app():
             return {"error": str(ex)}, 400
         Thread(target=wb.restart, daemon=True).start()
         return {"status": "saved"}
+
+    @app.route("/recordings/backup", methods=["POST"])
+    @owner_only
+    def recordings_backup():
+        try:
+            settings = recording.save_cloud(request.get_json(silent=True) or {}, list(wb.streams.streams))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        if settings:  # start now rather than in up to 5 minutes
+            Thread(target=recording.back_up_clips, daemon=True).start()
+        return {"status": "saved", "on": bool(settings)}
 
     @app.route("/timelapse/settings", methods=["POST"])
     @auth_required

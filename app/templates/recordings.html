@@ -97,6 +97,31 @@
 </div>
 {% endif %}
 
+{% if not current_guest() %}
+<section id="cloud" class="surface mt-5 p-5">
+    <h2 class="font-semibold">Back up clips to the cloud</h2>
+    <p class="mt-1 text-sm text-zinc-400">Copies finished clips into a folder on this computer, such as your OneDrive, Google Drive or Dropbox folder,
+        and that app uploads them. They go in a Wyze Tunnel folder inside it, sorted by camera and day. Copies older than
+        {{ settings.get('keep_days', default_keep) }} days are deleted there too. The clips here are never moved or deleted.
+        Leave the folder empty to stop.</p>
+    <form id="cloudForm" class="mt-3 space-y-4">
+        <label class="block text-sm">Folder
+            <input name="folder" value="{{ cloud.get('folder', '') }}" placeholder="{{ folder_example }}" autocomplete="off" class="field mt-1 w-full" /></label>
+        <fieldset><legend class="text-sm text-zinc-400">Cameras. Leave them all unticked to back up every camera that records.</legend>
+            {% for uri, name in all_cams.items() %}
+            <label class="mt-2 flex items-center gap-3"><input type="checkbox" name="cams" value="{{ uri }}" class="h-4 w-4 accent-accent" {{ 'checked' if uri in cloud.get('cams', []) }} /><span>{{ name }}</span></label>
+            {% endfor %}
+        </fieldset>
+        <div class="flex flex-wrap items-center gap-3">
+            <button class="btn btn-primary" type="submit">Save</button>
+            <span id="cloudStatus" class="text-sm {{ 'text-rose-300' if cloud.get('error') else 'text-zinc-400' }}" role="status" data-last="{{ cloud.get('last', 0) }}">
+                {%- if cloud.get('error') %}{{ cloud.error }}{% elif cloud.get('folder') and not cloud.get('last') %}The first copies start within a few minutes.{% endif -%}
+            </span>
+        </div>
+    </form>
+</section>
+{% endif %}
+
 <section id="timelapse" class="surface mt-5 p-5">
     <h2 class="font-semibold">Daily timelapse</h2>
     <p class="mt-1 text-sm text-zinc-400">A picture every 10 minutes, made into a 12-second video of the whole day after midnight. Point a camera at the sky for a sky timelapse. Videos are kept for 30 days.</p>
@@ -137,6 +162,19 @@
         player.src = b.dataset.src;
         player.play().catch(() => { });
     }));
+    const cloudStatus = document.getElementById("cloudStatus");
+    if (cloudStatus && !cloudStatus.textContent && Number(cloudStatus.dataset.last)) {
+        cloudStatus.textContent = `Last backed up ${new Date(cloudStatus.dataset.last * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}. It checks for new clips every 5 minutes.`;
+    }
+    document.getElementById("cloudForm")?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const cams = [...e.target.querySelectorAll("[name=cams]:checked")].map((c) => c.value);
+        cloudStatus.className = "text-sm text-zinc-400";
+        fetch("recordings/backup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folder: e.target.folder.value, cams }) })
+            .then((resp) => resp.json().then((r) => resp.ok ? r : Promise.reject(new Error(r.error || resp.statusText))))
+            .then((r) => { cloudStatus.textContent = r.on ? "Saved. Copying has started." : "Saved. Cloud backup is off."; })
+            .catch((err) => { cloudStatus.className = "text-sm text-rose-300"; cloudStatus.textContent = err.message; });
+    });
     document.getElementById("tlForm")?.addEventListener("submit", (e) => {
         e.preventDefault();
         const out = document.getElementById("tlStatus");
