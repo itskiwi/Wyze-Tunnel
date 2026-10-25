@@ -12,8 +12,9 @@ import signal
 import socket
 import sys
 from pathlib import Path
-from subprocess import DEVNULL, PIPE, Popen
-from typing import Optional
+from queue import Empty
+from subprocess import DEVNULL, PIPE, Popen, SubprocessError, run
+from typing import Any, Optional
 from urllib.parse import urlencode
 
 import yaml
@@ -21,10 +22,13 @@ from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import kill_orphan
 from wyzecam.api_models import WyzeCamera
+from wyzecam.tutk import tutk_protocol
 
 GO2RTC_BIN = os.getenv("GO2RTC_BIN", "/app/go2rtc")
 GO2RTC_CONFIG = os.getenv("GO2RTC_CONFIG", "/tmp/go2rtc.yaml")
 TUTK_LIB = os.getenv("TUTK_LIB", "/usr/local/lib/libIOTCAPIs_ALL.so")
+# native/wyze-ioctl, shipped next to go2rtc in the Windows bundle.
+IOCTL_BIN = os.getenv("WYZE_IOCTL_BIN") or str(Path(GO2RTC_BIN).with_name("wyze-ioctl" + Path(GO2RTC_BIN).suffix))
 RTSP_PORT = 8556
 API_PORT = 1984
 SOURCES = ("tutk", "lan", "webrtc")
@@ -101,6 +105,62 @@ def lan_url(cam: WyzeCamera, substream: bool = False) -> str:
         "dtls": "true",
     }
     return f"wyze://{cam.ip}?{urlencode(query)}"
+
+
+def lan_controls(cam: WyzeCamera, sources: list[str]) -> bool:
+    """Whether camera commands (PTZ, night vision...) can go over the LAN without the Wyze SDK."""
+    return "lan" in sources and os.access(IOCTL_BIN, os.X_OK)
+
+
+def lan_ioctl(cam: WyzeCamera, msg: tutk_protocol.TutkWyzeProtocolMessage) -> Any:
+    """Send one TUTK command through native/wyze-ioctl (go2rtc's Wyze client) and parse the reply."""
+    no_reply = msg.code in {11000, 11004}  # rotate commands the camera doesn't answer
+    code = "0" if no_reply else str(msg.expected_response_code)
+    out = run([IOCTL_BIN, lan_url(cam), msg.encode().hex(), code], capture_output=True, text=True, timeout=20, check=True)
+    if no_reply:
+        return None
+    _, payload = tutk_protocol.decode(bytes.fromhex(out.stdout.strip()))
+    return msg.parse_response(payload)
+
+
+class LanSession:
+    """Stands in for a WyzeIOTCSession in wyze_control, sending each command with lan_ioctl."""
+
+    preferred_bitrate = 0
+
+    def __init__(self, cam: WyzeCamera) -> None:
+        self.camera = cam
+
+    def should_stream(self, sleep: float = 0) -> bool:
+        return True
+
+    def iotctrl_mux(self) -> "LanSession":
+        return self
+
+    def __enter__(self) -> "LanSession":
+        return self
+
+    def __exit__(self, *_) -> None:
+        pass
+
+    def send_ioctl(self, msg: tutk_protocol.TutkWyzeProtocolMessage):
+        try:
+            reply = lan_ioctl(self.camera, msg)
+        except (OSError, SubprocessError, ValueError) as ex:
+            logger.warning(f"[CONTROL] {self.camera.nickname}: {getattr(ex, 'stderr', '') or ex}")
+            reply = Empty()
+
+        class Future:
+            def result(self, block: bool = True, timeout: Optional[float] = None) -> Any:
+                if isinstance(reply, Empty):
+                    raise reply
+                return reply
+
+        return Future()
+
+    def update_frame_size_rate(self, **change) -> None:
+        if change:  # go2rtc asks for its own resolution and bitrate
+            raise RuntimeError("Bitrate and fps can't be changed on this computer")
 
 
 def webrtc_url(cam_name: str, api_key: Optional[str]) -> str:

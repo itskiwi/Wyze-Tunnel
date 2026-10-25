@@ -239,6 +239,11 @@ mod vm {
     pub fn open_url(url: &str) {
         let _ = cmd("explorer.exe").arg(url).spawn();
     }
+    /// The bridge counts cameras that need the Wyze SDK (away from home, old firmware) next to WT_UPDATE_FILE.
+    pub fn needs_sdk() -> bool {
+        let n = fs::read_to_string(data().join("needs-sdk")).unwrap_or_default();
+        n.trim().parse::<u32>().is_ok_and(|n| n > 0)
+    }
 }
 
 fn bridge_up() -> bool {
@@ -362,8 +367,9 @@ fn main() {
                 &update,
                 &item("quit", "Quit")?,
             ])?;
+            // Shown only while a camera needs it; everything else runs natively.
             #[cfg(windows)]
-            menu.insert(&item("full", "Full camera support (WSL)…")?, 4)?;
+            let (full, mut full_shown) = (item("full", "Full camera support (WSL)…")?, false);
             let tray = TrayIconBuilder::with_id("tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Wyze Tunnel")
@@ -439,6 +445,11 @@ fn main() {
                 }
                 if tick.is_multiple_of(4 * 60 * 6) {
                     (latest, desktop) = (latest_bridge(), newer_release()); // every 6 hours
+                }
+                #[cfg(windows)]
+                if tick.is_multiple_of(4) && vm::needs_sdk() != full_shown {
+                    full_shown = !full_shown;
+                    let _ = if full_shown { menu.insert(&full, 4) } else { menu.remove(&full) };
                 }
                 tick = tick.wrapping_add(1);
                 let text = match (&updating, &desktop, &latest) {

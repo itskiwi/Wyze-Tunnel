@@ -60,7 +60,7 @@ On Wi-Fi only? In Raspberry Pi Imager, click **Edit settings** before writing th
 
 Download **Wyze Tunnel** for Windows (`.exe`) or Mac (`.dmg`) from the [latest desktop release](https://github.com/itskiwi/Wyze-Tunnel/releases?q=desktop-v), open it and click **Set up**. The app keeps Wyze Tunnel running from the tray or menu bar.
 
-- **Windows 10/11:** runs natively, with no permission prompts or restart. Cameras connect through go2rtc (LAN on recent firmware, otherwise Wyze's cloud WebRTC). Camera controls (pan/tilt, siren) and cameras go2rtc can't reach need the Wyze library, which only runs on Linux: choose **Full camera support (WSL)…** in the tray menu to set up WSL2. That asks for permission once and may need a restart.
+- **Windows 10/11:** runs natively, with no permission prompts or restart. Cameras connect through go2rtc (LAN on recent firmware, otherwise Wyze's cloud WebRTC). Camera controls work too: pan/tilt, night vision and the rest over your home network, and the siren, lights and motion detection through Wyze's cloud. Only cameras away from home or on old firmware need the Wyze library, which runs on Linux; then the tray menu shows **Full camera support (WSL)…** to set up WSL2. That asks for permission once and may need a restart.
 - **macOS 13+:** the Wyze library only runs on Linux, so the app quietly sets up a small background VM.
 
 The app isn't code-signed yet: on Mac, right-click it and choose **Open** the first time; on Windows, click **More info**, then **Run anyway**.

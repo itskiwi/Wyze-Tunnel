@@ -18,13 +18,13 @@ from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.config import CHRONIC_FAILURES, COOLDOWN, COOLDOWN_MAX, MQTT_TOPIC, TOKEN_PATH
 from wyzebridge.auth import WbAuth
 from wyzebridge.ffmpeg import get_ffmpeg_cmd
-from wyzebridge.go2rtc import FALLBACK_AFTER, Go2rtcServer, lan_url, relay, source_chain, webrtc_url
+from wyzebridge.go2rtc import FALLBACK_AFTER, Go2rtcServer, LanSession, lan_controls, lan_url, relay, source_chain, webrtc_url
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import publish_discovery, publish_messages, update_mqtt_state
 from wyzebridge.webhooks import send_webhook
 from wyzebridge.wyze_api import WyzeApi, display_name
 from wyzebridge.wyze_commands import GET_CMDS, PARAMS, SET_CMDS
-from wyzebridge.wyze_control import camera_control
+from wyzebridge.wyze_control import camera_control, handle_cmd
 from wyzecam import TutkError, WyzeAccount, WyzeCamera, WyzeIOTC, WyzeIOTCSession
 
 NET_MODE = {0: "P2P", 1: "RELAY", 2: "LAN"}
@@ -554,8 +554,11 @@ class WyzeStream:
         if cmd not in GET_CMDS | SET_CMDS | PARAMS and cmd not in {"caminfo"}:
             return {"response": "invalid command"}
 
+        if self.source != "tutk" and lan_controls(self.camera, self.sources):
+            return handle_cmd(LanSession(self.camera), (cmd, payload))
+
         if self.source != "tutk":
-            return {"response": f"Only the siren, lights and motion detection work for {self.camera.nickname} on this computer. Night vision and moving the camera need the full camera connection"}
+            return {"response": f"Only the siren, lights and motion detection work for {self.camera.nickname} on this computer. Night vision and moving the camera need the camera on your home network"}
 
         if on_demand := not self.connected:
             logger.info(f"[CONTROL] Connecting to {self.uri}")
