@@ -73,6 +73,43 @@
           "recording": {
             "type": "boolean"
           },
+          "wifi": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Wi-Fi signal, 0 to 100"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "offline",
+                "repeated_failures",
+                "weak_wifi",
+                "sd_card_full",
+                "using_relay"
+              ]
+            }
+          },
+          "last_event": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The newest event for this camera",
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "motion, doorbell, or what the detector saw, like person or car"
+              },
+              "ts": {
+                "type": "integer",
+                "description": "Unix time"
+              }
+            }
+          },
           "features": {
             "type": "object",
             "properties": {
@@ -285,6 +322,135 @@
             }
           },
           "503": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cameras/{camera}/last-event.jpg": {
+      "get": {
+        "summary": "The picture from the camera's newest event",
+        "description": "Wyze's cloud thumbnail for motion, or the detector's picture for a person, car or animal.",
+        "parameters": [
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Camera id from /cameras"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JPEG",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "404": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cameras/{camera}/recordings": {
+      "get": {
+        "summary": "Recorded clips",
+        "description": "Oldest first. Empty when the camera doesn't record.",
+        "parameters": [
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Camera id from /cameras"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Clips",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "start": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "duration": {
+                        "type": "number",
+                        "description": "Seconds"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cameras/{camera}/recordings/play": {
+      "get": {
+        "summary": "Play part of a recording as MP4",
+        "parameters": [
+          {
+            "name": "camera",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Camera id from /cameras"
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "duration",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number"
+            },
+            "description": "Seconds"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MP4",
+            "content": {
+              "video/mp4": {}
+            }
+          },
+          "400": {
             "description": "Error",
             "content": {
               "application/json": {
