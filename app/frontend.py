@@ -514,7 +514,7 @@ def create_app():
         try:
             resp = requests.get(url, stream=True, timeout=15, allow_redirects=False)
             if resp.status_code == 401 and wb.api.auth:
-                headers = {"Authorization": wb.api.auth.access_token}
+                headers = {"Wyze-Authorization": wb.api.auth.access_token}
                 resp = requests.get(url, stream=True, timeout=15, allow_redirects=False, headers=headers)
         except requests.RequestException as ex:
             return {"error": str(ex)}, 502

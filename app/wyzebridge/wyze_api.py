@@ -269,8 +269,8 @@ class WyzeApi:
         try:
             img = get(thumb, timeout=15)
             if img.status_code == 401 and self.auth:
-                # Newer Wyze thumbnail hosts (prod-sight-safe-auth.wyze.com) reject the bare signed URL.
-                img = get(thumb, headers={"Authorization": self.auth.access_token}, timeout=15)
+                # Newer Wyze thumbnail hosts (prod-sight-safe-auth.wyze.com) want the token in Wyze-Authorization, like the app sends.
+                img = get(thumb, headers={"Wyze-Authorization": self.auth.access_token}, timeout=15)
             img.raise_for_status()
         except Exception as ex:
             logger.warning(f"ERROR pulling thumbnail：{ex}")
