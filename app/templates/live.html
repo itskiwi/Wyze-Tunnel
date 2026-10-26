@@ -287,7 +287,7 @@
                                     {% for name in chime_sounds %}<option value="{{ loop.index }}">{{ name }}</option>{% endfor %}
                                 </select>
                                 <span class="pl-1 text-zinc-300">Volume</span>
-                                <input class="chime-volume" type="range" min="1" max="100" value="50" aria-label="Wyze Chime volume" />
+                                <input class="chime-volume" type="range" min="0" max="8" value="4" aria-label="Wyze Chime volume" />
                             </div>
                             <div class="grid grid-cols-1 gap-1 p-1">
                                 <button class="button btn" data-chime-save title="The chime rings once so you can hear it">Save Wyze Chime</button>

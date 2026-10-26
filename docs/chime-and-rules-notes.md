@@ -1,7 +1,7 @@
 # Doorbell chime and Wyze rules: what the Wyze Android app does
 
-Citations are `file:line` in the decompiled Wyze Android app (jadx `sources/`). The decompile is obfuscated and has no
-resource files, so anything marked **not found** is a guess in the code, flagged here.
+Citations are `file:line` in the decompiled Wyze Android app (jadx `sources/`). Layouts and strings come from the
+decoded resources (`res/layout`, `res/values/strings.xml`). Anything marked **not found** is a guess in the code, flagged here.
 
 ## Doorbell v2 (HL_DB2): two things the app calls "chime"
 
@@ -18,7 +18,10 @@ resource files, so anything marked **not found** is a guess in the code, flagged
 - Ring length: 1 to 9 seconds (`ChimeActivity.java:534-545`, set at `:669-675`).
 - Set reply 12081: `data[0]` is the field changed, `data[1]` 1 means success (`CommandTreatment.java:2437-2441`, `ConnectControlHandler.java:2357-2368`).
 - Used by Wyze Tunnel: `K12080SetDb2DdqParameter`, `K12082GetDb2DdqParameter`, `K12086SetDb2RingSound`, `K12088GetDb2RingSound` in `app/wyzecam/tutk/tutk_protocol.py`.
-- **The "switch" byte is skipped.** Two app screens use it with opposite meaning: `ChimeActivity.java:301` and `:495` (2 when the toggle is on) against `DdqSettingsActivity.java:108` and `:188` (1 when the toggle is on). The toggle's label is in a resource file that is not in the decompile.
+- Switch values: 1 the wired chime rings, 2 it stays silent. The two screens agree once their labels are known: `ChimeActivity.java:301`
+  sends 2 when "Do Not Disturb" is on (`ActChimeBinding.d` is `db2_chime_distubrb` in `act_chime.xml`; binding fields follow sorted ids), and
+  `DdqSettingsActivity.java:108` sends 1 when "Ring my in-home-doorbell" is on (`db2_ddq_setting_off` in `db2_ddq_settings.xml`).
+  Wyze Tunnel does not send it yet.
 
 ### 2. Wyze Chime (model `CHIME`), over the Wyze cloud
 
@@ -28,8 +31,9 @@ resource files, so anything marked **not found** is a guess in the code, flagged
   The app always sends all three, so the chime rings once on every save. Wyze Tunnel does the same.
 - Request body: `device_mac`, `device_model`, `property_list`, plus the usual sc, sv, app_ver, ts, access_token, phone_id, app_name, app_version
   (`CloudProtocol.java:2985-2998`, header fields `:128-143`). Ints, not strings, for `pvalue`.
-- Ring ids and names: `BusinessInetWorker.java:44-71`. Negative ids are section headings. Ids 12 to 14 are named through `PushMessageModel.TYPE_*` constants whose values are not in the decompile; their order (Dog Bark 2, Door Close, Door Open) is assumed.
-- **Not found:** the slider's range (a layout resource). Wyze Tunnel accepts 1 to 100.
+- Ring ids and names: `BusinessInetWorker.java:44-71`. Negative ids are section headings. Ids 12 to 14 are `PushMessageModel.TYPE_ROUTER/POPUP/SILENCE` = "12", "13", "14" (`com/hualai/home/fcm/PushMessageModel.java:14-16`): Dog Bark 2, Door Close, Door Open.
+- Volume: 0 to 8 (`WpkSliderView` `slider_min="0"` `slider_max="8"` in `plugin_ddq_fragment_setting_voice.xml`); the doorbell reports it as one byte
+  (`DDQSettingFragment.java:139`). Wyze Tunnel accepts 0 to 8.
 - **Not found:** the URL for `CLOUD_SET_PROPERTY_LIST` and the `sv` value (both are in a properties file not in the decompile). Wyze Tunnel posts to `/app/v2/device/set_property_list` with the default sc/sv, like its existing `set_property`.
 - **Not found:** reading the chime's current sound and volume. The app asks the doorbell over TUTK (`ConnectControl.java:1886`, command 11800); not implemented here, so those two controls start at defaults.
 

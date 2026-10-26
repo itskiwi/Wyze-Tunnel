@@ -354,7 +354,7 @@ def create_app():
             return {}, "Invalid ring sound or chime type."
         if ("chime_seconds" in data and not num("chime_seconds", 1, 9)) or ("chime_sound" in data and not num("chime_sound", 1, 19)):
             return {}, "Invalid chime length or sound."
-        if "chime_volume" in data and not num("chime_volume", 1, 100):
+        if "chime_volume" in data and not num("chime_volume", 0, 8):  # the app's slider (plugin_ddq_fragment_setting_voice.xml)
             return {}, "Invalid chime volume."
         if ("chime_sound" in data) != ("chime_volume" in data):
             return {}, "The Wyze Chime needs its sound and volume together."

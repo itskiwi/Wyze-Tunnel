@@ -62,20 +62,20 @@ def test_chime_change_is_owner_only(web):
 
 def test_chime_sends_the_apps_commands(web):
     client, wb, _ = web
-    body = {"ring_sound": "on", "chime_type": "digital", "chime_seconds": 5, "chime_sound": 7, "chime_volume": 40}
+    body = {"ring_sound": "on", "chime_type": "digital", "chime_seconds": 5, "chime_sound": 7, "chime_volume": 8}
     assert client.post("/api/front/chime", json=body, headers=OWNER).status_code == 200
     assert [c.args for c in wb.streams.send_cmd.call_args_list] == [
         ("front", "ring_sound", "on"), ("front", "doorbell_chime", "3,0,0"), ("front", "doorbell_chime", "0,0,5")]
     cam = wb.streams.get("front").camera
-    wb.api.set_chime.assert_called_once_with(cam, 7, 40)
+    wb.api.set_chime.assert_called_once_with(cam, 7, 8)
     wb.streams.send_cmd.return_value = {"response": "timed out"}
     assert client.post("/api/front/chime", json={"ring_sound": "on"}, headers=OWNER).status_code == 502
 
 
 @pytest.mark.parametrize("body", [
     {}, [], {"nope": 1}, {"ring_sound": "loud"}, {"chime_type": "bell"}, {"chime_type": ["none"]}, {"chime_seconds": 0}, {"chime_seconds": 10},
-    {"chime_seconds": "5"}, {"chime_seconds": True}, {"chime_sound": 0, "chime_volume": 10}, {"chime_sound": 20, "chime_volume": 10},
-    {"chime_sound": 3}, {"chime_volume": 10}, {"chime_sound": 3, "chime_volume": 101}, {"chime_sound": 3, "chime_volume": 0},
+    {"chime_seconds": "5"}, {"chime_seconds": True}, {"chime_sound": 0, "chime_volume": 4}, {"chime_sound": 20, "chime_volume": 4},
+    {"chime_sound": 3}, {"chime_volume": 4}, {"chime_sound": 3, "chime_volume": 9}, {"chime_sound": 3, "chime_volume": -1},
 ])
 def test_chime_input_is_checked(web, body):
     client, wb, _ = web
