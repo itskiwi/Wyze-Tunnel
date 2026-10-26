@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, phrases, pocket, privacy, recording, shares, street_watch, timelapse, visitors, weather, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, detect, devices, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, phrases, pocket, privacy, recording, shares, street_watch, timelapse, visitors, weather, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.diagnostics import build_report
@@ -32,7 +32,7 @@ from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED, path_bytes
 from wyzebridge.web_ui import url_for
 from wyzebridge.wyze_events import EVENT_LOG
 from wyzebridge.wyze_stream import WyzeStream
-from wyzecam.api import API_STATS
+from wyzecam.api import API_STATS, AccessTokenError, RateLimitError, WyzeAPIError
 
 
 # Links with any of these open the live grid, so wall displays and old bookmarks keep working.
@@ -567,6 +567,40 @@ def create_app():
         except ValueError as ex:
             return {"error": str(ex)}, 400
         return {"status": "saved"}
+
+    def device_call(fn, *args):
+        """Retries once with a fresh token if it expired since login."""
+        try:
+            return fn(wb.api.auth, *args)
+        except AccessTokenError:
+            wb.api.refresh_token()
+            return fn(wb.api.auth, *args)
+
+    @app.route("/devices")
+    @auth_required
+    def devices_page():
+        return render_template("devices.html")
+
+    @app.route("/api/devices", methods=["GET", "POST"])
+    @auth_required
+    def api_devices():
+        """Plugs, bulbs, sensors, thermostat, locks and chimes. POST {"mac": ..., "on" | "lock" | ...: ...} changes one."""
+        try:
+            if request.method == "GET":
+                return {"devices": device_call(devices.list_devices, bool(request.args.get("fresh")))}
+            data = request.get_json(silent=True) or {}
+            if not (dev := device_call(devices.find, str(data.get("mac", "")))):
+                return {"error": "Unknown device."}, 404
+            done = device_call(devices.control, dev, data)
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException) as ex:
+            return {"error": f"Wyze didn't accept that: {ex}"}, 502
+        who = (web_ui.current_guest() or {}).get("guest", "owner")
+        logger.warning(f"[DEVICES] {who} ({request.remote_addr}) {done}: {dev['name']} ({dev['model']}) at {datetime.now().isoformat(timespec='seconds')}")
+        return {"status": done}
 
     @app.route("/privacy", methods=["GET", "POST"])
     @app.route("/battery-saver", methods=["GET", "POST"], endpoint="battery_saver")
