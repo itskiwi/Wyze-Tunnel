@@ -48,6 +48,7 @@ def test_guests_cant_talk_but_family_can(setup):
     sam = client.post("/guests", json={"name": "Sam", "hours": 24}, headers=owner).json["password"]
     resp = client.get("/signaling/porch?kvs&talk", headers=basic("Sam", sam))
     assert resp.status_code == 403 and "Guests" in resp.json["result"]
+    assert client.get("/signaling/porch?kvs&relay", headers=basic("Sam", sam)).status_code == 403
     wb.api.get_kvs_signal.assert_not_called()
     gran = client.post("/guests", json={"name": "Gran", "hours": 0}, headers=owner).json["password"]
     assert client.get("/signaling/porch?kvs&talk", headers=basic("Gran", gran)).json["result"] == "ok"

@@ -323,7 +323,8 @@ def create_app():
     def webrtc_signaling(name):
         # "relay" is go2rtc fetching the one connection the tunnel holds; "talk" is the owner's push-to-talk,
         # a second Kinesis session that sends the browser's mic (MediaMTX's shared stream can't carry it back).
-        if "talk" in request.args and (guest := web_ui.current_guest()) and not guest["family"]:
+        # A relay session is a direct Wyze cloud session too, which could carry a mic, so it's not for guests either.
+        if ("talk" in request.args or "relay" in request.args) and (guest := web_ui.current_guest()) and not guest["family"]:
             return {"result": "Guests can watch but not talk through cameras.", "cam": name}, 403
         if "kvs" in request.args and ("relay" in request.args or "talk" in request.args or not shared(name)):
             return wb.api.get_kvs_signal(name)
