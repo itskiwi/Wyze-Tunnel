@@ -3,9 +3,10 @@
 {% block title %}Event history · {% endblock %}
 {% block content %}
 <header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
-    <h1 class="page-title">Event history</h1>
+    <h1 class="page-title">Recordings</h1>
     {% if not current_guest() %}<button id="clear" type="button" class="btn ml-auto">Delete all</button>{% endif %}
 </header>
+{% include '_recordings_nav.html' %}
 <p class="mb-4 text-sm text-zinc-400">Every camera event's picture and clip, and open/close and motion history from your sensors, saved here after Wyze deletes its own copies.</p>
 
 <form id="filters" class="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

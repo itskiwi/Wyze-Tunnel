@@ -86,8 +86,9 @@
         <symbol id="mark" viewBox="0 2 44 44"><path fill-rule="evenodd" d="M8 39.5V21a14 14 0 0 1 28 0v18.5a1.5 1.5 0 0 1-1.5 1.5h-25A1.5 1.5 0 0 1 8 39.5zM17.5 41v-3.2a4.5 4.5 0 0 1 9 0V41z" fill="rgb(var(--accent))"/><circle cx="22" cy="20" r="8.2" fill="#fff"/><circle cx="23.3" cy="21.1" r="4.2" fill="#13241a"/><circle cx="24.9" cy="19.5" r="1.3" fill="#fff"/></symbol>
     </defs></svg>
     {% if not hide_nav %}
-    {% set page = request.endpoint %}
-    {% set pages = [("index", "./", "Home", "fa-house"), ("live", "live", "Live", "fa-table-cells-large"), ("recordings_page", "recordings", "Recordings", "fa-clock-rotate-left"), ("alerts", "alerts", "Alerts", "fa-bell"), ("health", "health", "Health", "fa-heart-pulse")] %}
+    {# Sub-pages light up their parent tab #}
+    {% set page = {'history_page': 'recordings_page', 'sd_sync': 'recordings_page', 'search_page': 'recordings_page', 'rules': 'devices_page'}.get(request.endpoint, request.endpoint) %}
+    {% set pages = [("index", "./", "Home", "fa-house"), ("live", "live", "Live", "fa-table-cells-large"), ("recordings_page", "recordings", "Recordings", "fa-clock-rotate-left"), ("devices_page", "devices", "Devices", "fa-house-signal"), ("health", "health", "Health", "fa-heart-pulse")] %}
     <header id="topbar" class="fs-display-none safe-x mx-auto flex w-full max-w-screen-2xl items-center gap-3 pb-1 pt-3">
         <a href="./" class="flex items-center gap-2.5 font-display text-[19px] font-extrabold text-zinc-50">
             <svg class="h-9 w-9" aria-hidden="true"><use href="#mark" /></svg>Wyze Tunnel</a>
@@ -105,12 +106,13 @@
                     <p class="menu-label">Cameras</p>
                     <a href="health" class="menu-item md:hidden"><i class="fas fa-heart-pulse w-4"></i>Camera health</a>
                     <a href="cameras" class="menu-item"><i class="fas fa-eye w-4"></i>Choose cameras</a>
+                    {% if not current_guest() %}<a href="camera-settings" class="menu-item"><i class="fas fa-sliders w-4"></i>Camera settings</a>{% endif %}
                     <a href="map" class="menu-item"><i class="fas fa-map-location-dot w-4"></i>Home map</a>
-                    {% if not current_guest() %}<a href="rules" class="menu-item"><i class="fas fa-bolt w-4"></i>Wyze rules</a>{% endif %}
-                    <a href="devices" class="menu-item"><i class="fas fa-lightbulb w-4"></i>Plugs, lights, locks and sensors</a>
-                    {% if not current_guest() %}<a href="search#setup" class="menu-item"><i class="fas fa-magnifying-glass w-4"></i>Footage search</a>
-                    <a href="street-watch" class="menu-item"><i class="fas fa-house-flag w-4"></i>Street Watch</a>{% endif %}
+                    {% if not current_guest() %}<a href="street-watch" class="menu-item"><i class="fas fa-house-flag w-4"></i>Street Watch</a>{% endif %}
                     {% if not current_guest() or current_guest().family %}<a href="glance" class="menu-item"><i class="fas fa-mobile-screen-button w-4"></i>Glance</a>{% endif %}
+                    <p class="menu-label">Alerts and automations</p>
+                    <a href="alerts" class="menu-item"><i class="fas fa-bell w-4"></i>Phone alerts</a>
+                    {% if not current_guest() %}<a href="rules" class="menu-item"><i class="fas fa-bolt w-4"></i>Automations</a>{% endif %}
                     <p class="menu-label">Sharing</p>
                     <a href="account" class="menu-item"><i class="fas fa-user w-4"></i>Account and sharing</a>
                     {% if not current_guest() %}<a href="account#phone" class="menu-item"><i class="fas fa-mobile-screen w-4"></i>Pair a phone</a>
@@ -118,8 +120,7 @@
                     <a href="phone-cams" class="menu-item"><i class="fas fa-camera w-4"></i>Use a phone as a camera</a>{% endif %}
                     <p class="menu-label">This app</p>
                     <button type="button" class="theme-toggle menu-item w-full md:hidden"><i class="fas fa-circle-half-stroke w-4"></i>Theme<span class="ml-auto text-xs text-zinc-500" data-theme-name></span></button>
-                    {% if not current_guest() %}<a href="camera-settings" class="menu-item"><i class="fas fa-sliders w-4"></i>Camera settings</a>
-                    <a href="network" class="menu-item"><i class="fas fa-network-wired w-4"></i>Network</a>{% endif %}
+                    {% if not current_guest() %}<a href="network" class="menu-item"><i class="fas fa-network-wired w-4"></i>Network</a>{% endif %}
                     <a href="diagnostics" class="menu-item" title="A report with secrets removed, for bug reports"><i class="fas fa-file-medical w-4"></i>Download diagnostics</a>
                 </div>
             </details>
@@ -130,7 +131,7 @@
         {% for endpoint, href, label, icon in pages[:4] %}
         <a href="{{ href }}" {{ 'aria-current=page' if page == endpoint }}><i class="fas {{ icon }}"></i>{{ label }}</a>
         {% endfor %}
-        <button type="button" data-more aria-label="More: health, cameras, account and settings" {{ 'aria-current=page' if page not in pages[:4]|map(attribute=0)|list }}><i class="fas fa-ellipsis"></i>More</button>
+        <button type="button" data-more aria-label="More: health, alerts, account and settings" {{ 'aria-current=page' if page not in pages[:4]|map(attribute=0)|list }}><i class="fas fa-ellipsis"></i>More</button>
     </nav>
     <div id="ptr" class="round-btn" aria-hidden="true"><i class="fas fa-arrow-down"></i></div>
     {% endif %}

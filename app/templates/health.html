@@ -87,10 +87,6 @@
     <p class="text-zinc-400">No cameras found yet.</p>
     {% endfor %}
 </div>
-{% if not current_guest() %}
-<label class="mt-6 flex items-center gap-2 text-sm text-zinc-300"><input id="tamperOn" type="checkbox" {{ "checked" if tamper_on }}>Warn me if a camera is covered, knocked, or loses night vision</label>
-<p id="tamperStatus" class="mt-1 text-sm text-zinc-400" role="status"></p>
-{% endif %}
 <p class="mt-6 text-sm text-zinc-500">Wi-Fi and SD card details appear once a camera has connected at least once.</p>
 <script>
     // Ask Wyze if a newer firmware is offered. Installing needs a confirm, and the server rechecks and wants the owner password.
@@ -115,13 +111,8 @@
     }));
 </script>
 <script>
-    // Tamper alerts: the owner turns them on, and "new normal" makes a camera relearn what it should see.
+    // Tamper alerts (switched on from Phone alerts): "new normal" makes a camera relearn what it should see.
     const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).then((x) => x.json()).catch((e) => ({ error: e.message }));
-    document.getElementById("tamperOn")?.addEventListener("change", async (e) => {
-        const r = await post("health/tamper", { on: e.target.checked });
-        document.getElementById("tamperStatus").textContent = r.error || (r.on ? "On. Cameras are checked every few minutes while streaming." : "Off.");
-        if (r.error) e.target.checked = !e.target.checked;
-    });
     document.querySelectorAll(".newnormal").forEach((btn) => btn.addEventListener("click", async () => {
         btn.disabled = true;
         const r = await post(`health/tamper/${encodeURIComponent(btn.dataset.cam)}/reset`);

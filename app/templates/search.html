@@ -3,7 +3,7 @@
 {% block title %}Search footage · {% endblock %}
 {% block content %}
 <header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
-    <h1 class="page-title">Search footage</h1>
+    <h1 class="page-title">Recordings</h1>
     {% if enabled %}
     <label class="ml-auto w-full sm:w-64">
         <span class="sr-only">Camera</span>
@@ -16,6 +16,7 @@
     </label>
     {% endif %}
 </header>
+{% include '_recordings_nav.html' %}
 
 {% if not current_guest() %}
 <details id="setup" class="surface mb-5 p-5" {{ 'open' if not enabled }}>

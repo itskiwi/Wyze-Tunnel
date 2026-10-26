@@ -949,6 +949,7 @@ def create_app():
             settings=settings,
             # Anyone who knows an ntfy.sh topic can read it, so suggest one nobody can guess.
             suggested_topic=f"wyze-tunnel-{secrets.token_hex(6)}",
+            tamper_on=tamper.enabled(),
             api=WbAuth.api,
             version=config.VERSION,
         )
@@ -1231,7 +1232,6 @@ def create_app():
             timelapses=timelapse.videos(),
             timelapse_cams=timelapse.load_cams(),
             timelapse_from=timelapse_from,
-            sd_copy=sd_copy.load_settings(),
             selected=request.args.get("cam"),
             playback=PLAYBACK_ENABLED,
             api=WbAuth.api,
@@ -1376,7 +1376,9 @@ def create_app():
     @owner_only
     def sd_sync():
         cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
-        return render_template("sd_sync.html", cams={uri: cam["nickname"] for uri, cam in cams.items()})
+        return render_template(
+            "sd_sync.html", cams={uri: cam["nickname"] for uri, cam in cams.items()}, sd_copy=sd_copy.load_settings(), api=WbAuth.api, version=config.VERSION
+        )
 
     @app.route("/sd-sync/play", methods=["POST"])
     @owner_only
