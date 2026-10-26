@@ -267,10 +267,7 @@ class WyzeApi:
 
         logger.info(f'☁️ Pulling "{uri}" thumbnail to {save_to}')
         try:
-            img = get(thumb, timeout=15)
-            if img.status_code == 401 and self.auth:
-                # Newer Wyze thumbnail hosts (prod-sight-safe-auth.wyze.com) want the token in Wyze-Authorization, like the app sends.
-                img = get(thumb, headers={"Wyze-Authorization": self.auth.access_token}, timeout=15)
+            img = self.get_media(thumb, timeout=15)
             img.raise_for_status()
         except Exception as ex:
             logger.warning(f"ERROR pulling thumbnail：{ex}")
@@ -284,6 +281,14 @@ class WyzeApi:
             elif ts := int(datetime.strptime(modified, ts_format).timestamp()):
                 utime(save_to, (ts, ts))
         return True
+
+    def get_media(self, url: str, **kwargs):
+        """Get a Wyze event picture or clip. Newer hosts (prod-sight-safe-auth.wyze.com) 401 the bare signed URL
+        and want the token in Wyze-Authorization, like the app sends; older ones take the bare URL."""
+        resp = get(url, **kwargs)
+        if resp.status_code == 401 and self.auth:
+            resp = get(url, headers={"Wyze-Authorization": self.auth.access_token}, **kwargs)
+        return resp
 
     @authenticated
     def get_kvs_signal(self, cam_name: str) -> Optional[dict]:

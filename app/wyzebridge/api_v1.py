@@ -132,7 +132,7 @@ def blueprint(wb, auth_required) -> Blueprint:
         img = (last or {}).get("img") or ""
         if img.startswith("https://"):
             try:
-                resp = requests.get(img, timeout=10)
+                resp = wb.api.get_media(img, timeout=10)
             except requests.RequestException:
                 return {"error": "Couldn't get the picture from Wyze."}, 502
             if resp.ok:

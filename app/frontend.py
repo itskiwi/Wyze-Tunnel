@@ -507,15 +507,12 @@ def create_app():
     @app.route("/wyze-clip")
     @auth_required
     def wyze_clip():
-        """Play Wyze's cloud clip of a motion event. Only Wyze's own hosts are fetched."""
+        """Play Wyze's cloud clip, or show the picture, of a motion event. Only Wyze's own hosts are fetched."""
         url = request.args.get("u", "")
         if not wyze_api.wyze_media_url(url):
             return {"error": "Not a Wyze clip"}, 400
         try:
-            resp = requests.get(url, stream=True, timeout=15, allow_redirects=False)
-            if resp.status_code == 401 and wb.api.auth:
-                headers = {"Wyze-Authorization": wb.api.auth.access_token}
-                resp = requests.get(url, stream=True, timeout=15, allow_redirects=False, headers=headers)
+            resp = wb.api.get_media(url, stream=True, timeout=15, allow_redirects=False)
         except requests.RequestException as ex:
             return {"error": str(ex)}, 502
         if not resp.ok:

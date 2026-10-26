@@ -217,7 +217,9 @@
             const thumb = row.querySelector("[data-thumb]");
             if (m.count > 1) thumb.classList.add("shadow-[5px_-5px_0_-1px_rgb(var(--zinc-700))]", "!overflow-visible");
             if (m.img) {
-                const img = Object.assign(document.createElement("img"), { src: m.img, alt: `${m.name} at ${time(m.ts)}`, loading: "lazy" });
+                // Wyze's event pictures need the bridge's Wyze login, so they go through its proxy.
+                const src = m.img.startsWith("https://") ? `wyze-clip?u=${encodeURIComponent(m.img)}` : m.img;
+                const img = Object.assign(document.createElement("img"), { src, alt: `${m.name} at ${time(m.ts)}`, loading: "lazy" });
                 img.className = "h-full w-full rounded-xl object-cover";
                 img.onerror = () => {
                     // Wyze's thumbnail links expire; the bridge keeps a copy of the latest one on this computer.
