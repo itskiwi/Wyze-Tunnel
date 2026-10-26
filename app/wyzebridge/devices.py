@@ -99,18 +99,35 @@ def list_devices(auth: WyzeCredential, fresh: bool = False) -> list[dict]:
         return _cache["devices"]
     data = validate_resp(post(f"{WYZE_API}/v2/home_page/get_object_list", json=_payload(auth), headers=_headers()))
     devices = [_device(auth, d) for d in data["device_list"] if d["product_type"] not in HIDDEN and d["product_model"] not in HIDDEN_MODELS]
+    wyze_groups = _groups(data)
+    in_group = {mac: g["name"] for g in wyze_groups for mac in g["macs"]}
     # Room sensors are keyed by their mac in the thermostat's sensor_using; "_up" means it counts (EarthSensorsActivity.java:365-366).
     using = {k: v for d in devices if d["model"] == "CO_EA1" for k, v in _json(d["state"].get("sensor_using")).items()}
     for d in devices:
         if d["mac"] in using:
             d["state"]["in_use"] = str(using[d["mac"]]).endswith("_up")
-    _cache.update(at=time.time(), devices=devices)
+        if d["mac"] in in_group:
+            d["group"] = in_group[d["mac"]]
+    _cache.update(at=time.time(), devices=devices, groups=wyze_groups)
     record_history(devices)
     for d in devices:
         if (days := battery_days_left(d["mac"])) is not None:
             d["battery_days"] = days
     lock_alert(devices)
     return devices
+
+
+def _groups(data: dict) -> list[dict]:
+    """Camera/device groups from get_object_list (DeviceModel.DeviceGroupData). Member macs only; logos dropped."""
+    return [{"id": g.get("group_id"), "name": g.get("group_name") or "", "type": g.get("group_type_id"),
+             "macs": [m.get("mac") or m.get("device_mac") for m in (g.get("device_list") or [])]}
+            for g in (data.get("device_group_list") or [])]
+
+
+def groups(auth: WyzeCredential, fresh: bool = False) -> list[dict]:
+    """The account's device groups, read-only. list_devices fetches them alongside the devices."""
+    list_devices(auth, fresh)
+    return _cache.get("groups", [])
 
 
 def find(auth: WyzeCredential, mac: str) -> dict | None:

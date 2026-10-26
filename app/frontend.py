@@ -862,6 +862,17 @@ def create_app():
         except (WyzeAPIError, requests.RequestException, KeyError, ValueError) as ex:
             return {"error": f"Wyze didn't answer: {ex}"}, 502
 
+    @app.route("/api/devices/groups")
+    @auth_required
+    def api_device_groups():
+        """The account's device groups (name and member macs), read-only."""
+        try:
+            return {"groups": device_call(devices.groups, bool(request.args.get("fresh")))}
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException) as ex:
+            return {"error": f"Wyze didn't answer: {ex}"}, 502
+
     @app.route("/api/devices/schedules")
     @auth_required
     def api_device_schedules():

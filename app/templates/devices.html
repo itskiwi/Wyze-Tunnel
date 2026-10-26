@@ -58,6 +58,7 @@
         if (s.battery !== undefined && s.battery !== null) out.push(`Battery ${s.battery}${s.locked !== undefined ? "%" : ""}`);
         if (s.low_battery) out.push("Low battery");
         if (dev.battery_days) out.push(`about ${dev.battery_days} days of battery left`);
+        if (dev.group) out.push(`Group: ${dev.group}`);
         return out.join(" · ");
     }
 
