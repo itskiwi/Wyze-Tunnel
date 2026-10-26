@@ -119,7 +119,9 @@ func main() {
 	funnel := flag.Bool("funnel", false, "also serve a public https link for paired phones without the Tailscale app")
 	flag.Parse()
 
-	srv := &tsnet.Server{Dir: *dir, Hostname: "wyze-tunnel", Logf: func(string, ...any) {}}
+	// Quiet: the sign-in link goes to the status file only; logging it every 5 s filled bridge.log with it.
+	quiet := func(string, ...any) {}
+	srv := &tsnet.Server{Dir: *dir, Hostname: "wyze-tunnel", Logf: quiet, UserLogf: quiet}
 	// The bridge holds our stdin open; EOF means it's gone, and Windows doesn't end child processes for us.
 	go func() { io.Copy(io.Discard, os.Stdin); srv.Close(); os.Exit(0) }()
 	if err := srv.Start(); err != nil {
