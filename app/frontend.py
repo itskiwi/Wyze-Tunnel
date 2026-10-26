@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, devices, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, phrases, pocket, privacy, recording, shares, street_watch, timelapse, visitors, weather, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, automations, backup, config, detect, devices, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, phrases, pocket, privacy, recording, shares, street_watch, timelapse, visitors, weather, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.diagnostics import build_report
@@ -604,6 +604,27 @@ def create_app():
         who = (web_ui.current_guest() or {}).get("guest", "owner")
         logger.warning(f"[DEVICES] {who} ({request.remote_addr}) {done}: {dev['name']} ({dev['model']}) at {datetime.now().isoformat(timespec='seconds')}")
         return {"status": done}
+
+    def camera_choices() -> list[dict]:
+        return [{"mac": cam.mac, "name": wyze_api.display_name(cam)} for cam in wb.api.get_cameras() or []]
+
+    @app.route("/api/automations")
+    @auth_required
+    def api_automations():
+        return {"settings": automations.load(), "cameras": camera_choices()}
+
+    @app.route("/api/automations", methods=["POST"])
+    @owner_only
+    def save_automations():
+        try:
+            known = {d["mac"]: d["type"] for d in device_call(devices.list_devices)}
+            return {"settings": automations.save(request.get_json(silent=True), {c["mac"] for c in camera_choices()}, known)}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException) as ex:
+            return {"error": f"Couldn't read your devices from Wyze: {ex}"}, 502
 
     @app.route("/privacy", methods=["GET", "POST"])
     @app.route("/battery-saver", methods=["GET", "POST"], endpoint="battery_saver")

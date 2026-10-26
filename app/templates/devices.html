@@ -11,6 +11,7 @@
     <p class="text-sm text-zinc-400">Plugs, lights, locks, sensors and the thermostat on your Wyze account. States come from the Wyze cloud and can be a minute old.</p>
     <p id="status" class="mt-3 text-sm text-zinc-400" role="status">Loading…</p>
     <div id="groups" class="mt-4 space-y-6"></div>
+    <div id="automations" class="mt-6 space-y-6"></div>
 </div>
 {% endblock %}
 
@@ -108,9 +109,82 @@
             .then((r) => r.json().then((data) => r.ok ? data : Promise.reject(new Error(data.error))))
             .then((data) => {
                 render(data.devices);
+                if (!document.getElementById("automations").childElementCount) loadAutomations(data.devices);
                 if (!status.classList.contains("text-rose-300")) status.textContent = data.devices.length ? "" : "No plugs, lights, locks or sensors on this Wyze account.";
             })
             .catch((err) => { status.className = "mt-3 text-sm text-rose-300"; status.textContent = err.message || "Couldn't load devices."; });
+    }
+    // Automations: each panel saves its own settings. Only the owner's save goes through.
+    const autos = { settings: {}, cameras: [] };
+    const ofType = (...types) => (list) => list.filter((d) => types.includes(d.type)).map((d) => ({ mac: d.mac, name: d.name }));
+    const PANELS = [
+        { key: "heat", title: "Pause the heat when a door is open",
+            blurb: "When a chosen door or window has been open for a while, the thermostat goes off. When they are all closed again it goes back to the mode it had. If you change the thermostat yourself in between, it's left alone.",
+            fields: [{ name: "sensors", kind: "pick", label: "Doors and windows", options: ofType("ContactSensor") },
+                { name: "minutes", kind: "number", label: "Open for (minutes)", fallback: 2 }] },
+    ];
+
+    // Returns the row and a function that reads its value back.
+    function field(f, value, list) {
+        const wrap = el("div", "mt-3 text-sm");
+        if (f.kind === "check") {
+            const box = Object.assign(el("input", "h-4 w-4 accent-accent"), { type: "checkbox", checked: value === true });
+            const label = el("label", "flex items-center gap-2");
+            label.append(box, el("span", "", f.label));
+            wrap.append(label);
+            return [wrap, () => box.checked];
+        }
+        wrap.append(el("span", "block text-zinc-400", f.label));
+        if (f.kind === "pick") {
+            const boxes = f.options(list).map((o) => {
+                const box = Object.assign(el("input", "h-4 w-4 accent-accent"), { type: "checkbox", checked: (value || []).includes(o.mac) });
+                const label = el("label", "mt-1 flex items-center gap-2");
+                label.append(box, el("span", "", o.name));
+                wrap.append(label);
+                return [o.mac, box];
+            });
+            if (!boxes.length) wrap.append(el("span", "text-zinc-500", "None found."));
+            return [wrap, () => boxes.filter(([, b]) => b.checked).map(([mac]) => mac)];
+        }
+        const input = Object.assign(el("input", "field mt-1 w-32"), { type: f.kind === "time" ? "time" : "number", value: value ?? f.fallback ?? "", min: 1, max: 60 });
+        input.setAttribute("aria-label", f.label);
+        wrap.append(input);
+        return [wrap, () => (f.kind === "time" || input.value === "" ? input.value : Number(input.value))];
+    }
+
+    function renderAutomations(list) {
+        document.getElementById("automations").replaceChildren(...PANELS.map((p) => {
+            const cfg = autos.settings[p.key] || {};
+            const section = el("section", "surface p-5");
+            section.append(el("h2", "font-semibold", p.title), el("p", "mt-1 text-sm text-zinc-400", p.blurb));
+            const getters = [];
+            [{ name: "on", kind: "check", label: "Turn this on" }, ...p.fields].forEach((f) => {
+                const [wrap, get] = field(f, cfg[f.name], list);
+                section.append(wrap);
+                getters.push([f.name, get]);
+            });
+            const msg = el("p", "mt-3 text-sm");
+            msg.setAttribute("role", "status");
+            const save = button("Save", () => {
+                fetch("api/automations", { method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ [p.key]: Object.fromEntries(getters.map(([name, get]) => [name, get()])) }) })
+                    .then((r) => r.json().then((data) => r.ok ? data : Promise.reject(new Error(data.error))))
+                    .then((data) => { autos.settings = data.settings; msg.className = "mt-3 text-sm text-emerald-300"; msg.textContent = "Saved."; })
+                    .catch((err) => { msg.className = "mt-3 text-sm text-rose-300"; msg.textContent = err.message || "Couldn't save."; });
+            }, true);
+            const row = el("div", "mt-4");
+            row.append(save);
+            section.append(row, msg);
+            return section;
+        }));
+    }
+
+    function loadAutomations(list) {
+        fetch("api/automations").then((r) => r.json()).then((data) => {
+            autos.settings = data.settings || {};
+            autos.cameras = data.cameras || [];
+            renderAutomations(list);
+        });
     }
     document.getElementById("refresh").addEventListener("click", () => load(true));
     load(false);

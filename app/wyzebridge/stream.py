@@ -5,7 +5,7 @@ from subprocess import Popen, TimeoutExpired
 from threading import Thread
 from typing import Any, Callable, Optional, Protocol
 
-from wyzebridge import backup, guests, recording, summary
+from wyzebridge import automations, backup, guests, recording, summary
 from wyzebridge.config import MOTION, MQTT_DISCOVERY, SNAPSHOT_INT, SNAPSHOT_TYPE
 from wyzebridge.ffmpeg import rtsp_snap_cmd
 from wyzebridge.logging import logger
@@ -153,6 +153,8 @@ class StreamManager:
                     guests.prune()
                     backup.auto_backup()
                     summary.check(list(EVENT_LOG))
+                    if self.streams:  # Wyze calls can take seconds, so not on this loop
+                        Thread(target=automations.tick, args=(next(iter(self.streams.values())).api, self.streams), daemon=True).start()
             except Exception:
                 logger.exception("[MONITOR] Error in stream monitor loop")
                 time.sleep(1)
