@@ -54,7 +54,7 @@
         </div>
         <dl class="mt-3 grid grid-cols-2 gap-y-1 text-sm [&_dt]:text-zinc-400">
             <dt>Model</dt><dd>{{ cam.model_name }}</dd>
-            <dt>Firmware</dt><dd>{{ cam.firmware_ver or "unknown" }}</dd>
+            <dt>Firmware</dt><dd>{{ cam.firmware_ver or "unknown" }}{% if not current_guest() %} <button class="fw-check text-sky-300 underline" type="button" data-cam="{{ uri }}">Check for update</button>{% endif %}</dd>
             {% if cam.sources and cam.sources != ["tutk"] %}<dt>Connects with</dt><dd>{{ {"tutk": "Wyze SDK", "lan": "go2rtc (local)", "webrtc": "Wyze WebRTC"}.get(cam.source, cam.source) }}{% if cam.sources|length > 1 %} <span class="text-zinc-500">of {{ cam.sources|length }} ways</span>{% endif %}</dd>{% endif %}
             {% if cam.ip %}<dt>IP address</dt><dd class="font-mono">{{ cam.ip }}</dd>{% endif %}
             {% if cam.net_mode %}<dt>Connection</dt><dd>{{ {"local": "Local network", "internet": "Over the internet (direct)", "relay": "Through Wyze's relay"}[cam.net_mode] }}</dd>{% endif %}
@@ -83,6 +83,28 @@
     {% endfor %}
 </div>
 <p class="mt-6 text-sm text-zinc-500">Wi-Fi and SD card details appear once a camera has connected at least once.</p>
+<script>
+    // Ask Wyze if a newer firmware is offered. Installing needs a confirm, and the server rechecks and wants the owner password.
+    document.querySelectorAll(".fw-check").forEach((btn) => btn.addEventListener("click", async () => {
+        const cam = encodeURIComponent(btn.dataset.cam), dd = btn.parentElement;
+        const show = (text) => { dd.querySelector(".fw-note")?.remove(); const s = document.createElement("span"); s.className = "fw-note ml-2 text-zinc-400"; s.textContent = text; dd.append(s); return s; };
+        btn.disabled = true;
+        const r = await fetch(`api/${cam}/firmware`).then((x) => x.json()).catch(() => ({ status: "error" }));
+        btn.disabled = false;
+        if (r.status !== "success") return show("Couldn't check. Try again.");
+        if (!r.update) return show("Up to date.");
+        const note = show(`Update available: ${r.latest}`), go = document.createElement("button");
+        go.type = "button"; go.className = "btn ml-2"; go.textContent = "Install";
+        go.addEventListener("click", async () => {
+            if (!confirm(`Install firmware ${r.latest} on this camera? It restarts and goes offline for a few minutes. Don't unplug it.`)) return;
+            go.disabled = true;
+            const i = await fetch(`api/${cam}/firmware/install`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version: r.latest }) }).then((x) => x.json()).catch(() => ({ status: "error" }));
+            note.textContent = i.status === "success" ? "Update started. Check back in a few minutes." : `Didn't start. ${i.error || i.response || ""}`.trim();
+            go.remove();
+        });
+        dd.append(go);
+    }));
+</script>
 <script>
     // "Fix it" buttons: the same camera commands as Live's control menu, next to the problem they fix.
     document.querySelectorAll(".fix").forEach((btn) => btn.addEventListener("click", async () => {

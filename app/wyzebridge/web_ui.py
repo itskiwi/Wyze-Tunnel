@@ -79,6 +79,12 @@ def api_scope() -> str:
     return user.scope if isinstance(user, SimpleNamespace) else "control"
 
 
+def owner_password() -> bool:
+    """Signed in with the owner's own password: not the API key, Home Assistant, an app token, a guest or family."""
+    creds = request.authorization
+    return bool(WbAuth.enabled and creds and creds.username == WbAuth.username and check_password_hash(WbAuth.hashed_password(), creds.password or ""))
+
+
 def current_guest() -> Optional[dict]:
     """The guest or family member viewing this page, or None for the owner."""
     user = auth.current_user()
