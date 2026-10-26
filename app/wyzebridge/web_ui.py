@@ -285,6 +285,12 @@ def start_over(token_path: str, img_path: str, record_root: Path) -> str:
     return str(saved)
 
 
+def wifi_tier(percent) -> str:
+    """Good, Fair or Weak from a camera's Wi-Fi percent (the Weak cut matches the weak_wifi issue). Empty if unknown."""
+    pct = _int(percent)
+    return "" if pct < 0 else "Weak" if pct < 40 else "Fair" if pct < 60 else "Good"
+
+
 def bridge_issues(cams: dict[str, dict]) -> list[dict]:
     """Problems worth fixing, by camera. Feeds /api/health and the Health page."""
     issues = []

@@ -1,4 +1,6 @@
 """Links that let anyone watch one recorded clip, without a login, until they end."""
+import hashlib
+import hmac
 import json
 import re
 import secrets
@@ -46,6 +48,17 @@ def create_share(cam: str, start: str, duration, **extra) -> str:
 def get_share(token: str) -> Optional[dict]:
     share = _load().get(token)
     return share if share and share["expires"] > time.time() else None
+
+
+def new_password() -> tuple[str, str]:
+    """A password for a link, and the hash to keep. Random, so a plain hash is enough (and fast for every video range)."""
+    password = secrets.token_urlsafe(6)
+    return password, hashlib.sha256(password.encode()).hexdigest()
+
+
+def unlocks(share: dict, password: str) -> bool:
+    want = share.get("pw_hash")
+    return not want or hmac.compare_digest(want, hashlib.sha256(password.encode()).hexdigest())
 
 
 def count_view(token: str) -> None:

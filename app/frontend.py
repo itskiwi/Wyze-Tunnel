@@ -43,6 +43,7 @@ def create_app():
     app = Flask(__name__)
     app.jinja_env.globals["can_update"] = bool(os.getenv("WT_UPDATE_FILE"))
     app.jinja_env.globals["current_guest"] = web_ui.current_guest
+    app.jinja_env.filters["wifi_tier"] = web_ui.wifi_tier
     wb = WyzeBridge()
     Thread(target=webhooks.announce_update, daemon=True).start()
     pocket.Away.health_check()
@@ -1489,16 +1490,21 @@ def create_app():
         if not wb.streams.get(cam_name) and cam_name not in phone_cams.uris():
             return {"error": "Camera not found"}, 404
         data = request.get_json(silent=True) or {}
+        password, extra = "", {}
+        if data.get("password"):
+            password, extra["pw_hash"] = shares.new_password()
         try:
-            token = shares.create_share(cam_name, data.get("start"), data.get("duration"))
+            token = shares.create_share(cam_name, data.get("start"), data.get("duration"), **extra)
         except ValueError as ex:
             return {"error": str(ex)}, 400
-        return {"url": f"share/{token}", "hours": shares.SHARE_HOURS}
+        return {"url": f"share/{token}", "hours": shares.SHARE_HOURS, "password": password}
 
     @app.route("/share/<string:token>")
     def shared_recording(token: str):
         if not (share := shares.get_share(token)):
             return "This link has ended or doesn't exist.", 404
+        if not shares.unlocks(share, request.args.get("p", "")):
+            return render_template("share_password.html", wrong="p" in request.args), 401
         if request.headers.get("Range", "bytes=0-").startswith("bytes=0-"):  # players fetch more ranges of one view
             shares.count_view(token)
         args = {"start": share["start"], "duration": share["duration"]}

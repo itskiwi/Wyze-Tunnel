@@ -80,7 +80,8 @@
         <video id="player" class="aspect-video w-full" controls playsinline></video>
         <div class="flex flex-wrap items-center gap-3 bg-zinc-900 px-4 py-3 text-sm">
             <span id="now-playing" class="text-zinc-400">Pick a clip to play it.</span>
-            <button id="share" class="btn ml-auto hidden" type="button" title="A link anyone can open for 24 hours"><i class="fas fa-share-nodes"></i>Share</button>
+            <label id="sharePwBox" class="ml-auto hidden items-center gap-2 text-zinc-400"><input id="sharePw" type="checkbox" class="h-4 w-4 accent-accent" />With a password</label>
+            <button id="share" class="btn hidden" type="button" title="A link anyone can open for 24 hours"><i class="fas fa-share-nodes"></i>Share</button>
             <a id="download" class="btn hidden" download><i class="fas fa-download"></i>Download</a>
         </div>
         <p id="shareOut" class="hidden bg-zinc-900 px-4 pb-3 text-sm text-zinc-300" role="status"></p>
@@ -249,6 +250,7 @@
         download.classList.remove("hidden");
         const share = document.getElementById("share");
         share.classList.remove("hidden");
+        document.getElementById("sharePwBox").classList.replace("hidden", "flex");
         share.onclick = () => shareClip(cam, clip);
         clips.querySelectorAll(".bg-white\\/10").forEach((b) => b.classList.remove("bg-white/10"));
         button?.classList.add("bg-white/10");
@@ -258,14 +260,16 @@
         const out = document.getElementById("shareOut");
         fetch(`recordings/${encodeURIComponent(cam)}/share`, {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ start: clip.iso, duration: clip.duration }),
+            body: JSON.stringify({ start: clip.iso, duration: clip.duration, password: document.getElementById("sharePw").checked }),
         })
             .then((resp) => resp.json().then((body) => resp.ok ? body : Promise.reject(new Error(body.error || resp.statusText))))
             .then((body) => {
                 const link = new URL(body.url, location.href).href;
-                out.innerHTML = `<span class="text-zinc-400">Anyone with this link can watch the clip for ${body.hours} hours:</span> <code class="select-all break-all"></code>`;
+                const who = body.password ? "Anyone with this link and password" : "Anyone with this link";
+                out.innerHTML = `<span class="text-zinc-400">${who} can watch the clip for ${body.hours} hours:</span> <code class="select-all break-all"></code>`;
                 out.querySelector("code").textContent = link;
-                navigator.clipboard?.writeText(link).then(() => out.firstChild.textContent = `Copied. Anyone with this link can watch the clip for ${body.hours} hours:`, () => { });
+                if (body.password) out.append(Object.assign(document.createElement("span"), { className: "block text-zinc-400", textContent: "Password: " }), Object.assign(document.createElement("code"), { className: "select-all", textContent: body.password }));
+                navigator.clipboard?.writeText(link).then(() => out.firstChild.textContent = `Copied. ${who} can watch the clip for ${body.hours} hours:`, () => { });
             })
             .catch((err) => { out.textContent = err.message; })
             .finally(() => out.classList.remove("hidden"));

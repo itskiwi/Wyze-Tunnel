@@ -185,7 +185,7 @@
         const time = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
         const dayKey = (ts) => new Date(ts * 1000).toDateString();
         // Household dayparts instead of a wall of timestamps.
-        const daypart = (ts) => { const h = new Date(ts * 1000).getHours(); return h < 5 ? "Night" : h < 11 ? "Morning" : h < 17 ? "Midday" : h < 21 ? "Evening" : "Night"; };
+        const daypart = (ts) => { const h = new Date(ts * 1000).getHours(); return h < 5 ? "Overnight" : h < 11 ? "Morning" : h < 17 ? "Midday" : h < 21 ? "Evening" : "Overnight"; };
         const today = new Date().toDateString();
         const yesterday = new Date(Date.now() - 864e5).toDateString();
         const dayName = (ts) => ({ [today]: "Today", [yesterday]: "Yesterday" })[dayKey(ts)]
@@ -258,9 +258,23 @@
             row.querySelector("[data-action]").textContent = records ? "Play the clip" : m.clip ? "Play Wyze's clip" : "See the camera";
             const thumb = row.querySelector("[data-thumb]");
             if (m.count > 1) thumb.classList.add("shadow-[5px_-5px_0_-1px_rgb(var(--zinc-700))]", "!overflow-visible");
-            if (m.img) {
-                // Wyze's event pictures need the bridge's Wyze login, so they go through its proxy.
-                const src = m.img.startsWith("https://") ? `wyze-clip?u=${encodeURIComponent(m.img)}` : m.img;
+            // Wyze's event pictures need the bridge's Wyze login, so they go through its proxy.
+            const proxied = (url) => url.startsWith("https://") ? `wyze-clip?u=${encodeURIComponent(url)}` : url;
+            if (m.label === "package" && records) {
+                // Package card: the porch a little before the drop-off, next to the package left there.
+                const shot = (offset) => `recordings/${encodeURIComponent(m.uri)}/thumb?start=${encodeURIComponent(new Date((m.first + offset) * 1000).toISOString())}`;
+                const half = (src, caption, fallback) => {
+                    const fig = document.createElement("figure");
+                    const img = Object.assign(document.createElement("img"), { src, alt: `${m.name}, ${caption.toLowerCase()}`, loading: "lazy" });
+                    img.className = "h-full w-full object-cover";
+                    img.onerror = () => fallback && !img.src.endsWith(fallback) ? img.src = fallback : fig.remove();
+                    fig.append(img, Object.assign(document.createElement("figcaption"), { textContent: caption }));
+                    return fig;
+                };
+                thumb.classList.add("pkg");
+                thumb.append(half(shot(-20), "Before"), half(shot(30), "After", m.img && proxied(m.img)));
+            } else if (m.img) {
+                const src = proxied(m.img);
                 const img = Object.assign(document.createElement("img"), { src, alt: `${m.name} at ${time(m.ts)}`, loading: "lazy" });
                 img.className = "h-full w-full rounded-xl object-cover";
                 img.onerror = () => {

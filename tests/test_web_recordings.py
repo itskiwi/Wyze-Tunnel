@@ -83,6 +83,21 @@ def test_share_link_plays_without_login_until_it_ends(tmp_path, monkeypatch):
         assert client.get("/" + url).status_code == 404
 
 
+def test_share_link_with_a_password(tmp_path, monkeypatch):
+    from wyzebridge import shares
+
+    monkeypatch.setattr(shares, "SHARES_FILE", str(tmp_path / "shares.json"))
+    frontend, client = make_client()
+    body = client.post("/recordings/cam1/share?api=key", json={"start": "2026-10-24T08:42:40Z", "duration": 60, "password": True}).json
+    url, password = "/" + body["url"], body["password"]
+    assert len(password) >= 8 and password not in (tmp_path / "shares.json").read_text()
+    page = client.get(url)
+    assert page.status_code == 401 and b"This clip has a password" in page.data and b"isn" not in page.data
+    assert b"isn" in client.get(url + "?p=wrong").data
+    with mock.patch.object(frontend.requests, "get", return_value=fake_resp(200, b"mp4data")):
+        assert client.get(f"{url}?p={password}").data == b"mp4data"
+
+
 def test_shared_clip_blacks_out_masked_squares(tmp_path, monkeypatch):
     from wyzebridge import masks, shares
 

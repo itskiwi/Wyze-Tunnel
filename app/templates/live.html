@@ -139,6 +139,10 @@
                     <span class="icon text-zinc-400" title="Sub-stream of {{ camera.nickname }}"><i class="fas fa-object-ungroup"></i></span>
                     {% endif %}
                     {% if camera.camera_info %}
+                    {% set tier = (camera.camera_info.basicInfo or {}).get("wifidb")|wifi_tier %}
+                    {% if tier %}
+                    <span class="icon {{ {'Good': 'text-zinc-400', 'Fair': 'text-amber-300', 'Weak': 'text-rose-400'}[tier] }}" title="Wi-Fi: {{ tier }}" role="img" aria-label="Wi-Fi: {{ tier }}"><i class="fas fa-wifi"></i></span>
+                    {% endif %}
                     {% if camera.camera_info.sdParm and camera.camera_info.sdParm.status == "1"%}
                     <span class="icon text-zinc-400" title="{{ (camera.camera_info.sdParm.free|int/1024)|round(2) }} of {{ (camera.camera_info.sdParm.capacity|int/1024)|round(2) }} GB free on SD card">
                         <i class="fas fa-sd-card"></i></span>
