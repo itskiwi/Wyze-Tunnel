@@ -25,6 +25,8 @@ GET_CMDS = {
     "camera_info": "K10020CheckCameraInfo",
     "battery_usage": "K10448GetBatteryUsage",
     "rtsp": "K10604GetRtspParam",
+    "doorbell_chime": "K12082GetDb2DdqParameter",
+    "ring_sound": "K12088GetDb2RingSound",
     "accessories": "K10720GetAccessoriesInfo",
     "floodlight": "K10788GetIntegratedFloodlightInfo",
     "wdr": "K12090GetDb2WDRStatus",
@@ -77,6 +79,8 @@ SET_CMDS = {
     "fl_duration": None,
     "fl_brightness": None,
     "format_sd": "K10242FormatSDCard",
+    "doorbell_chime": "K12080SetDb2DdqParameter",  # payload "type,0,seconds"; 0 leaves a field alone
+    "ring_sound": "K12086SetDb2RingSound",
 }
 
 # Commands that change something on the camera when given a value. Guests and family can't send these.

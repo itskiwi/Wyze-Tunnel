@@ -404,6 +404,47 @@ class WyzeApi:
         return {"status": "success", "response": resp.get("msg", "started")}
 
     @authenticated
+    def set_chime(self, cam: WyzeCamera, sound: int, volume: int):
+        """Set the sound and volume of the Wyze Chime paired with a doorbell (the app also sends P1353=1, which rings it once)."""
+        objects = wyzecam.api.get_homepage_object_list(self.auth)
+        chimes = [d["mac"] for d in objects["device_list"] if d.get("product_model") == "CHIME" and d.get("parent_device_mac") == cam.mac]
+        if not chimes:
+            return {"status": "error", "response": "No Wyze Chime is paired with this doorbell"}
+        logger.info(f"[CONTROL] ☁️ chime sound={sound} volume={volume} for {cam.name_uri} via Wyze API")
+        try:
+            for mac in chimes:
+                wyzecam.api.set_property_list(self.auth, mac, "CHIME", {"P1351": volume, "P1352": sound, "P1353": 1})
+        except (ValueError, WyzeAPIError) as ex:
+            logger.error(f"[CONTROL] ERROR: {ex}")
+            return {"status": "error", "response": str(ex)}
+        return {"status": "success", "response": f"{len(chimes)} chime{'s'[:len(chimes) ^ 1]} updated"}
+
+    @authenticated
+    def get_rules(self):
+        """Rules and shortcuts without their triggers and actions (those name devices)."""
+        try:
+            autos = wyzecam.api.get_auto_list(self.auth)
+        except (ValueError, WyzeAPIError) as ex:
+            logger.error(f"[CONTROL] ERROR: {ex}")
+            return {"status": "error", "response": str(ex)}
+        rules = [
+            {"id": str(a["auto_id"]), "name": str(a.get("auto_name") or ""), "enabled": bool(a.get("is_enable")), "shortcut": bool(a.get("is_hot_button"))}
+            for a in autos
+            if a.get("auto_id")
+        ]
+        return {"status": "success", "rules": rules}
+
+    @authenticated
+    def run_shortcut(self, auto_id: str):
+        try:
+            wyzecam.api.run_auto(self.auth, auto_id)
+        except (ValueError, WyzeAPIError) as ex:
+            logger.error(f"[CONTROL] ERROR: {ex}")
+            return {"status": "error", "response": str(ex)}
+        logger.info("[CONTROL] ☁️ Ran a Wyze shortcut")
+        return {"status": "success"}
+
+    @authenticated
     def get_events(self, macs: Optional[list] = None, last_ts: int = 0, history: int = 0):
         """New events since last_ts, oldest first; or with history, the newest 50 from that many seconds back."""
         current_ms = int(time() + 60) * 1000

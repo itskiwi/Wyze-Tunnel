@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+
+{% block title %}Rules · {% endblock %}
+{% block content %}
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Wyze rules and shortcuts</h1>
+</header>
+
+<div class="mx-auto max-w-xl space-y-6">
+    <p id="note" class="text-sm text-zinc-400" role="status">Loading…</p>
+    <section class="surface p-5" id="shortcuts-box" hidden>
+        <h2 class="font-semibold">Shortcuts</h2>
+        <p class="mt-1 text-sm text-zinc-400">A shortcut runs its actions at once, and may include locks or plugs. Running one needs you signed in with the owner's own password.</p>
+        <ul id="shortcuts" class="mt-3 space-y-2"></ul>
+    </section>
+    <section class="surface p-5" id="rules-box" hidden>
+        <h2 class="font-semibold">Rules</h2>
+        <p class="mt-1 text-sm text-zinc-400">Rules run on their own when something happens. Change them in the Wyze app.</p>
+        <ul id="rules" class="mt-3 space-y-2"></ul>
+    </section>
+</div>
+
+<script>
+    // Names come from the Wyze account, so they go in as text, never as HTML.
+    const note = document.getElementById("note");
+    function row(rule) {
+        const li = document.createElement("li");
+        li.className = "flex items-center gap-3";
+        const name = document.createElement("span");
+        name.className = "min-w-0 flex-1 truncate";
+        name.textContent = rule.name || "Untitled";
+        li.append(name);
+        if (rule.shortcut) {
+            const run = document.createElement("button");
+            run.type = "button";
+            run.className = "btn";
+            run.textContent = "Run";
+            run.addEventListener("click", () => {
+                if (!confirm(`Run "${rule.name}" now? It may change real devices.`)) return;
+                run.disabled = true;
+                fetch(`api/rules/${encodeURIComponent(rule.id)}/run`, { method: "POST" })
+                    .then((r) => r.json().then((j) => note.textContent = r.ok ? `Ran "${rule.name}".` : j.error || j.response || "That didn't work."))
+                    .catch(() => note.textContent = "Couldn't reach the bridge.")
+                    .finally(() => run.disabled = false);
+            });
+            li.append(run);
+        } else {
+            const state = document.createElement("span");
+            state.className = "text-sm text-zinc-400";
+            state.textContent = rule.enabled ? "On" : "Off";
+            li.append(state);
+        }
+        return li;
+    }
+    fetch("api/rules").then((r) => r.json()).then((d) => {
+        if (d.status !== "success") { note.textContent = d.response || "Couldn't load your rules."; return; }
+        for (const [id, wanted] of [["shortcuts", true], ["rules", false]]) {
+            const list = d.rules.filter((r) => r.shortcut === wanted);
+            document.getElementById(id).replaceChildren(...list.map(row));
+            document.getElementById(id + "-box").hidden = !list.length;
+        }
+        note.textContent = d.rules.length ? "" : "No rules or shortcuts on this Wyze account.";
+    }).catch(() => note.textContent = "Couldn't reach the bridge.");
+</script>
+{% endblock %}
