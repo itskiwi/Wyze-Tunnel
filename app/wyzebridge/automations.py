@@ -3,13 +3,17 @@
 import json
 import math
 import os
+import socket
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from wyzebridge import devices, weather
+from wyzebridge.bridge_utils import env_bool
 from wyzebridge.config import TOKEN_PATH
 from wyzebridge.logging import logger
+from wyzebridge.webhooks import send_webhook
+from wyzebridge.wyze_api import display_name
 from wyzecam.api import AccessTokenError
 
 SETTINGS_FILE = TOKEN_PATH + "automations.json"
@@ -80,7 +84,15 @@ def _lights(form: dict, cams: set, devs: dict) -> dict:
     return {"on": on, "cameras": cameras, "devices": lights, "minutes": _minutes(form.get("minutes"), 5), "also_motion": form.get("also_motion") is True}
 
 
-SECTIONS = {"heat": _heat, "lights": _lights}
+def _bedtime(form: dict, cams: set, devs: dict) -> dict:
+    try:
+        at = datetime.strptime(str(form.get("time") or "22:00").strip(), "%H:%M").strftime("%H:%M")
+    except ValueError:
+        raise ValueError("Bedtime should be a time like 22:30.") from None
+    return {"on": form.get("on") is True, "time": at, "silent": form.get("silent") is True}
+
+
+SECTIONS = {"heat": _heat, "lights": _lights, "bedtime": _bedtime}
 
 
 def save(form: dict, cams: set, devs: dict) -> dict:
@@ -205,6 +217,43 @@ def _lights_off(api, state: dict, now: float) -> None:
         _write(STATE_FILE, state)
 
 
+def problems(found: list[dict], streams: dict) -> list[str]:
+    """What's wrong with the house right now, one line each. Empty when all is well."""
+    out = []
+    for d in found:
+        s, name = d["state"], d["name"]
+        if s.get("error"):
+            out.append(f"Couldn't check {name}")
+        if s.get("locked") is False:
+            out.append(f"{name} is unlocked")
+        if d["type"] == "ContactSensor" and s.get("open"):
+            out.append(f"{name} is open")
+        battery = s.get("battery")
+        if s.get("low_battery") or (d["type"] == "Lock" and isinstance(battery, int) and battery <= 20):
+            out.append(f"{name} has a low battery")
+    out += [f"{display_name(st.camera)} is offline" for st in streams.values() if st.enabled and not st.options.substream and st.state == -90]
+    return out
+
+
+def _bedtime_check(api, streams: dict, cfg: dict, state: dict, now: datetime) -> None:
+    """Once an evening, at the owner's bedtime (a restart later than two hours after it doesn't send)."""
+    if not cfg.get("on") or state.get("bedtime_day") == str(now.date()):
+        return
+    start = datetime.combine(now.date(), datetime.strptime(cfg["time"], "%H:%M").time())
+    if not start <= now < start + timedelta(hours=2):
+        return
+    found = _call(api, devices.list_devices, True)  # raises when Wyze can't be read, so it tries again next time
+    state["bedtime_day"] = str(now.date())
+    _write(STATE_FILE, state)
+    issues = problems(found, streams)
+    if not issues and cfg.get("silent"):
+        return
+    # shortcut: assumes the default port; set DOMAIN if the bridge is reached some other way.
+    link = f"http://{env_bool('DOMAIN', socket.gethostname())}:5000/devices"
+    body = "\n".join(f"- {i}" for i in issues) if issues else "All locked up."
+    send_webhook("bedtime", "all", f"{body}\nDevices: {link}")
+
+
 def tick(api, streams: dict, now: float | None = None) -> None:
     """Run every few seconds from the stream monitor. One at a time; a slow Wyze call just skips the next tick."""
     if not _lock.acquire(blocking=False):
@@ -213,6 +262,10 @@ def tick(api, streams: dict, now: float | None = None) -> None:
         now = time.time() if now is None else now
         settings, state = load(), _state()
         _lights_off(api, state, now)
+        try:
+            _bedtime_check(api, streams, settings.get("bedtime") or {}, state, datetime.fromtimestamp(now))
+        except Exception as ex:
+            logger.warning(f"[AUTOMATIONS] Bedtime check: {ex}")
         if now - _last_poll["at"] >= POLL_SECONDS:
             _last_poll["at"] = now
             try:

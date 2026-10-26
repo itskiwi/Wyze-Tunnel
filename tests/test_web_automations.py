@@ -19,10 +19,12 @@ class FakeHome:
         self.mode = "heat"
         self.on = {"PLUG": False, "BULB": False}
         self.sent = []
+        self.locked, self.lock_battery, self.door_battery_low = True, 80, False
 
     def list_devices(self, auth, fresh=False):
         dev = lambda mac, model, type_, name, **state: {"mac": mac, "model": model, "type": type_, "name": name, "online": True, "parent": "", "state": state}  # noqa: E731
-        return [dev("DOOR", "DWS2U", "ContactSensor", "Back door", open=self.door_open, low_battery=False),
+        return [dev("DOOR", "DWS2U", "ContactSensor", "Back door", open=self.door_open, low_battery=self.door_battery_low),
+                dev("LOCK", "YD.LO1", "Lock", "Front lock", locked=self.locked, open=False, battery=self.lock_battery),
                 dev("THERMO", "CO_EA1", "Thermostat", "Hall", mode_sys=self.mode),
                 dev("PLUG", "WLPP1", "Plug", "Porch plug", on=self.on["PLUG"]),
                 dev("BULB", "WLPA19C", "MeshLight", "Garden", on=self.on["BULB"])]
@@ -48,10 +50,10 @@ def home(monkeypatch, tmp_path):
     return fake
 
 
-def run(now, **settings):
+def run(now, streams=None, **settings):
     automations._write(automations.SETTINGS_FILE, automations.load() | settings)
     automations._last_poll["at"] = 0.0
-    automations.tick(API, {}, now)
+    automations.tick(API, streams or {}, now)
 
 
 HEAT = {"heat": {"on": True, "sensors": ["DOOR"], "minutes": 2}}
@@ -240,6 +242,65 @@ def test_lights_settings_are_validated(client):
     assert client.post("/api/automations", json={"lights": good}).json["settings"]["lights"]["minutes"] == 10
     for bad in (good | {"cameras": ["CAM9"]}, good | {"devices": ["THERMO"]}, good | {"devices": []}, good | {"minutes": 99}):
         assert client.post("/api/automations", json={"lights": bad}).status_code == 400, bad
+
+
+BEDTIME = {"bedtime": {"on": True, "time": "22:30", "silent": False}}
+EVENING = datetime(2026, 6, 19, 22, 31).timestamp()
+
+
+@pytest.fixture
+def sent(monkeypatch, home):
+    out = []
+    monkeypatch.setattr(automations, "send_webhook", lambda *a, **kw: out.append(a) or True)
+    monkeypatch.setattr(automations, "display_name", lambda cam: cam.nickname)
+    monkeypatch.setattr(automations, "env_bool", lambda key, default="": "bridge.local")
+    return out
+
+
+def cam(name, state=0, enabled=True, substream=False):
+    return SimpleNamespace(camera=SimpleNamespace(nickname=name), state=state, enabled=enabled, options=SimpleNamespace(substream=substream))
+
+
+def test_bedtime_lists_only_the_problems(sent, home):
+    home.locked, home.door_open, home.lock_battery, home.door_battery_low = False, True, 15, True
+    streams = {"a": cam("Garage", -90), "b": cam("Porch", 3), "c": cam("Porch sub", -90, substream=True), "d": cam("Off", -90, enabled=False)}
+    run(EVENING, streams, **BEDTIME)
+    assert len(sent) == 1 and sent[0][:2] == ("bedtime", "all")
+    msg = sent[0][2]
+    assert msg.splitlines() == ["- Back door is open", "- Back door has a low battery", "- Front lock is unlocked",
+                                "- Front lock has a low battery", "- Garage is offline", "Devices: http://bridge.local:5000/devices"]
+
+
+def test_bedtime_all_good_says_so_or_stays_silent(sent, home):
+    run(EVENING, **BEDTIME)
+    automations.tick(API, {"a": cam("Porch")}, EVENING)
+    run(EVENING + 86400, bedtime=BEDTIME["bedtime"] | {"silent": True})
+    assert len(sent) == 1
+
+
+def test_bedtime_is_sent_once_at_the_right_time(sent, home):
+    run(EVENING - 120, **BEDTIME)  # 22:29
+    assert sent == []
+    automations.tick(API, {}, EVENING)
+    automations.tick(API, {}, EVENING + 600)  # same evening, even after a restart (state file)
+    assert len(sent) == 1
+    run(EVENING + 3 * 3600)  # a restart at 01:31 is too late for last night's
+    assert len(sent) == 1
+    run(EVENING + 86400)  # the next evening
+    assert len(sent) == 2
+
+
+def test_bedtime_off_by_default_and_never_touches_devices(sent, home):
+    run(EVENING)
+    assert sent == [] and home.sent == []
+    run(EVENING + 86400, **BEDTIME)
+    assert home.sent == []
+
+
+def test_bedtime_settings_are_validated(client):
+    assert client.post("/api/automations", json={"bedtime": {"on": True, "time": "21:05"}}).json["settings"]["bedtime"] == {"on": True, "time": "21:05", "silent": False}
+    for bad in ("25:00", "late", 5):
+        assert client.post("/api/automations", json={"bedtime": {"on": True, "time": bad}}).status_code == 400, bad
 
 
 def test_only_the_owner_changes_automations(client, monkeypatch):

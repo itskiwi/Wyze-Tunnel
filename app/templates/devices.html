@@ -128,6 +128,10 @@
                 { name: "devices", kind: "pick", label: "Plugs and lights", options: ofType("Plug", "OutdoorPlug", "MeshLight") },
                 { name: "also_motion", kind: "check", label: "Also react to plain motion (for cameras without person detection)" },
                 { name: "minutes", kind: "number", label: "Stay on for (minutes)", fallback: 5 }] },
+        { key: "bedtime", title: "Bedtime house check",
+            blurb: "One message at bedtime through your phone alerts (set them up on the Alerts page) listing only what needs a look: unlocked locks, open doors and windows, cameras offline, low batteries. It never locks or unlocks anything.",
+            fields: [{ name: "time", kind: "time", label: "Bedtime", fallback: "22:00" },
+                { name: "silent", kind: "check", label: "Stay quiet when everything is fine" }] },
     ];
 
     // Returns the row and a function that reads its value back.
