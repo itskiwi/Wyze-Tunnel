@@ -116,7 +116,8 @@
                     <a href="phone-cams" class="menu-item"><i class="fas fa-camera w-4"></i>Use a phone as a camera</a>{% endif %}
                     <p class="menu-label">This app</p>
                     <button type="button" class="theme-toggle menu-item w-full md:hidden"><i class="fas fa-circle-half-stroke w-4"></i>Theme<span class="ml-auto text-xs text-zinc-500" data-theme-name></span></button>
-                    {% if not current_guest() %}<a href="network" class="menu-item"><i class="fas fa-network-wired w-4"></i>Network</a>{% endif %}
+                    {% if not current_guest() %}<a href="camera-settings" class="menu-item"><i class="fas fa-sliders w-4"></i>Camera settings</a>
+                    <a href="network" class="menu-item"><i class="fas fa-network-wired w-4"></i>Network</a>{% endif %}
                     <a href="diagnostics" class="menu-item" title="A report with secrets removed, for bug reports"><i class="fas fa-file-medical w-4"></i>Download diagnostics</a>
                 </div>
             </details>
