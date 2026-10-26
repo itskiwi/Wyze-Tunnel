@@ -17,7 +17,7 @@ def test_thumbnail_retries_401_with_wyze_token(tmp_path, monkeypatch):
     url = "https://prod-sight-safe-auth.wyze.com/resource/MAC/2026-10-24/x/y.jpg?st=a&kid=b&nonce=c"
     with mock.patch.object(wyze_api, "get", side_effect=[resp(401), resp(200)]) as get:
         assert api.save_thumbnail("cam", url)
-    assert get.call_args.kwargs["headers"] == {"Authorization": "tok"}
+    assert get.call_args.kwargs["headers"] == {"Wyze-Authorization": "tok"}
     assert (tmp_path / "cam.jpg").read_bytes() == b"jpg"
 
     with mock.patch.object(wyze_api, "get", side_effect=[resp(401), resp(401)]):

@@ -19,7 +19,7 @@ from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.config import CHRONIC_FAILURES, COOLDOWN, COOLDOWN_MAX, MQTT_TOPIC, TOKEN_PATH
 from wyzebridge.auth import WbAuth
 from wyzebridge.ffmpeg import get_ffmpeg_cmd
-from wyzebridge.go2rtc import FALLBACK_AFTER, Go2rtcServer, LanSession, lan_controls, lan_url, relay, source_chain, webrtc_url
+from wyzebridge.go2rtc import FALLBACK_AFTER, Go2rtcServer, go2rtc_available, LanSession, lan_controls, lan_url, relay, source_chain, webrtc_url
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import publish_discovery, publish_messages, update_mqtt_state
 from wyzebridge.webhooks import send_webhook
@@ -30,7 +30,7 @@ from wyzecam import TutkError, WyzeAccount, WyzeCamera, WyzeIOTC, WyzeIOTCSessio
 
 NET_MODE = {0: "P2P", 1: "RELAY", 2: "LAN"}
 # Commands the Wyze cloud can do when there's no direct (TUTK) connection, and the property each reads.
-CLOUD_PROPS = {"alarm": "P1049", "floodlight": "P1056", "spotlight": "P1056", "motion_detection": "P1047"}
+CLOUD_PROPS = {"alarm": "P1049", "floodlight": "P1056", "spotlight": "P1056", "motion_detection": "P1047", "sound_detection": "P1048"}
 # How the web UI names each mode: on the home network, direct over the internet, or through Wyze's relay servers.
 NET_MODE_LABEL = {0: "internet", 1: "relay", 2: "local"}
 # Connection choices from the web UI, saved per camera; they override NET_MODE env vars.
@@ -150,9 +150,13 @@ class WyzeStream:
         if self.sources and not self.options.substream:
             self.go2rtc.names[self.uri] = self.camera.nickname
         if not self.sources:
-            logger.info(
-                f"[{self.camera.product_model}] {self.camera.nickname} not supported"
-            )
+            if self.camera.webrtc_support and not go2rtc_available():
+                logger.warning(
+                    f"[{self.camera.product_model}] {self.camera.nickname} needs go2rtc, which isn't installed. "
+                    "Re-run the installer or update Wyze Tunnel to add it."
+                )
+            else:
+                logger.info(f"[{self.camera.product_model}] {self.camera.nickname} not supported")
             self.state = StreamStatus.DISABLED
         elif self.sources != ["tutk"]:
             logger.info(f"{self.camera.nickname} will connect with: {', '.join(self.sources)}")
@@ -381,6 +385,7 @@ class WyzeStream:
             "is_floodlight": self.camera.is_floodlight,
             "is_spotlight": self.camera.is_spotlight,
             "is_doorbell": self.camera.is_doorbell,
+            "product_model": self.camera.product_model,
             "webrtc": self.camera.webrtc_support,
             "start_time": self.start_time,
             "quality": self.options.quality[:2],
@@ -504,6 +509,10 @@ class WyzeStream:
             # Newer cams need both; older ones ignore P1001.
             resp = self.api.set_property(self.camera, "P1047", "1" if on else "0")
             self.api.set_property(self.camera, "P1001", "1" if on else "0")
+        elif cmd == "sound_detection":
+            # Same pairing as motion: P1048 is the alarm, P1002 its recording (the Wyze app sets both).
+            resp = self.api.set_property(self.camera, "P1048", "1" if on else "0")
+            self.api.set_property(self.camera, "P1002", "1" if on else "0")
         elif self.camera.product_model == "HL_BC":
             resp = self.api.run_action(self.camera, f"floodlight_{payload}")
         else:
@@ -554,7 +563,8 @@ class WyzeStream:
                 "value": self.motion if cmd == "motion" else self.motion_ts,
             }
 
-        if cmd in CLOUD_PROPS and self.source != "tutk" and not env_bool("disable_control"):
+        # Sound detection is a cloud setting on every camera; the rest go through the camera when it's local.
+        if cmd in CLOUD_PROPS and (self.source != "tutk" or cmd == "sound_detection") and not env_bool("disable_control"):
             return self.cloud_control(cmd, str(payload).lower())
 
         if self.state < StreamStatus.STOPPED:

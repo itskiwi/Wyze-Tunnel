@@ -47,9 +47,12 @@ const generateSdpFragment = (offerData, candidates) => {
 };
 
 class Receiver {
-    constructor(signalJson) {
+    // mic: a microphone stream to send, for a talk-only session (see talk() below).
+    constructor(signalJson, mic = null) {
         if (signalJson.result !== "ok") { return console.error("signaling json not ok"); }
         this.signalJson = signalJson;
+        this.mic = mic;
+        this.stopped = false;
         this.whep = !!("whep" in this.signalJson);
         this.restartTimeout = null;
         this.queuedCandidates = [];
@@ -72,7 +75,12 @@ class Receiver {
         const direction = this.whep ? "sendrecv" : "recvonly";
         this.pc = new RTCPeerConnection({ iceServers: this.signalJson.servers, sdpSemantics: 'unified-plan' });
         this.pc.addTransceiver("video", { direction });
-        this.pc.addTransceiver("audio", { direction });
+        if (this.mic) {
+            // The Wyze app talks the same way: one Kinesis session that receives video and sends a mic track.
+            this.pc.addTransceiver(this.mic.getAudioTracks()[0], { direction: "sendrecv", streams: [this.mic] });
+        } else {
+            this.pc.addTransceiver("audio", { direction });
+        }
         this.pc.ontrack = (evt) => this.onTrack(evt);
         this.pc.onicecandidate = (evt) => this.onIceCandidate(evt);
         this.pc.oniceconnectionstatechange = () => this.onConnectionStateChange();
@@ -134,6 +142,7 @@ class Receiver {
     }
 
     onTrack(event) {
+        if (this.mic) { return; }  // the tile already plays this camera
         let vid = document.querySelector(`video[data-cam='${this.signalJson.cam}']`);
         vid.srcObject = event.streams[0];
         vid.autoplay = true;
@@ -146,6 +155,9 @@ class Receiver {
         clearTimeout(this.iceConnectionTimer);
         if (this.restartTimeout !== null) { return; }
         switch (this.pc.iceConnectionState) {
+            case 'connected':
+                if (this.onLive) { this.onLive(); }
+                break;
             case 'disconnected':
             case 'failed':
                 this.onError()
@@ -205,7 +217,7 @@ class Receiver {
         }
     }
     refreshSignal() {
-        fetch(new URL(`signaling/${this.signalJson.cam}?${this.whep ? 'webrtc' : 'kvs'}`, window.location.href))
+        fetch(new URL(`signaling/${this.signalJson.cam}?${this.whep ? 'webrtc' : 'kvs'}${this.mic ? '&talk' : ''}`, window.location.href))
             .then((resp) => resp.json())
             .then((signalJson) => {
                 if (signalJson.result !== "ok") { return console.error("signaling json not ok"); }
@@ -213,8 +225,17 @@ class Receiver {
             });
     }
 
+    stop() {
+        this.stopped = true;
+        clearTimeout(this.restartTimeout);
+        clearTimeout(this.iceConnectionTimer);
+        if (this.ws !== null) { this.ws.close(); }
+        if (this.pc !== null) { this.pc.close(); }
+        if (this.mic) { this.mic.getTracks().forEach((t) => t.stop()); }
+    }
+
     onError(err = undefined) {
-        if (this.restartTimeout !== null) {
+        if (this.stopped || this.restartTimeout !== null) {
             return;
         }
         if (err !== undefined) { console.error('Error:', err.toString()); }
@@ -252,3 +273,48 @@ class Receiver {
         this.queuedCandidates = [];
     }
 };
+
+// Push-to-talk: while held, the browser's microphone plays through the camera's speaker.
+// shortcut: Wyze cloud (Kinesis) cameras only; go2rtc's LAN backchannel needs a transcode step, see docs/two-way-talk-notes.md.
+async function talk(btn, on) {
+    if (!on) {
+        if (btn.talker instanceof Receiver) { btn.talker.stop(); }
+        btn.talker = null;
+        if (btn.dataset.state !== "error") { delete btn.dataset.state; }
+        return;
+    }
+    if (btn.talker) { return; }
+    const claim = {};  // holds the button while the mic prompt is open; a release in the meantime drops it
+    btn.talker = claim;
+    btn.dataset.state = "connecting";
+    btn.title = btn.getAttribute("aria-label");
+    let mic = null;
+    try {
+        mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        const signal = await fetch(new URL(`signaling/${btn.dataset.cam}?kvs&talk`, window.location.href)).then((r) => r.json());
+        if (btn.talker !== claim) { return mic.getTracks().forEach((t) => t.stop()); }
+        if (signal.result !== "ok") { throw new Error(signal.result); }
+        const talker = new Receiver(signal, mic);
+        talker.onLive = () => { if (btn.talker === talker) { btn.dataset.state = "live"; } };
+        btn.talker = talker;
+    } catch (err) {
+        console.error("talk:", err);
+        if (mic) { mic.getTracks().forEach((t) => t.stop()); }
+        if (btn.talker === claim) { btn.talker = null; }
+        btn.dataset.state = "error";
+        btn.title = `Couldn't talk: ${err.message || err}`;
+    }
+}
+
+document.querySelectorAll("button.talk").forEach((btn) => {
+    if (!navigator.mediaDevices) {  // browsers only give the mic to https:// or localhost pages
+        btn.disabled = true;
+        btn.title = "Talking needs this page on https:// or localhost";
+        return;
+    }
+    btn.addEventListener("pointerdown", (e) => { btn.setPointerCapture(e.pointerId); talk(btn, true); });
+    ["pointerup", "pointercancel"].forEach((ev) => btn.addEventListener(ev, () => talk(btn, false)));
+    btn.addEventListener("keydown", (e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); talk(btn, true); } });
+    btn.addEventListener("keyup", (e) => { if (e.key === " " || e.key === "Enter") { talk(btn, false); } });
+    btn.addEventListener("contextmenu", (e) => e.preventDefault());  // long-press on phones
+});

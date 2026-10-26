@@ -5,7 +5,7 @@ from subprocess import Popen, TimeoutExpired
 from threading import Thread
 from typing import Any, Callable, Optional, Protocol
 
-from wyzebridge import backup, guests, recording, summary
+from wyzebridge import automations, backup, guests, recording, summary
 from wyzebridge.config import MOTION, MQTT_DISCOVERY, SNAPSHOT_INT, SNAPSHOT_TYPE
 from wyzebridge.ffmpeg import rtsp_snap_cmd
 from wyzebridge.logging import logger
@@ -137,7 +137,7 @@ class StreamManager:
                 event.read(timeout=1)
                 self.snap_all(self.active_streams())
                 # Created lazily so turning on motion alerts in the web UI needs no restart.
-                if not events and self.streams and (MOTION or ALERTS.get("motion") or ALERTS.get("siren_away") or ALERTS.get("summary")):
+                if not events and self.streams and (MOTION or ALERTS.get("motion") or ALERTS.get("siren_away") or ALERTS.get("summary") or ALERTS.get("topic") or ALERTS.get("chat_url") or (automations.load().get("lights") or {}).get("on")):
                     events = WyzeEvents(self.streams)
                 if events:
                     events.check_motion()
@@ -153,6 +153,8 @@ class StreamManager:
                     guests.prune()
                     backup.auto_backup()
                     summary.check(list(EVENT_LOG))
+                    if self.streams:  # Wyze calls can take seconds, so not on this loop
+                        Thread(target=automations.tick, args=(next(iter(self.streams.values())).api, self.streams), daemon=True).start()
             except Exception:
                 logger.exception("[MONITOR] Error in stream monitor loop")
                 time.sleep(1)

@@ -148,7 +148,7 @@ if [ -x "$SRC/go2rtc" ]; then
 else
     echo "==> Downloading go2rtc v$GO2RTC_TAG ($G2R_ARCH)"
     # Optional: without it, cameras still connect the classic way.
-    curl -fsSL -o "$PREFIX/go2rtc.new" "https://github.com/AlexxIT/go2rtc/releases/download/v${GO2RTC_TAG}/go2rtc_linux_${G2R_ARCH}" \
+    curl -fsSL --retry 3 -o "$PREFIX/go2rtc.new" "https://github.com/AlexxIT/go2rtc/releases/download/v${GO2RTC_TAG}/go2rtc_linux_${G2R_ARCH}" \
         && chmod +x "$PREFIX/go2rtc.new" && mv -f "$PREFIX/go2rtc.new" "$PREFIX/go2rtc" \
         || echo "   (couldn't download go2rtc; skipping)"
 fi
