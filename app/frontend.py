@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, event_archive, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, phrases, pocket, privacy, recording, shares, street_watch, timelapse, visitors, weather, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, detect, event_archive, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, timelapse, visitors, weather, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.diagnostics import build_report
@@ -923,6 +923,7 @@ def create_app():
             timelapses=timelapse.videos(),
             timelapse_cams=timelapse.load_cams(),
             timelapse_from=timelapse_from,
+            sd_copy=sd_copy.load_settings(),
             selected=request.args.get("cam"),
             playback=PLAYBACK_ENABLED,
             api=WbAuth.api,
@@ -1003,6 +1004,90 @@ def create_app():
         if not (path := timelapse.video_path(cam_name, day)):
             return {"error": "No timelapse for that day"}, 404
         return send_file(path, mimetype="video/mp4", conditional=True)
+
+    @app.route("/sd/<string:cam_name>")
+    @owner_only
+    def sd_day(cam_name: str):
+        """A day on the camera's SD card as [start, end] epoch pairs. ?start= is the viewer's local midnight."""
+        if not (start := request.args.get("start", "")).isdigit():
+            return {"error": "start must be epoch seconds"}, 400
+        sd_card, segments = False, []
+        # shortcut: two 12-hour windows miss the last hour of a 25-hour DST day; ask for a third window if anyone notices.
+        for half in (int(start), int(start) + 43200):
+            resp = wb.streams.send_cmd(cam_name, "sd_minutes", half)
+            if not isinstance(value := resp.get("value"), dict):
+                return {"error": str(resp.get("response") or "The camera didn't answer.")}, 502
+            sd_card |= value["sd_card"]
+            for seg in value["segments"]:
+                if segments and segments[-1][1] == seg[0]:  # a recording that runs across noon
+                    segments[-1][1] = seg[1]
+                else:
+                    segments.append(seg)
+        return {"sd_card": sd_card, "segments": segments}
+
+    def start_sd(cam_name: str, ts) -> tuple[dict, int]:
+        stream = wb.streams.get(cam_name)
+        if not isinstance(stream, WyzeStream) or stream.source != "tutk":
+            return {"error": "SD card playback needs the camera connected through the Wyze SDK."}, 400
+        if not isinstance(ts, int) or not 0 < ts < time.time():
+            return {"error": "ts must be epoch seconds in the past"}, 400
+        if sd_copy.busy(cam_name):
+            return {"error": "The overnight SD copy is using this camera right now."}, 409
+        path = f"{cam_name}-sd"
+        if path not in sd_playback.players:
+            wb.mtx.add_path(path, False)
+        sd_playback.start(cam_name, stream.user, stream.camera, stream.options, ts)
+        return {"path": path, "hls": f"hls/{path}/index.m3u8"}, 200
+
+    @app.route("/sd/<string:cam_name>/play", methods=["POST"])
+    @owner_only
+    def sd_play(cam_name: str):
+        """Play the SD card from {"ts": epoch} at /<cam>-sd, or seek there if it's already playing."""
+        return start_sd(cam_name, (request.get_json(silent=True) or {}).get("ts"))
+
+    @app.route("/sd/<string:cam_name>/stop", methods=["POST"])
+    @owner_only
+    def sd_stop(cam_name: str):
+        sd_playback.stop(f"{cam_name}-sd")
+        return {"status": "stopped"}
+
+    @app.route("/sd-copy/settings", methods=["POST"])
+    @owner_only
+    def sd_copy_settings():
+        try:
+            return {"status": "saved", "settings": sd_copy.save_settings(request.get_json(silent=True) or {}, list(wb.streams.streams))}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
+    @app.route("/sd-copy/status")
+    @owner_only
+    def sd_copy_status():
+        return {**sd_copy.status, "files": len(sd_copy.copied_files())}
+
+    @app.route("/sd-sync")
+    @owner_only
+    def sd_sync():
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return render_template("sd_sync.html", cams={uri: cam["nickname"] for uri, cam in cams.items()})
+
+    @app.route("/sd-sync/play", methods=["POST"])
+    @owner_only
+    def sd_sync_play():
+        """Start 2-4 cameras' SD replay at the same {"ts": epoch}; each shows at /<cam>-sd."""
+        data = request.get_json(silent=True) or {}
+        cams = data.get("cams")
+        if not isinstance(cams, list) or not 2 <= len(set(cams)) <= 4 or not all(isinstance(c, str) for c in cams):
+            return {"error": "Pick 2 to 4 cameras."}, 400
+        results = {cam: start_sd(cam, data.get("ts")) for cam in dict.fromkeys(cams)}
+        return {"cams": {cam: r[0] for cam, r in results.items()}}, 200 if all(r[1] == 200 for r in results.values()) else 400
+
+    @app.route("/sd-sync/stop", methods=["POST"])
+    @owner_only
+    def sd_sync_stop():
+        for cam in (request.get_json(silent=True) or {}).get("cams") or []:
+            if isinstance(cam, str):
+                sd_playback.stop(f"{cam}-sd")
+        return {"status": "stopped"}
 
     @app.route("/recordings/<string:cam_name>")
     @app.route("/api/v1/cameras/<string:cam_name>/recordings")  # for apps, like Home Assistant's media browser
