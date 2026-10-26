@@ -247,8 +247,14 @@ mod vm {
         let n = fs::read_to_string(data().join("viewers")).unwrap_or_default();
         !wsl() && n.trim().parse::<u32>().is_ok_and(|n| n > 0)
     }
+    /// Opens the default browser. explorer.exe garbles links with a query string and opens Documents instead.
     pub fn open_url(url: &str) {
-        let _ = cmd("explorer.exe").arg(url).spawn();
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let wide = |s: &str| std::ffi::OsStr::new(s).encode_wide().chain([0]).collect::<Vec<u16>>();
+        let (verb, file) = (wide("open"), wide(url));
+        unsafe { ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL) };
     }
     /// The bridge counts cameras that need the Wyze SDK (away from home, old firmware) next to WT_UPDATE_FILE.
     pub fn needs_sdk() -> bool {
