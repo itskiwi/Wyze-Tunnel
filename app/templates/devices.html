@@ -114,7 +114,7 @@
             if (!box.open || box.dataset.loaded) return;
             box.dataset.loaded = "1";
             getJson(`api/devices/lock-log?mac=${encodeURIComponent(dev.mac)}`).then((data) => {
-                const rows = data.events.map((e) => el("p", "", `${when(e.time)}  ${e.event}${e.who ? ` by ${e.who}` : ""}${e.source != null ? ` (source ${e.source})` : ""}`));
+                const rows = data.events.map((e) => el("p", "", `${when(e.time)}  ${e.event}${e.who ? ` by ${e.who}` : ""}${e.source ? ` (${e.source})` : ""}`));
                 const codes = data.codes.map((c) => el("p", "", codeLine(c)));
                 log.replaceChildren(el("p", "font-medium text-zinc-300", "Recent activity"), ...(rows.length ? rows : [el("p", "", "Nothing recent.")]),
                     el("p", "mt-2 font-medium text-zinc-300", "Keypad codes (names only)"), ...(codes.length ? codes : [el("p", "", "No keypad codes.")]));
@@ -159,6 +159,20 @@
         return box;
     }
 
+    function usagePanel(dev) {
+        const box = el("details", "mt-3 text-sm"), body = el("div", "mt-2 space-y-1 text-zinc-400", "Loading…");
+        box.append(el("summary", "cursor-pointer text-zinc-300", "Time on"), body);
+        box.addEventListener("toggle", () => {
+            if (!box.open || box.dataset.loaded) return;
+            box.dataset.loaded = "1";
+            getJson(`api/devices/usage?mac=${encodeURIComponent(dev.mac)}`).then((data) => {
+                const rows = data.days.map((d) => { const m = d.minutes.reduce((a, b) => a + b, 0); return el("p", "", `${new Date(d.date_ts).toLocaleDateString()}  ${span(m)}`); });
+                body.replaceChildren(...(rows.length ? rows : [el("p", "", "No usage recorded.")]));
+            }).catch((err) => { delete box.dataset.loaded; body.textContent = err.message; });
+        });
+        return box;
+    }
+
     function render(list, lockMinutes) {
         const groups = {};
         list.forEach((d) => (groups[GROUPS[d.type] || "Hubs and other devices"] ??= []).push(d));
@@ -172,6 +186,7 @@
                     el("span", `chip ${dev.online ? "chip-ok" : "chip-bad"} ml-auto`, dev.online ? "Online" : "Offline"));
                 row.append(head, el("p", "mt-1 text-sm text-zinc-400", dev.state.error || facts(dev.state)), controls(dev));
                 if (dev.type === "Lock") row.append(lockPanel(dev, lockMinutes));
+                if (dev.type === "Plug" || dev.type === "OutdoorPlug") row.append(usagePanel(dev));
                 if (dev.model === "CO_EA1" || dev.model === "CO_TH1") row.append(historyPanel(dev));
                 section.append(row);
             });

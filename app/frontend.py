@@ -628,6 +628,20 @@ def create_app():
             return {"error": "hours must be 24 or 168."}, 400
         return devices.history(request.args.get("mac", ""), int(hours))
 
+    @app.route("/api/devices/usage")
+    @auth_required
+    def api_plug_usage():
+        """Hours each day a plug was on, from Wyze's usage record (plugs only: no lock or camera data)."""
+        try:
+            dev = device_call(devices.find, request.args.get("mac", ""))
+            if not dev or dev["type"] not in ("OutdoorPlug", "Plug"):
+                return {"error": "Unknown plug."}, 404
+            return {"days": device_call(devices.plug_usage, dev, bool(request.args.get("fresh")))}
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException) as ex:
+            return {"error": f"Wyze didn't answer: {ex}"}, 502
+
     @app.route("/api/devices/lock-alert", methods=["POST"])
     @owner_only
     def api_lock_alert():

@@ -173,6 +173,9 @@ LOG = {"ErrNo": 0, "family_record": [
     {"eventid": 2216, "time": 1790000060000, "uuid": "abc123", "detail": {"source": 2, "source_name": "", "email": "me@example.com", "avatar": "http://x/a.png"}},
     {"eventid": 2203, "time": 1790000000000, "detail": {"source": 1, "source_name": "Sam", "userid": "u1"}},
     {"eventid": 2214, "time": 1789999000000, "detail": {}},
+    {"eventid": 2218, "time": 1789998000000, "detail": {"left_open_time": 3}},
+    {"eventid": 2228, "time": 1789997000000},
+    {"eventid": 2299, "time": 1789996000000, "detail": {"source": 99}},
 ]}
 PWDS = {"ErrNo": 0, "passwords": [
     {"id": 1, "name": "Cleaner", "pwdValue": CODE_DIGITS, "password": CODE_DIGITS, "pwd_state": 1, "permission": {"status": 4, "begin": 1, "end": 2}},
@@ -201,8 +204,11 @@ def lock_api(wyze, monkeypatch):
 
 def test_lock_log_parses_and_never_returns_code_digits(lock_api):
     out = devices.lock_log(AUTH, "YD.LO1.abc123")
-    assert [e["event"] for e in out["events"]] == ["Locked", "Unlocked", "Door opened"]
-    assert out["events"][1] == {"time": 1790000000, "event": "Unlocked", "who": "Sam", "source": 1}
+    assert [e["event"] for e in out["events"]] == ["Locked", "Unlocked", "Opened", "Open more than 5 min",
+                                                   "Multiple failed fingerprint unlock attempts", "Event 2299"]
+    assert out["events"][0]["source"] == "Keypad" and out["events"][2]["source"] is None and out["events"][5]["source"] is None
+    assert out["events"][1] == {"time": 1790000000, "event": "Unlocked", "who": "Sam", "source": "App"}
+    assert devices._lock_event({"eventid": 2203, "detail": {"source": 77}})["source"] == "source 77"
     assert [(c["name"], c["type"], c["expired"]) for c in out["codes"]] == [
         ("Cleaner", "temporary", False), ("Family", "permanent", False), ("Weekdays", "recurring", True)]
     assert out["codes"][2]["days"] == [1, 2] and out["codes"][2]["from"] == "09:00"
@@ -294,3 +300,29 @@ def test_history_endpoint(client, monkeypatch):
     monkeypatch.setattr(devices, "_history", {})
     assert client.get("/api/devices/history?mac=CO_EA1_1&hours=24").json["points"] == []
     assert client.get("/api/devices/history?mac=CO_EA1_1&hours=5").status_code == 400
+
+
+def test_plug_usage_reads_the_apps_usage_record(wyze, monkeypatch):
+    seen = []
+
+    def post(url, json=None, **kw):
+        seen.append((url, json))
+        rows = [{"date_ts": 1790100000000, "data": "[0,5,99,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,30]"}, {"date_ts": 1790000000000, "data": "oops"}, {"data": "[1]"}]
+        return Resp({"code": 1, "data": {"usage_record_list": rows}})
+
+    monkeypatch.setattr(devices, "post", post)
+    monkeypatch.setattr(devices, "_usage_cache", {})
+    sub = {"mac": "PLUG-0001", "parent": "PLUG"}
+    out = devices.plug_usage(AUTH, sub, now=1790000000)
+    assert [(d["date_ts"], sum(d["minutes"])) for d in out] == [(1790100000000, 95)]  # 99 is clamped to 60; bad rows are skipped
+    url, body = seen[0]
+    assert url.endswith("/v2/plug/usage_record_list") and body["device_mac"] == "PLUG" and body["sv"] == "56ed575478344d019f7143971ca6ca86"
+    assert body["date_end"] - body["date_begin"] == 777600000 and body["phone_system_type"] == 2
+    devices.plug_usage(AUTH, sub)
+    assert len(seen) == 1  # cached
+
+
+def test_plug_usage_endpoint_is_for_plugs_only(client, wyze, monkeypatch):
+    monkeypatch.setattr(devices, "plug_usage", lambda auth, dev, fresh=False: [{"date_ts": 1, "minutes": [1]}])
+    assert client.get("/api/devices/usage?mac=PLUG-0001").json == {"days": [{"date_ts": 1, "minutes": [1]}]}
+    assert client.get("/api/devices/usage?mac=YD.LO1.abc123").status_code == 404

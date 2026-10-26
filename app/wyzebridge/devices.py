@@ -53,11 +53,19 @@ HISTORY_FILE = TOKEN_PATH + "device_history.json"
 HISTORY_STEP = 300  # one reading per device every 5 minutes, kept 7 days
 HISTORY_MODELS = {"CO_EA1", "CO_TH1"}
 WATCH_SECONDS = 180
-# com/yunding/commonbiz/ui/adapter/HomeListAdapter.java:336-389 (the other ids are alarms; the app's strings aren't in the decompile)
-LOCK_EVENTS = {2203: "Unlocked", 2216: "Locked", 2214: "Door opened", 2215: "Door closed"}
+# Titles from the app's resources.arsc (strings yunding_lock_history_event_id_*, _source_*), picked by HomeListAdapter.java:163-199.
+# 2217 has no string in the app. 2218 appends the open-alarm time, see _lock_event.
+LOCK_EVENTS = {2201: "Multiple failed code unlock attempts", 2203: "Unlocked", 2214: "Opened", 2215: "Closed", 2216: "Locked",
+               2218: "Open too long", 2221: "The door is jammed", 2222: "The door is totally jammed", 2223: "The door swung open",
+               2224: "The door is kept open for more than 24 hours", 2225: "Trash Mode is on", 2226: "Door auto-calibrated",
+               2227: "Multiple failed code unlock attempts", 2228: "Multiple failed fingerprint unlock attempts"}
+# Only 2203/2216 carry a source (HomeListAdapter.java:337-338). Bolt and gun safe call source 2 "Code"; the Wyze Lock says "Keypad".
+LOCK_SOURCES = {1: "App", 2: "Keypad", 3: "Fingerprint", 4: "Inside button", 5: "Manual", 6: "Inside holder", 7: "NFC", 8: "Auto", 9: "Remote", 12: "Remote", 102: "Keypad"}
+OPEN_ALARM_MINUTES = (1, 5, 10, 30, 60)  # array yunding_open_alarm_time1, indexed by detail.left_open_time - 2 (HomeListAdapter.java:372)
 
 _cache: dict[str, Any] = {"at": 0.0, "devices": []}
 _lock_cache: dict[str, tuple[float, dict]] = {}
+_usage_cache: dict[str, tuple[float, list]] = {}
 _unlocked: dict[str, float] = {}  # lock mac -> when we first saw it unlocked
 _alerted: set[str] = set()
 
@@ -206,9 +214,12 @@ def lock_log(auth: WyzeCredential, mac: str, fresh: bool = False) -> dict:
 
 def _lock_event(r: dict) -> dict:
     d = r.get("detail") or {}
-    # shortcut: source (keypad/app/manual/auto) stays a number, the app's source strings aren't in the decompile; map it once confirmed.
-    return {"time": int(r.get("time") or 0) // 1000, "event": LOCK_EVENTS.get(r.get("eventid"), f"Event {r.get('eventid')}"),
-            "who": str(d.get("source_name") or ""), "source": d.get("source")}
+    eid = r.get("eventid")
+    event = LOCK_EVENTS.get(eid, f"Event {eid}")
+    if eid == 2218 and isinstance(d.get("left_open_time"), int) and 2 <= d["left_open_time"] <= 6:
+        event = f"Open more than {OPEN_ALARM_MINUTES[d['left_open_time'] - 2]} min"
+    source = LOCK_SOURCES.get(d.get("source"), f"source {d.get('source')}") if eid in (2203, 2216) and d.get("source") is not None else None
+    return {"time": int(r.get("time") or 0) // 1000, "event": event, "who": str(d.get("source_name") or ""), "source": source}
 
 
 def _keypad_code(c: dict) -> dict:
@@ -244,7 +255,7 @@ def _number_or_none(value: Any) -> float | None:
 def record_history(devs: list[dict], now: float | None = None) -> None:
     """Keep thermostat and room-sensor readings from each refresh for the graphs.
 
-    shortcut: Wyze's get_iot_history (SensorApi.java:43) has no confirmed request shape in the app, so history starts when the bridge first sees the device.
+    shortcut: the thermostat plugin that calls get_iot_history isn't in the app's APKs (docs/wyze-cloud-history-notes.md), so history starts when the bridge first sees the device.
     """
     now = now or time.time()
     changed = False
@@ -279,6 +290,31 @@ def history(mac: str, hours: int, now: float | None = None) -> dict:
         if r.get("run"):
             run[r["run"]] += min(nxt - r["t"], 600) // 60
     return {"points": rows, "heat_minutes": int(run["heat"]), "cool_minutes": int(run["cool"])}
+
+
+def plug_usage(auth: WyzeCredential, dev: dict, fresh: bool = False, now: float | None = None) -> list[dict]:
+    """Minutes each hour a plug was on, one row per UTC day for about 9 days (read-only).
+
+    POST v2/plug/usage_record_list, sv from SV_WLPP1_PLUG_USAGE_RECORD_LIST in assets/WLPPO_SV (CloudProtocol.java:2200-2212).
+    The window is the app's: tomorrow's local midnight shifted by the zone offset, minus 9 days (duz.java:78-90).
+    Replies are {date_ts (ms), data: "[m0,...,m23]"}; the app clamps each hour to 60 (duz.java:164-170).
+    """
+    mac = dev["parent"] or dev["mac"]  # an outdoor plug's outlets ask with the plug's mac (wlppo/DeviceMainPage.java:329)
+    if not fresh and (hit := _usage_cache.get(mac)) and time.time() - hit[0] < LOG_CACHE_SECONDS:
+        return hit[1]
+    t = time.localtime((now or time.time()) + 86400)
+    end = int(time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1)) - t.tm_gmtoff) * 1000
+    payload = _payload(auth) | {"sv": "56ed575478344d019f7143971ca6ca86", "phone_system_type": 2, "date_begin": end - 777600000, "date_end": end, "device_mac": mac}
+    rows = validate_resp(post(f"{WYZE_API}/v2/plug/usage_record_list", json=payload, headers=_headers())).get("usage_record_list") or []
+    out = []
+    for r in rows:
+        try:
+            hours = [min(max(int(m), 0), 60) for m in str(r.get("data")).strip("[] ").split(",")][:24]
+            out.append({"date_ts": int(r["date_ts"]), "minutes": hours})
+        except (KeyError, TypeError, ValueError):
+            continue
+    _usage_cache[mac] = (time.time(), sorted(out, key=lambda r: r["date_ts"]))
+    return _usage_cache[mac][1]
 
 
 def start_watch(get_auth, refresh) -> None:
