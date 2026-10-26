@@ -12,7 +12,12 @@ from wyzebridge.config import TOKEN_PATH, VERSION
 from wyzebridge.logging import logger
 
 ALERTS_FILE = TOKEN_PATH + "alerts.json"
-ALERT_EVENTS = ("motion", "person", "offline", "summary", "cleared")
+# Sound tags from Wyze's cloud (Cam Plus). Glass break is on unless switched off; the rest are opt-in.
+SOUND_EVENTS = ("glass", "gunshot", "crying", "barking", "meowing", "talking")
+ALERT_EVENTS = ("motion", "person", "offline", "summary", "cleared") + SOUND_EVENTS
+# Smoke and CO alarms ignore the checkboxes and quiet hours: nobody wants to miss them.
+URGENT = {"smoke": "Smoke alarm", "co": "Carbon monoxide alarm"}
+ALWAYS = ("test", "update", "street", "away", *URGENT)
 # Chat apps an alert can also go to, by webhook host. Only these, so a saved URL can't reach other servers.
 CHAT_HOSTS = {"discord.com": "discord", "discordapp.com": "discord", "hooks.slack.com": "slack", "api.telegram.org": "telegram"}
 # home: no motion alerts. away (holiday): motion alerts even in quiet hours. schedule: quiet hours apply.
@@ -86,8 +91,12 @@ def chat_payload(service: str, title: str, msg: str, img: Optional[str]) -> dict
     return {"text": text}
 
 
+def alert_on(event: str) -> bool:
+    return event in ALWAYS or bool(ALERTS.get(event, event == "glass"))
+
+
 def alert_url(event: str) -> str:
-    if ALERTS.get("topic") and (ALERTS.get(event) or event in ("test", "update", "street", "away")):
+    if ALERTS.get("topic") and alert_on(event):
         return f"{ALERTS['server']}/{ALERTS['topic']}"
     return ""
 
@@ -110,10 +119,10 @@ def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None, t
         if event in ("motion", "person", "cleared") and (mode == "home" or (mode == "schedule" and in_quiet_hours(ALERTS))):
             return False
         url = alert_url(event)
-    chat = ALERTS.get("chat_url") if not env_url and (ALERTS.get(event) or event in ("test", "update", "street", "away")) else ""
+    chat = ALERTS.get("chat_url") if not env_url and alert_on(event) else ""
     if not url and not chat:
         return False
-    title = title or {"update": "Wyze Tunnel updated", "street": "Street Watch request", "away": "Away access needs you", "summary": "Last night at home"}.get(event) or f"{event} event".title()
+    title = title or ({"update": "Wyze Tunnel updated", "street": "Street Watch request", "away": "Away access needs you", "summary": "Last night at home"} | URGENT).get(event) or f"{event} event".title()
     sent = bool(url) and _post(url, event, camera, msg, img, title)
     if chat:
         logger.debug(f"[WEBHOOKS] Sending {event.upper()} event for {camera} to {chat_service(chat)}")

@@ -137,7 +137,7 @@ class StreamManager:
                 event.read(timeout=1)
                 self.snap_all(self.active_streams())
                 # Created lazily so turning on motion alerts in the web UI needs no restart.
-                if not events and self.streams and (MOTION or ALERTS.get("motion") or ALERTS.get("siren_away") or ALERTS.get("summary")):
+                if not events and self.streams and (MOTION or ALERTS.get("motion") or ALERTS.get("siren_away") or ALERTS.get("summary") or ALERTS.get("topic") or ALERTS.get("chat_url")):
                     events = WyzeEvents(self.streams)
                 if events:
                     events.check_motion()

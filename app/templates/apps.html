@@ -230,7 +230,7 @@
             </label>
             <fieldset class="flex flex-wrap gap-x-5 gap-y-2 text-sm">
                 <legend class="mb-1 text-zinc-400">Send</legend>
-                {% for e, label in [("motion", "Motion"), ("person", "Person seen"), ("offline", "Camera offline"), ("street", "Street Watch requests"), ("update", "Updates")] %}
+                {% for e, label in [("motion", "Motion"), ("person", "Person seen"), ("offline", "Camera offline"), ("street", "Street Watch requests"), ("update", "Updates"), ("smoke", "Smoke alarm"), ("co", "CO alarm"), ("glass", "Glass break")] %}
                 <label class="flex items-center gap-2"><input type="checkbox" name="events" value="{{ e }}" class="h-4 w-4 accent-accent" {{ 'checked' if e in ('motion', 'offline') }} />{{ label }}</label>
                 {% endfor %}
             </fieldset>

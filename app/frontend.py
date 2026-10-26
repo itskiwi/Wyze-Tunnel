@@ -599,6 +599,8 @@ def create_app():
     @auth_required
     def alerts():
         if request.method == "POST":
+            if web_ui.current_guest():  # reading stays open to guests; changing alerts is the owner's
+                return {"error": "Only the owner can do this."}, 403
             try:
                 webhooks.save_alerts(request.get_json(silent=True) or request.form.to_dict())
             except ValueError as ex:

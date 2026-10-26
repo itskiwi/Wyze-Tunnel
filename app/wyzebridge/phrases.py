@@ -60,6 +60,10 @@ def _where(place: str, name: str) -> str:
     return f"in the {room}" if place == "indoors" else f"on {name}"
 
 
+SOUNDS = {"smoke": "A smoke alarm", "co": "A carbon monoxide alarm", "glass": "Glass breaking", "gunshot": "A gunshot",
+          "crying": "Crying", "barking": "Barking", "meowing": "Meowing", "talking": "Talking"}
+
+
 def describe(label: str, name: str, place: str = "", state: str = "new") -> str:
     """One sentence for an event. label is a detection label, "motion", "ring" or "cleared".
 
@@ -86,4 +90,6 @@ def describe(label: str, name: str, place: str = "", state: str = "new") -> str:
         return f"{who} {where}"
     if label == "package" and door:
         return f"A package was left {where}"
+    if label in SOUNDS:
+        return f"{SOUNDS[label]} heard {where}"
     return f"{THINGS.get(label) or 'Movement'} {where}"

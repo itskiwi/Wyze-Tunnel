@@ -7,7 +7,7 @@ from wyzebridge import phrases, visitors
 from wyzebridge.config import MOTION_INT, MOTION_START
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import update_preview
-from wyzebridge.webhooks import ALERTS, send_webhook
+from wyzebridge.webhooks import ALERTS, SOUND_EVENTS, URGENT, send_webhook
 from wyzebridge.wyze_api import display_name
 from wyzebridge.wyze_stream import WyzeStream
 
@@ -15,9 +15,12 @@ from wyzebridge.wyze_stream import WyzeStream
 # shortcut: kept in memory, so the history clears on restart; persist it if people want older events.
 EVENT_LOG: deque[dict] = deque(maxlen=100)
 # Wyze's own AI tags (Cam Plus); without them an event is plain movement.
-WYZE_TAGS = {101: "person", 102: "vehicle", 103: "pet", 104: "package"}
+# Sound tags 8000xx: the app's GmCommonData.AiTagCons. Smoke/CO are event_value 4/5, not tags (parse adds them).
+WYZE_TAGS = {101: "person", 102: "vehicle", 103: "pet", 104: "package", 800001: "crying", 800002: "barking",
+             800003: "meowing", 800005: "talking", 800006: "glass", 800007: "gunshot", 4: "smoke", 5: "co"}
 
 
+SOUND_LABELS = SOUND_EVENTS + tuple(URGENT)
 SIREN_SECONDS = 30
 SIREN_COOLDOWN = 120
 _last_siren: dict[str, float] = {}
@@ -81,7 +84,8 @@ class WyzeEvents:
                 stream.motion = self.last_ts
                 logger.info(f"[MOTION] {msg} ({name})")
                 EVENT_LOG.appendleft(entry)
-                send_webhook("motion", stream.uri, msg, img, title=name)
+                sound = entry.get("label") in SOUND_LABELS
+                send_webhook(entry["label"] if sound else "motion", stream.uri, msg, img, title=f"{URGENT[entry['label']]}: {name}" if entry.get("label") in URGENT else name)
                 if ALERTS.get("siren_away") and ALERTS.get("mode") == "away":
                     sound_siren(stream)
                 if MOTION_START:
@@ -96,6 +100,8 @@ class WyzeEvents:
         # v2 uses device_mac and v4 uses device_id
         # event_value 10 is a doorbell press (wyze-sdk's EventAlarmType.DOORBELL_RANG)
         tags = [t for t in event.get("tag_list") or [] if isinstance(t, int)]
+        if str(event.get("event_value")) in ("4", "5"):  # smoke, CO: first, so they win over other tags
+            tags.insert(0, int(event["event_value"]))
         return event["device_id"], event["file_list"], str(event.get("event_value")) == "10", tags
 
     def process_event(self, event: dict):
