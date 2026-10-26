@@ -733,6 +733,37 @@ class K10206SetMotionAlarm(TutkWyzeProtocolMessage):
         return encode(self.code, bytes([self.value, 0]))
 
 
+class K10204GetMotionAlarmParam(TutkWyzeProtocolMessage):
+    """Motion alarm sensitivity, 1-100 like the Wyze app (the camera replies with its switch and a 0-255 value)."""
+
+    def __init__(self, code: int = 10204):
+        super().__init__(code)
+
+    def parse_response(self, resp_data):
+        return round(resp_data[1] * 100 / 255)
+
+
+class K10206SetMotionSensitivity(TutkWyzeProtocolMessage):
+    """Set the motion alarm sensitivity (1-100) and leave its on/off switch alone (0), as the Wyze app does."""
+
+    def __init__(self, value: int, code: int = 10206):
+        super().__init__(code)
+        self.value: int = min(max(int(value), 1), 100)
+
+    def encode(self) -> bytes:
+        return encode(self.code, bytes([0, max(1, int(self.value * 2.55))]))
+
+
+class K10254GetSoundAlarmParam(K10204GetMotionAlarmParam):
+    def __init__(self):
+        super().__init__(10254)
+
+
+class K10256SetSoundSensitivity(K10206SetMotionSensitivity):
+    def __init__(self, value: int):
+        super().__init__(value, 10256)
+
+
 class K10292SetMotionTagging(TutkWyzeProtocolMessage):
     """
     A message used to enable/disable motion tagging (green box around motion).

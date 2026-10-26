@@ -21,6 +21,9 @@ REQ_K10050 = ["4.51", "4.52", "4.53", "4.50.4"]
 NO_BITRATE = ["4.36.12", "4.50.4.9222"]
 """Firmware versions that are broken and no longer return the actual bitrate."""
 
+# Cameras on the older alarm commands (K10202) instead of K10206.
+OLD_ALARM_MODELS = ("WYZEDB3", "WVOD1", "HL_WCO2", "WYZEC1")
+
 
 def cam_http_alive(ip: str) -> bool:
     """Test if camera http server is up."""
@@ -177,15 +180,13 @@ def handle_cmd(sess: WyzeIOTCSession, cmd: tuple | str, boa: Optional[dict] = No
         if topic == "bitrate" and fw_check(sess.camera.firmware_ver, REQ_K10050):
             cmd = "_bitrate"
         elif topic == "motion_detection" and payload:
-            if sess.camera.product_model in (
-                "WYZEDB3",
-                "WVOD1",
-                "HL_WCO2",
-                "WYZEC1",
-            ):
+            if sess.camera.product_model in OLD_ALARM_MODELS:
                 cmd = "K10202SetMotionAlarm", cmd[1]
             else:
                 cmd = "K10206SetMotionAlarm", cmd[1]
+        elif topic in {"motion_sensitivity", "sound_sensitivity"} and sess.camera.product_model in OLD_ALARM_MODELS:
+            # shortcut: these take 1-9 plus the current switch (K10202/K10252); add it if someone has one.
+            return {"command": topic, "status": "error", "response": "not supported on this camera"}
         resp = send_tutk_msg(sess, cmd)
         if boa and cmd == "take_photo":
             pull_last_image(boa, "photo")

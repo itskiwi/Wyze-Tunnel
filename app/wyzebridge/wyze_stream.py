@@ -30,7 +30,7 @@ from wyzecam import TutkError, WyzeAccount, WyzeCamera, WyzeIOTC, WyzeIOTCSessio
 
 NET_MODE = {0: "P2P", 1: "RELAY", 2: "LAN"}
 # Commands the Wyze cloud can do when there's no direct (TUTK) connection, and the property each reads.
-CLOUD_PROPS = {"alarm": "P1049", "floodlight": "P1056", "spotlight": "P1056", "motion_detection": "P1047"}
+CLOUD_PROPS = {"alarm": "P1049", "floodlight": "P1056", "spotlight": "P1056", "motion_detection": "P1047", "sound_detection": "P1048"}
 # How the web UI names each mode: on the home network, direct over the internet, or through Wyze's relay servers.
 NET_MODE_LABEL = {0: "internet", 1: "relay", 2: "local"}
 # Connection choices from the web UI, saved per camera; they override NET_MODE env vars.
@@ -504,6 +504,10 @@ class WyzeStream:
             # Newer cams need both; older ones ignore P1001.
             resp = self.api.set_property(self.camera, "P1047", "1" if on else "0")
             self.api.set_property(self.camera, "P1001", "1" if on else "0")
+        elif cmd == "sound_detection":
+            # Same pairing as motion: P1048 is the alarm, P1002 its recording (the Wyze app sets both).
+            resp = self.api.set_property(self.camera, "P1048", "1" if on else "0")
+            self.api.set_property(self.camera, "P1002", "1" if on else "0")
         elif self.camera.product_model == "HL_BC":
             resp = self.api.run_action(self.camera, f"floodlight_{payload}")
         else:
@@ -554,7 +558,8 @@ class WyzeStream:
                 "value": self.motion if cmd == "motion" else self.motion_ts,
             }
 
-        if cmd in CLOUD_PROPS and self.source != "tutk" and not env_bool("disable_control"):
+        # Sound detection is a cloud setting on every camera; the rest go through the camera when it's local.
+        if cmd in CLOUD_PROPS and (self.source != "tutk" or cmd == "sound_detection") and not env_bool("disable_control"):
             return self.cloud_control(cmd, str(payload).lower())
 
         if self.state < StreamStatus.STOPPED:
