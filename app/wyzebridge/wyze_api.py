@@ -99,6 +99,8 @@ class WyzeCredentials:
     def same_email(self, email: str) -> bool:
         return self.email.lower() == email.lower() if self.is_set else True
 
+SENSOR_MODELS = ("DWS", "PIR")  # contact and motion sensors (DWS3U, PIR3U, ...)
+
 
 class WyzeApi:
     __slots__ = "auth", "user", "creds", "cameras", "_last_pull", "mfa", "login_error", "login_retry_at"
@@ -402,6 +404,24 @@ class WyzeApi:
         except (HTTPError, RequestException, WyzeAPIError) as ex:
             logger.error(f"[EVENTS] {type(ex).__name__}: {ex}, cooling down.")
             return time() + 60, []
+
+    @authenticated
+    def get_sensor_events(self, since_ms: int) -> list[dict]:
+        """Open/close and motion events from Sense Hub sensors, newest first. Read-only; same call the Wyze app's sensor History page makes."""
+        try:
+            devices = wyzecam.api.get_homepage_object_list(self.auth)["device_list"]
+            found = []
+            for dev in devices:
+                model = str(dev.get("product_model") or "")
+                if not model.startswith(SENSOR_MODELS) or not dev.get("mac"):
+                    continue
+                params = {"device_mac": dev["mac"], "event_type": "2", "begin_time": since_ms, "end_time": int(time() + 60) * 1000, "count": 50, "order_by": 2}
+                for ev in post_device(self.auth, "get_event_list", params, api_version=2).get("event_list") or []:
+                    found.append(ev | {"nickname": dev.get("nickname") or model, "device_model": model})
+            return found
+        except (HTTPError, RequestException, WyzeAPIError, RateLimitError, KeyError, ValueError) as ex:
+            logger.error(f"[EVENTS] sensor history: {type(ex).__name__}: {ex}")
+            return []
 
     @authenticated
     def set_device_info(self, cam: WyzeCamera, params: dict):

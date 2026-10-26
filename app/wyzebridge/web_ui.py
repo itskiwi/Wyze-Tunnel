@@ -246,8 +246,8 @@ def setup_steps(cams: dict[str, dict]) -> list[dict]:
         {"title": "Back up your settings every day", "href": "account#backup", "done": bool(backup.load_auto().get("folder"))},
     ]
 
-# Kept by "Start over": the web login, the downloaded detection models, and finished timelapse videos.
-KEEP_ON_START_OVER = {"wb_login", "wb_password", "wb_api", "models", "timelapse"}
+# Kept by "Start over": the web login, the downloaded detection models, finished timelapse videos and the event archive.
+KEEP_ON_START_OVER = {"wb_login", "wb_password", "wb_api", "models", "timelapse", "event_archive"}
 
 
 def start_over(token_path: str, img_path: str, record_root: Path) -> str:
