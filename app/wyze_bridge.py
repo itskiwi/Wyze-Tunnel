@@ -39,6 +39,7 @@ class WyzeBridge(Thread):
         timelapse.start(self.streams.get_rtsp_snap)
         tamper.start(self.streams.get_rtsp_snap, lambda: [u for u, s in self.streams.streams.items() if s.state == 3])
         devices.start_watch(lambda: self.api.auth, self.api.refresh_token)
+        devices.start_scheduler(lambda: self.api.auth, self.api.refresh_token)
 
     def run(self, fresh_data: bool = False) -> None:
         self._initialize(fresh_data)

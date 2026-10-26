@@ -37,7 +37,8 @@
         return b;
     }
 
-    function facts(s) {
+    function facts(dev) {
+        const s = dev.state;
         const out = [];
         if (s.on !== undefined) out.push(s.on ? "On" : "Off");
         if (s.locked !== undefined) out.push(s.locked ? "Locked" : "Unlocked");
@@ -50,6 +51,7 @@
         if (s.brightness) out.push(`${s.brightness}% bright`);
         if (s.battery !== undefined && s.battery !== null) out.push(`Battery ${s.battery}${s.locked !== undefined ? "%" : ""}`);
         if (s.low_battery) out.push("Low battery");
+        if (dev.battery_days) out.push(`about ${dev.battery_days} days of battery left`);
         return out.join(" · ");
     }
 
@@ -124,6 +126,40 @@
         return box;
     }
 
+    function schedulePanel(dev, entries) {
+        const box = el("details", "mt-3 text-sm"), list = el("div", "mt-2 space-y-2");
+        const next = entries.map((e) => e.next).filter(Boolean).sort()[0];
+        box.append(el("summary", "cursor-pointer text-zinc-300", next ? `Schedule · next ${when(next)}` : "Schedule"), list);
+        const addRow = (e) => {
+            const row = el("div", "flex flex-wrap items-center gap-2");
+            const time = Object.assign(el("input", "field w-28"), { type: "time", value: e.time });
+            time.setAttribute("aria-label", "Time");
+            const on = el("select", "field w-24");
+            on.setAttribute("aria-label", "Action");
+            on.append(new Option("Turn on", "1", false, e.on), new Option("Turn off", "0", false, !e.on));
+            const days = DAYS.map((d, i) => {
+                const c = Object.assign(document.createElement("input"), { type: "checkbox", checked: e.days.includes(i) });
+                const l = el("label", "flex items-center gap-1 text-zinc-400");
+                l.append(c, d);
+                return c;
+            });
+            row.append(time, on, ...days.map((c) => c.parentNode), button("Remove", () => row.remove()));
+            row.read = () => ({ time: time.value, on: on.value === "1", days: days.map((c, i) => c.checked ? i : -1).filter((i) => i >= 0) });
+            list.append(row);
+        };
+        entries.forEach(addRow);
+        const bar = el("div", "flex gap-2");
+        bar.append(button("Add time", () => addRow({ time: "07:00", on: true, days: [0, 1, 2, 3, 4, 5, 6] })), button("Save schedule", () => {
+            status.className = "mt-3 text-sm text-zinc-400";
+            fetch("api/devices/schedules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mac: dev.mac, schedules: [...list.children].map((r) => r.read()) }) })
+                .then((r) => r.json().then((data) => r.ok ? data : Promise.reject(new Error(data.error))))
+                .then(() => { status.textContent = `Schedule saved for ${dev.name}.`; load(false); })
+                .catch((err) => { status.className = "mt-3 text-sm text-rose-300"; status.textContent = err.message || "Couldn't save."; });
+        }, true));
+        box.append(bar, el("p", "mt-1 text-xs text-zinc-500", "Runs from this bridge in its own time zone."));
+        return box;
+    }
+
     const SVGNS = "http://www.w3.org/2000/svg";
     const svg = (tag, attrs) => Object.entries(attrs).reduce((n, [k, v]) => (n.setAttribute(k, v), n), document.createElementNS(SVGNS, tag));
 
@@ -174,7 +210,7 @@
         return box;
     }
 
-    function render(list, lockMinutes) {
+    function render(list, lockMinutes, scheds) {
         const groups = {};
         list.forEach((d) => (groups[GROUPS[d.type] || "Hubs and other devices"] ??= []).push(d));
         document.getElementById("groups").replaceChildren(...Object.entries(groups).map(([name, devs]) => {
@@ -185,7 +221,8 @@
                 const head = el("div", "flex flex-wrap items-center gap-2");
                 head.append(el("span", "font-medium", dev.name), el("span", "text-xs text-zinc-500", dev.model),
                     el("span", `chip ${dev.online ? "chip-ok" : "chip-bad"} ml-auto`, dev.online ? "Online" : "Offline"));
-                row.append(head, el("p", "mt-1 text-sm text-zinc-400", dev.state.error || facts(dev.state)), controls(dev));
+                row.append(head, el("p", "mt-1 text-sm text-zinc-400", dev.state.error || facts(dev)), controls(dev));
+                if (["Plug", "OutdoorPlug", "MeshLight"].includes(dev.type)) row.append(schedulePanel(dev, scheds[dev.mac] || []));
                 if (dev.type === "Lock") row.append(lockPanel(dev, lockMinutes));
                 if (dev.type === "Plug" || dev.type === "OutdoorPlug") row.append(usagePanel(dev));
                 if (dev.model === "CO_EA1" || dev.model === "CO_TH1") row.append(historyPanel(dev));
@@ -196,10 +233,9 @@
     }
 
     function load(fresh) {
-        return fetch(`api/devices${fresh ? "?fresh=1" : ""}`)
-            .then((r) => r.json().then((data) => r.ok ? data : Promise.reject(new Error(data.error))))
-            .then((data) => {
-                render(data.devices, data.lock_minutes);
+        return Promise.all([getJson(`api/devices${fresh ? "?fresh=1" : ""}`), getJson("api/devices/schedules")])
+            .then(([data, scheds]) => {
+                render(data.devices, data.lock_minutes, scheds);
                 if (!document.getElementById("automations").childElementCount) loadAutomations(data.devices);
                 if (!status.classList.contains("text-rose-300")) status.textContent = data.devices.length ? "" : "No plugs, lights, locks or sensors on this Wyze account.";
             })
