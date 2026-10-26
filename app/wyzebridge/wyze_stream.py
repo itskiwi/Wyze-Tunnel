@@ -19,7 +19,7 @@ from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.config import CHRONIC_FAILURES, COOLDOWN, COOLDOWN_MAX, MQTT_TOPIC, TOKEN_PATH
 from wyzebridge.auth import WbAuth
 from wyzebridge.ffmpeg import get_ffmpeg_cmd
-from wyzebridge.go2rtc import FALLBACK_AFTER, Go2rtcServer, LanSession, lan_controls, lan_url, relay, source_chain, webrtc_url
+from wyzebridge.go2rtc import FALLBACK_AFTER, Go2rtcServer, go2rtc_available, LanSession, lan_controls, lan_url, relay, source_chain, webrtc_url
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import publish_discovery, publish_messages, update_mqtt_state
 from wyzebridge.webhooks import send_webhook
@@ -150,9 +150,13 @@ class WyzeStream:
         if self.sources and not self.options.substream:
             self.go2rtc.names[self.uri] = self.camera.nickname
         if not self.sources:
-            logger.info(
-                f"[{self.camera.product_model}] {self.camera.nickname} not supported"
-            )
+            if self.camera.webrtc_support and not go2rtc_available():
+                logger.warning(
+                    f"[{self.camera.product_model}] {self.camera.nickname} needs go2rtc, which isn't installed. "
+                    "Re-run the installer or update Wyze Tunnel to add it."
+                )
+            else:
+                logger.info(f"[{self.camera.product_model}] {self.camera.nickname} not supported")
             self.state = StreamStatus.DISABLED
         elif self.sources != ["tutk"]:
             logger.info(f"{self.camera.nickname} will connect with: {', '.join(self.sources)}")
