@@ -51,8 +51,7 @@ def save_alerts(form: dict) -> dict:
     settings = {"server": server, "topic": topic, "chat_url": chat_url, **quiet}
     settings |= {event: bool(form.get(event)) for event in ALERT_EVENTS}
     settings["siren_away"] = bool(form.get("siren_away"))
-    if "mode" in ALERTS:
-        settings["mode"] = ALERTS["mode"]
+    settings |= {k: ALERTS[k] for k in ("mode", "lock_minutes") if k in ALERTS}
     _write_alerts(settings)
     return settings
 
@@ -61,6 +60,18 @@ def set_alert_mode(mode: str) -> None:
     if mode not in ALERT_MODES:
         raise ValueError(f"Use one of: {', '.join(ALERT_MODES)}")
     _write_alerts(ALERTS | {"mode": mode})
+
+
+def set_lock_alert(minutes) -> int:
+    """Alert when a lock stays unlocked this many minutes. 0 turns it off."""
+    try:
+        minutes = -1 if isinstance(minutes, bool) else int(minutes)
+    except (TypeError, ValueError):
+        minutes = -1
+    if not 0 <= minutes <= 1440:
+        raise ValueError("Use a number of minutes from 0 (off) to 1440")
+    _write_alerts(ALERTS | {"lock_minutes": minutes})
+    return minutes
 
 
 def _write_alerts(settings: dict) -> None:
@@ -87,7 +98,7 @@ def chat_payload(service: str, title: str, msg: str, img: Optional[str]) -> dict
 
 
 def alert_url(event: str) -> str:
-    if ALERTS.get("topic") and (ALERTS.get(event) or event in ("test", "update", "street", "away")):
+    if ALERTS.get("topic") and (ALERTS.get(event) or event in ("test", "update", "street", "away", "lock")):
         return f"{ALERTS['server']}/{ALERTS['topic']}"
     return ""
 
@@ -110,10 +121,10 @@ def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None, t
         if event in ("motion", "person", "cleared") and (mode == "home" or (mode == "schedule" and in_quiet_hours(ALERTS))):
             return False
         url = alert_url(event)
-    chat = ALERTS.get("chat_url") if not env_url and (ALERTS.get(event) or event in ("test", "update", "street", "away")) else ""
+    chat = ALERTS.get("chat_url") if not env_url and (ALERTS.get(event) or event in ("test", "update", "street", "away", "lock")) else ""
     if not url and not chat:
         return False
-    title = title or {"update": "Wyze Tunnel updated", "street": "Street Watch request", "away": "Away access needs you", "summary": "Last night at home"}.get(event) or f"{event} event".title()
+    title = title or {"update": "Wyze Tunnel updated", "street": "Street Watch request", "away": "Away access needs you", "lock": "Door left unlocked", "summary": "Last night at home"}.get(event) or f"{event} event".title()
     sent = bool(url) and _post(url, event, camera, msg, img, title)
     if chat:
         logger.debug(f"[WEBHOOKS] Sending {event.upper()} event for {camera} to {chat_service(chat)}")

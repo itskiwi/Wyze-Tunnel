@@ -3,15 +3,21 @@
 Endpoints come from the Wyze Android app (v3.24); file references are to its decompiled sources.
 """
 
+import json
 import os
 import time
 from hashlib import md5
+from threading import Thread
 from typing import Any
 from urllib.parse import quote_plus
 
 from requests import RequestException
+from wyzebridge.config import TOKEN_PATH
+from wyzebridge.logging import logger
+from wyzebridge.webhooks import ALERTS, send_webhook
 from wyzecam.api import (
     WYZE_API,
+    AccessTokenError,
     WyzeAPIError,
     _headers,
     _payload,
@@ -42,8 +48,29 @@ HIDDEN = {"Camera"}
 # The outdoor plug's own row duplicates its two outlets (WLPPO-SUB), which are what the app switches.
 HIDDEN_MODELS = {"WLPPO"}
 CACHE_SECONDS = 60
+LOG_CACHE_SECONDS = 120
+HISTORY_FILE = TOKEN_PATH + "device_history.json"
+HISTORY_STEP = 300  # one reading per device every 5 minutes, kept 7 days
+HISTORY_MODELS = {"CO_EA1", "CO_TH1"}
+WATCH_SECONDS = 180
+# com/yunding/commonbiz/ui/adapter/HomeListAdapter.java:336-389 (the other ids are alarms; the app's strings aren't in the decompile)
+LOCK_EVENTS = {2203: "Unlocked", 2216: "Locked", 2214: "Door opened", 2215: "Door closed"}
 
 _cache: dict[str, Any] = {"at": 0.0, "devices": []}
+_lock_cache: dict[str, tuple[float, dict]] = {}
+_unlocked: dict[str, float] = {}  # lock mac -> when we first saw it unlocked
+_alerted: set[str] = set()
+
+
+def _load_history() -> dict[str, list[dict]]:
+    try:
+        with open(HISTORY_FILE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+_history: dict[str, list[dict]] = _load_history()
 
 
 def list_devices(auth: WyzeCredential, fresh: bool = False) -> list[dict]:
@@ -53,6 +80,8 @@ def list_devices(auth: WyzeCredential, fresh: bool = False) -> list[dict]:
     data = validate_resp(post(f"{WYZE_API}/v2/home_page/get_object_list", json=_payload(auth), headers=_headers()))
     devices = [_device(auth, d) for d in data["device_list"] if d["product_type"] not in HIDDEN and d["product_model"] not in HIDDEN_MODELS]
     _cache.update(at=time.time(), devices=devices)
+    record_history(devices)
+    lock_alert(devices)
     return devices
 
 
@@ -156,6 +185,117 @@ def lock_info(auth: WyzeCredential, mac: str) -> dict:
 def set_lock(auth: WyzeCredential, mac: str, locked: bool) -> None:
     """POST /openapi/lock/v1/control (FordHttpUrl.java:35, NetLockManager.remoteControlLock)."""
     _ford(auth, "post", "/openapi/lock/v1/control", {"uuid": lock_uuid(mac), "action": "remoteLock" if locked else "remoteUnlock"})
+
+
+def lock_log(auth: WyzeCredential, mac: str, fresh: bool = False) -> dict:
+    """Recent lock activity and the keypad code list, read-only. Cached so opening the panel can't hammer Wyze.
+
+    GET /openapi/v1/safety/family_record (HttpUrl.java:34, NetLockManager.java:53-90; time is in ms, FamilyRecord.java) and
+    GET /openapi/lock/v1/pwd with detail=1 (KeyManager.java:505-532, LockKeyEntity.java). Only allow-listed fields are copied:
+    the code digits (LockPasswordInfo.pwdValue) and the people's emails and avatars never leave this function.
+    """
+    if not fresh and (hit := _lock_cache.get(mac)) and time.time() - hit[0] < LOG_CACHE_SECONDS:
+        return hit[1]
+    uuid = lock_uuid(mac)
+    records = _ford(auth, "get", "/openapi/v1/safety/family_record", {"uuid": uuid, "offset": "0", "limit": "20"}).get("family_record") or []
+    codes = _ford(auth, "get", "/openapi/lock/v1/pwd", {"uuid": uuid, "detail": "1"}).get("passwords") or []
+    out = {"events": [_lock_event(r) for r in records], "codes": [_keypad_code(c) for c in codes]}
+    _lock_cache[mac] = (time.time(), out)
+    return out
+
+
+def _lock_event(r: dict) -> dict:
+    d = r.get("detail") or {}
+    # shortcut: source (keypad/app/manual/auto) stays a number, the app's source strings aren't in the decompile; map it once confirmed.
+    return {"time": int(r.get("time") or 0) // 1000, "event": LOCK_EVENTS.get(r.get("eventid"), f"Event {r.get('eventid')}"),
+            "who": str(d.get("source_name") or ""), "source": d.get("source")}
+
+
+def _keypad_code(c: dict) -> dict:
+    perm, period = c.get("permission") or {}, c.get("period_info") or {}
+    # permission.status 3 = one-time, 4 = has an end time (EntryCodeListAdapter.java:112-117); pwd_state 4 = expired.
+    kind = {3: "one-time", 4: "temporary"}.get(perm.get("status")) or ("recurring" if period else "permanent")
+    return {"name": str(c.get("name") or ""), "type": kind, "expired": c.get("pwd_state") == 4, "begin": perm.get("begin") or 0,
+            "end": perm.get("end") or 0, "days": period.get("valid_days") or [], "from": str(period.get("begin") or ""), "to": str(period.get("end") or "")}
+
+
+def lock_alert(devs: list[dict], now: float | None = None) -> None:
+    """Alert once when a lock has been unlocked for lock_minutes; locking it again resets. Off unless lock_minutes is set."""
+    now = now or time.time()
+    minutes = ALERTS.get("lock_minutes") or 0
+    for d in devs:
+        if d["type"] != "Lock" or "locked" not in d["state"]:
+            continue
+        if d["state"]["locked"] or not minutes:
+            _unlocked.pop(d["mac"], None)
+            _alerted.discard(d["mac"])
+        elif now - _unlocked.setdefault(d["mac"], now) >= minutes * 60 and d["mac"] not in _alerted:
+            _alerted.add(d["mac"])
+            send_webhook("lock", d["name"], f"{d['name']} has been unlocked for {minutes} minutes.", title="Door left unlocked")
+
+
+def _number_or_none(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def record_history(devs: list[dict], now: float | None = None) -> None:
+    """Keep thermostat and room-sensor readings from each refresh for the graphs.
+
+    shortcut: Wyze's get_iot_history (SensorApi.java:43) has no confirmed request shape in the app, so history starts when the bridge first sees the device.
+    """
+    now = now or time.time()
+    changed = False
+    for d in devs:
+        s = d["state"]
+        if d["model"] not in HISTORY_MODELS or "error" in s:
+            continue
+        rows = _history.setdefault(d["mac"], [])
+        if rows and now - rows[-1]["t"] < HISTORY_STEP:
+            continue
+        state = str(s.get("working_state") or "").lower()
+        row = {"t": int(now), "temp": _number_or_none(s.get("temperature")), "hum": _number_or_none(s.get("humidity")),
+               "heat": _number_or_none(s.get("heat_sp")), "cool": _number_or_none(s.get("cool_sp")),
+               "run": "heat" if "heat" in state else "cool" if "cool" in state else None}
+        rows.append({k: v for k, v in row.items() if v is not None})
+        rows[:] = [r for r in rows if r["t"] > now - 7 * 86400]
+        changed = True
+    if changed:
+        try:
+            with open(HISTORY_FILE, "w") as f:
+                json.dump(_history, f)
+        except OSError as ex:
+            logger.warning(f"[DEVICES] Couldn't save the device history: {ex}")
+
+
+def history(mac: str, hours: int, now: float | None = None) -> dict:
+    """Readings for the last 24 or 168 hours and minutes of heating and cooling (each reading counts for up to 10 minutes)."""
+    now = now or time.time()
+    rows = [r for r in _history.get(mac, []) if r["t"] >= now - hours * 3600]
+    run = {"heat": 0, "cool": 0}
+    for r, nxt in zip(rows, [r["t"] for r in rows[1:]] + [now]):
+        if r.get("run"):
+            run[r["run"]] += min(nxt - r["t"], 600) // 60
+    return {"points": rows, "heat_minutes": int(run["heat"]), "cool_minutes": int(run["cool"])}
+
+
+def start_watch(get_auth, refresh) -> None:
+    """Poll every few minutes, only while the lock alert is on or there is history to extend, so the Devices page can be closed."""
+    def loop():
+        while True:
+            time.sleep(WATCH_SECONDS)
+            try:
+                if (ALERTS.get("lock_minutes") or _history) and get_auth():
+                    try:
+                        list_devices(get_auth())
+                    except AccessTokenError:
+                        refresh()
+                        list_devices(get_auth())
+            except Exception:
+                logger.exception("[DEVICES] Background check failed")
+    Thread(target=loop, daemon=True, name="devices-watch").start()
 
 
 def _number(data: dict, key: str, low: int, high: int) -> str:

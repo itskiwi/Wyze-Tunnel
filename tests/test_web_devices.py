@@ -166,3 +166,130 @@ def test_only_the_owners_password_unlocks(client, wyze, monkeypatch):
     assert client.post("/api/devices?api=apikey", json=unlock, headers=wrong).status_code == 403
     assert not [c for c in wyze if "control" in c[1]]  # nothing reached Wyze
     assert client.post("/api/devices", json={"mac": "YD.LO1.abc123", "lock": True}).json == {"status": "locked"}
+
+
+CODE_DIGITS = "482913"
+LOG = {"ErrNo": 0, "family_record": [
+    {"eventid": 2216, "time": 1790000060000, "uuid": "abc123", "detail": {"source": 2, "source_name": "", "email": "me@example.com", "avatar": "http://x/a.png"}},
+    {"eventid": 2203, "time": 1790000000000, "detail": {"source": 1, "source_name": "Sam", "userid": "u1"}},
+    {"eventid": 2214, "time": 1789999000000, "detail": {}},
+]}
+PWDS = {"ErrNo": 0, "passwords": [
+    {"id": 1, "name": "Cleaner", "pwdValue": CODE_DIGITS, "password": CODE_DIGITS, "pwd_state": 1, "permission": {"status": 4, "begin": 1, "end": 2}},
+    {"id": 2, "name": "Family", "pwdValue": CODE_DIGITS, "pwd_state": 1, "permission": {"status": 1}},
+    {"id": 3, "name": "Weekdays", "pwd": CODE_DIGITS, "pwd_state": 4, "period_info": {"type": 1, "begin": "09:00", "end": "17:00", "valid_days": [1, 2]}},
+]}
+
+
+@pytest.fixture
+def lock_api(wyze, monkeypatch):
+    seen = []
+    base = devices.get
+
+    def get(url, params=None, **kw):
+        seen.append((url, params))
+        if url.endswith("/safety/family_record"):
+            return Resp(LOG)
+        if url.endswith("/lock/v1/pwd"):
+            return Resp(PWDS)
+        return base(url, params, **kw)
+
+    monkeypatch.setattr(devices, "get", get)
+    monkeypatch.setattr(devices, "_lock_cache", {})
+    return seen
+
+
+def test_lock_log_parses_and_never_returns_code_digits(lock_api):
+    out = devices.lock_log(AUTH, "YD.LO1.abc123")
+    assert [e["event"] for e in out["events"]] == ["Locked", "Unlocked", "Door opened"]
+    assert out["events"][1] == {"time": 1790000000, "event": "Unlocked", "who": "Sam", "source": 1}
+    assert [(c["name"], c["type"], c["expired"]) for c in out["codes"]] == [
+        ("Cleaner", "temporary", False), ("Family", "permanent", False), ("Weekdays", "recurring", True)]
+    assert out["codes"][2]["days"] == [1, 2] and out["codes"][2]["from"] == "09:00"
+    assert CODE_DIGITS not in json.dumps(out) and "me@example.com" not in json.dumps(out)
+    assert {u.rsplit("/", 1)[-1] for u, _ in lock_api} == {"family_record", "pwd"}  # reads only
+    devices.lock_log(AUTH, "YD.LO1.abc123")
+    assert len(lock_api) == 2  # cached
+
+
+def test_lock_log_endpoint_strips_digits(client, lock_api):
+    resp = client.get("/api/devices/lock-log?mac=YD.LO1.abc123")
+    assert resp.status_code == 200 and CODE_DIGITS not in resp.get_data(as_text=True)
+    assert client.get("/api/devices/lock-log?mac=DOOR").status_code == 404
+
+
+def test_guests_cannot_read_history_or_change_the_alert(client, lock_api):
+    gran = client.post("/guests", json={"name": "Gran", "hours": 0}).json["password"]
+    visitor = client.post("/guests", json={"name": "Vi", "hours": 24}).json["password"]
+    auth = lambda n, p: {"Authorization": "Basic " + b64encode(f"{n}:{p}".encode()).decode()}  # noqa: E731
+    for path in ("/api/devices/lock-log?mac=YD.LO1.abc123", "/api/devices/history?mac=CO_EA1_1", "/api/devices", "/devices"):
+        assert client.get(path, headers=auth("Vi", visitor)).status_code == 403
+    assert client.post("/api/devices/lock-alert", json={"minutes": 5}, headers=auth("Vi", visitor)).status_code == 403
+    assert client.post("/api/devices/lock-alert", json={"minutes": 5}, headers=auth("Gran", gran)).status_code == 403
+
+
+def test_lock_alert_setting_is_validated(client, monkeypatch, tmp_path):
+    from wyzebridge import webhooks
+
+    monkeypatch.setattr(webhooks, "ALERTS_FILE", str(tmp_path / "alerts.json"))
+    monkeypatch.setattr(webhooks, "ALERTS", {})
+    assert client.post("/api/devices/lock-alert", json={"minutes": 15}).json == {"lock_minutes": 15}
+    assert webhooks.ALERTS["lock_minutes"] == 15
+    webhooks.save_alerts({"topic": "abc"})  # saving the Alerts page keeps it
+    assert webhooks.ALERTS["lock_minutes"] == 15
+    for bad in ("x", -1, 5000, True, None):
+        assert client.post("/api/devices/lock-alert", json={"minutes": bad}).status_code == 400
+    assert client.post("/api/devices/lock-alert", json={"minutes": 0}).json == {"lock_minutes": 0}
+
+
+def test_unlocked_alert_fires_once_after_n_minutes_and_resets_on_lock(monkeypatch):
+    sent = []
+    monkeypatch.setattr(devices, "ALERTS", {"lock_minutes": 10})
+    monkeypatch.setattr(devices, "send_webhook", lambda *a, **k: sent.append(a) or True)
+    monkeypatch.setattr(devices, "_unlocked", {})
+    monkeypatch.setattr(devices, "_alerted", set())
+    lock = lambda locked: [{"type": "Lock", "mac": "L", "name": "Back Door", "state": {"locked": locked}}]  # noqa: E731
+    devices.lock_alert(lock(False), 1000)
+    devices.lock_alert(lock(False), 1000 + 9 * 60)
+    assert not sent
+    devices.lock_alert(lock(False), 1000 + 10 * 60)
+    devices.lock_alert(lock(False), 1000 + 60 * 60)
+    assert len(sent) == 1 and sent[0][0] == "lock" and sent[0][1] == "Back Door"
+    devices.lock_alert([{"type": "Lock", "mac": "L", "name": "Back Door", "state": {"error": "x"}}], 5000)  # a failed read changes nothing
+    devices.lock_alert(lock(True), 5000)
+    devices.lock_alert(lock(False), 6000)
+    devices.lock_alert(lock(False), 6000 + 10 * 60)
+    assert len(sent) == 2
+    monkeypatch.setattr(devices, "ALERTS", {})  # off by default
+    devices.lock_alert(lock(False), 99999)
+    assert len(sent) == 2
+
+
+def test_lock_alert_event_is_always_allowed(monkeypatch):
+    from wyzebridge import webhooks
+
+    monkeypatch.setattr(webhooks, "ALERTS", {"server": "https://ntfy.sh", "topic": "abc"})
+    assert webhooks.alert_url("lock") == "https://ntfy.sh/abc"
+
+
+def test_history_is_kept_and_summed(monkeypatch, tmp_path):
+    monkeypatch.setattr(devices, "HISTORY_FILE", str(tmp_path / "history.json"))
+    monkeypatch.setattr(devices, "_history", {})
+    dev = lambda ws: {"mac": "T", "model": "CO_EA1", "state": {"temperature": "73.3", "humidity": "40", "heat_sp": "70", "cool_sp": "76", "working_state": ws}}  # noqa: E731
+    now = 1_000_000
+    for i, ws in enumerate(("heating", "heating", "idle", "cooling")):
+        devices.record_history([dev(ws)], now + i * 300)
+    devices.record_history([dev("idle")], now + 3 * 300 + 60)  # too soon: skipped
+    devices.record_history([{"mac": "T", "model": "CO_EA1", "state": {"error": "x"}}], now + 99999)  # failed reads aren't recorded
+    out = devices.history("T", 24, now + 4 * 300)
+    assert len(out["points"]) == 4 and out["points"][0] == {"t": now, "temp": 73.3, "hum": 40.0, "heat": 70.0, "cool": 76.0, "run": "heat"}
+    assert out["heat_minutes"] == 10 and out["cool_minutes"] == 5
+    assert devices.history("T", 24, now + 3 * 86400)["points"] == []
+    assert json.load(open(tmp_path / "history.json"))["T"][0]["t"] == now
+    assert devices.history("nope", 24)["points"] == []
+
+
+def test_history_endpoint(client, monkeypatch):
+    monkeypatch.setattr(devices, "_history", {})
+    assert client.get("/api/devices/history?mac=CO_EA1_1&hours=24").json["points"] == []
+    assert client.get("/api/devices/history?mac=CO_EA1_1&hours=5").status_code == 400
