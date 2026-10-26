@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, event_archive, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, visitors, weather, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, camera_settings, config, detect, event_archive, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, visitors, weather, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.diagnostics import build_report
@@ -574,6 +574,59 @@ def create_app():
             return {"error": "Unknown camera"}, 404
         tamper.reset(cam_name)
         return {"status": "saved"}
+
+    @app.route("/camera-settings")
+    @owner_only
+    def camera_settings_page():
+        return render_template("camera_settings.html")
+
+    def settings_send(uri: str, cmd: str, payload: str = "") -> dict:
+        return wb.streams.send_cmd(uri, cmd, payload)
+
+    @app.route("/camera-settings/data")
+    @owner_only
+    def camera_settings_data():
+        return camera_settings.table(wb.streams.streams) | {"snapshots": camera_settings.list_snapshots()}
+
+    @app.route("/camera-settings/refresh", methods=["POST"])
+    @owner_only
+    def camera_settings_refresh():
+        # One command at a time takes a while, so the reads run in the background.
+        if camera_settings.LOCK.locked():
+            return {"error": "Already busy with the cameras."}, 409
+        Thread(target=camera_settings.refresh, args=(wb.streams.streams, settings_send), daemon=True).start()
+        return {"status": "started"}
+
+    @app.route("/camera-settings/apply", methods=["POST"])
+    @owner_only
+    def camera_settings_apply():
+        body = request.get_json(silent=True) or {}
+        try:
+            results = camera_settings.apply(wb.streams.streams, settings_send, str(body.get("setting")), str(body.get("value")), body.get("cams"))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        except RuntimeError:
+            return {"error": "Busy with the cameras. Try again in a minute."}, 409
+        return {"results": results}
+
+    @app.route("/camera-settings/snapshots", methods=["POST"])
+    @owner_only
+    def camera_settings_snapshot():
+        try:
+            return camera_settings.save_snapshot(wb.streams.streams)
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
+    @app.route("/camera-settings/restore", methods=["POST"])
+    @owner_only
+    def camera_settings_restore():
+        body = request.get_json(silent=True) or {}
+        try:
+            return camera_settings.restore(wb.streams.streams, settings_send, str(body.get("id")), str(body.get("cam")), body.get("confirm") is True)
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        except RuntimeError:
+            return {"error": "Busy with the cameras. Try again in a minute."}, 409
 
     @app.route("/network")
     @auth_required

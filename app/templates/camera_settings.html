@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+
+{% block title %}Camera settings · {% endblock %}
+{% block content %}
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Camera settings</h1>
+    <div class="flex flex-wrap gap-2 sm:ml-auto">
+        <button id="read" class="btn btn-primary" type="button" title="Asks each camera that is streaming now, one at a time. Idle cameras are left alone."><i class="fas fa-arrows-rotate"></i>Read settings</button>
+        <button id="save" class="btn" type="button"><i class="fas fa-floppy-disk"></i>Save a snapshot</button>
+    </div>
+</header>
+<p id="note" class="mb-4 text-sm text-zinc-400" role="status">Only cameras that are streaming are read, so idle and battery cameras are never woken. Cells that differ from most of your cameras are highlighted.</p>
+
+<section class="surface mb-4 overflow-x-auto p-5">
+    <table id="grid" class="w-full text-left text-sm"></table>
+</section>
+
+<section class="surface mb-4 p-5">
+    <h2 class="font-semibold">Apply to cameras</h2>
+    <div class="mt-3 flex flex-wrap items-end gap-3 text-sm">
+        <label>Setting<select id="setting" class="field mt-1"></select></label>
+        <label>Value<select id="value" class="field mt-1"></select></label>
+        <button id="apply" class="btn btn-primary" type="button">Apply</button>
+    </div>
+    <p class="mt-3 text-sm text-zinc-400">Tick the cameras in the first column. Cameras that differ from the rest are ticked for you.</p>
+    <ul id="results" class="mt-3 divide-y divide-zinc-800 text-sm"></ul>
+</section>
+
+<section class="surface p-5">
+    <h2 class="font-semibold">Snapshots</h2>
+    <p class="mt-1 text-sm text-zinc-400">A snapshot keeps what was last read. Restore it to one camera, for example after a factory reset. You see what would change first.</p>
+    <ul id="snaps" class="mt-3 divide-y divide-zinc-800 text-sm"></ul>
+    <div id="preview" class="mt-3 text-sm"></div>
+</section>
+{% endblock %}
+
+{% block javascript %}
+<script>
+    const $ = (id) => document.getElementById(id);
+    let data = { cams: [], columns: {}, writable: {}, drift: {}, snapshots: [] };
+    const note = (text, bad) => { $("note").className = "mb-4 text-sm " + (bad ? "text-rose-300" : "text-zinc-400"); $("note").textContent = text; };
+    const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) })
+        .then((r) => r.json().then((j) => r.ok ? j : Promise.reject(new Error(j.error || r.statusText))));
+    const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
+
+    function draw() {
+        const grid = $("grid");
+        grid.replaceChildren();
+        const head = grid.createTHead().insertRow();
+        head.append(el("th", "Use"), el("th", "Camera"), ...Object.values(data.columns).map((l) => el("th", l)));
+        const body = grid.createTBody();
+        for (const cam of data.cams) {
+            const row = body.insertRow();
+            const box = el("input"); box.type = "checkbox"; box.dataset.uri = cam.uri; box.disabled = !cam.connected;
+            row.append(el("td")); row.cells[0].append(box);
+            const name = el("td", cam.name); if (!cam.connected) name.append(el("span", " (not streaming)", "text-zinc-500"));
+            row.append(name);
+            for (const key of Object.keys(data.columns)) {
+                const odd = (data.drift[key] || []).includes(cam.uri);
+                const cell = el("td", cam.values[key] ?? "–", odd ? "rounded bg-amber-500/20 text-amber-200" : "");
+                if (odd) cell.title = "Differs from most cameras";
+                row.append(cell);
+            }
+        }
+        const sel = $("setting");
+        if (!sel.options.length) for (const key of Object.keys(data.writable)) sel.append(new Option(data.columns[key], key));
+        values();
+        $("snaps").replaceChildren(...data.snapshots.map((s) => {
+            const li = el("li", "", "flex flex-wrap items-center gap-2 py-2");
+            li.append(el("span", new Date(s.ts).toLocaleString()));
+            for (const [uri, name] of Object.entries(s.cams)) {
+                const b = el("button", "Restore " + name, "btn"); b.type = "button";
+                b.addEventListener("click", () => preview(s.id, uri, name));
+                li.append(b);
+            }
+            return li;
+        }));
+    }
+    function values() {
+        const key = $("setting").value;
+        $("value").replaceChildren(...(data.writable[key] || []).map((v) => new Option(v, v)));
+        const odd = data.drift[key] || [];
+        document.querySelectorAll("#grid input[type=checkbox]").forEach((b) => { b.checked = odd.includes(b.dataset.uri); });
+    }
+    function load() {
+        return fetch("camera-settings/data").then((r) => r.json()).then((d) => {
+            data = d; draw();
+            const ages = d.cams.filter((c) => c.age !== null).map((c) => c.age);
+            if (d.busy) { note("Reading the cameras..."); setTimeout(load, 2500); }
+            else if (!ages.length) note("Nothing read yet. Press Read settings.");
+            else if (Math.max(...ages) > d.stale) note("These readings are over " + Math.round(d.stale / 60) + " minutes old. Press Read settings to update them.");
+        });
+    }
+    $("setting").addEventListener("change", values);
+    $("read").addEventListener("click", () => post("camera-settings/refresh").then(() => { note("Reading the cameras..."); setTimeout(load, 1500); }).catch((e) => note(e.message, true)));
+    $("save").addEventListener("click", () => post("camera-settings/snapshots").then(load).catch((e) => note(e.message, true)));
+    $("apply").addEventListener("click", () => {
+        const cams = [...document.querySelectorAll("#grid input:checked")].map((b) => b.dataset.uri);
+        if (!cams.length) return note("Tick at least one camera.", true);
+        const label = data.columns[$("setting").value] + " to " + $("value").value;
+        if (!confirm(`Set ${label} on ${cams.length} camera${cams.length > 1 ? "s" : ""}?`)) return;
+        post("camera-settings/apply", { setting: $("setting").value, value: $("value").value, cams })
+            .then((r) => { $("results").replaceChildren(...r.results.map((x) => el("li", `${x.name}: ${x.result}${x.detail ? " (" + x.detail + ")" : ""}`, "py-2"))); return load(); })
+            .catch((e) => note(e.message, true));
+    });
+    function preview(id, uri, name) {
+        const box = $("preview");
+        post("camera-settings/restore", { id, cam: uri }).then((r) => {
+            const keys = Object.keys(r.diff);
+            box.replaceChildren(el("p", keys.length ? `Restoring ${name} would change:` : `${name} already matches this snapshot.`, "font-medium"));
+            for (const k of keys) box.append(el("p", `${data.columns[k]}: ${r.diff[k].current ?? "unknown"} -> ${r.diff[k].saved}`));
+            if (!keys.length) return;
+            const go = el("button", "Restore " + name, "btn btn-primary mt-2"); go.type = "button";
+            go.addEventListener("click", () => {
+                if (!confirm(`Change ${keys.length} setting${keys.length > 1 ? "s" : ""} on ${name}?`)) return;
+                post("camera-settings/restore", { id, cam: uri, confirm: true })
+                    .then((x) => { box.replaceChildren(el("p", `${name}: ${x.applied.result}${x.applied.detail ? " (" + x.applied.detail + ")" : ""}`)); load(); })
+                    .catch((e) => box.replaceChildren(el("p", e.message, "text-rose-300")));
+            });
+            box.append(go);
+        }).catch((e) => box.replaceChildren(el("p", e.message, "text-rose-300")));
+    }
+    load();
+</script>
+{% endblock %}
