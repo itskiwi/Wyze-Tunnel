@@ -155,6 +155,9 @@
                 <span class="drag_handle fs-display-none hidden h-8 w-8 flex-none cursor-move place-items-center rounded-full text-zinc-400 md:group-hover:grid" draggable="true" title="Drag to reorder"><i class="fas fa-grip pointer-events-none"></i></span>
             <div class="cam-acts fs-display-none flex flex-none items-center gap-1.5">
                 <span class="vp-slot"></span>
+                {% if camera.webrtc and not watch_only %}
+                <button type="button" class="talk cam-action" data-cam="{{cam_uri}}" title="Hold to talk through {{ camera.nickname }}" aria-label="Hold to talk through {{ camera.nickname }}"><i class="fas fa-microphone" aria-hidden="true"></i></button>
+                {% endif %}
                 {% if not watch_only %}
                 <details class="dropdown">
                     <summary class="cam-action" title="More" aria-label="More for {{ camera.nickname }}"><i class="fas fa-ellipsis"></i></summary>
@@ -369,11 +372,9 @@
 </script>
 {% endif %}
 <script src="static/site.js?v={{ version }}"></script>
-{% if show_video %}
-{% if (webrtc and video_format == "webrtc") or video_format =="kvs" %}
+{# Always: it also holds push-to-talk #}
 <script src="static/webrtc.js?v={{ version }}"></script>
-{% else %}
+{% if show_video and not ((webrtc and video_format == "webrtc") or video_format =="kvs") %}
 <script src="static/hls.min.js?v={{ version }}"></script>
-{% endif %}
 {% endif %}
 {% endblock %}

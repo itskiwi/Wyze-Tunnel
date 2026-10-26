@@ -205,6 +205,12 @@ ol:has(> .num-step) { counter-reset: step; }
 .card > .card-image { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .tile-bar .cam-action { height: 2.25rem; width: 2.25rem; background: rgb(var(--zinc-800)); color: rgb(var(--zinc-100)); box-shadow: none; }
 .tile-bar .cam-action:hover { transform: none; background: rgb(var(--zinc-700)); }
+/* Push-to-talk: amber while connecting, red while the camera hears you */
+.tile-bar .talk { touch-action: none; user-select: none; -webkit-user-select: none; }
+.tile-bar .talk:disabled { opacity: .4; cursor: not-allowed; }
+.tile-bar .talk[data-state="connecting"] { background: #b45309; color: #fff; }
+.tile-bar .talk[data-state="live"] { background: #be123c; color: #fff; }
+.tile-bar .talk[data-state="error"] { box-shadow: 0 0 0 2px #be123c; }
 .vp-slot { display: contents; }
 .vp-slot .vp-bar { position: static; opacity: 1; transform: none; }
 .card:has(.vp:not(.vp-on)) .vp-slot .vp-bar, .card:has(video.hidden) .vp-slot .vp-bar { display: none; }
