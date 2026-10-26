@@ -61,21 +61,26 @@ class WyzeEvents:
             logger.debug(f"[MOTION] Got {len(resp)} events")
         return resp
 
+    def log_entry(self, stream, ts: int, files: list, ring: bool, tags: list | None) -> dict:
+        img = next((f["url"] for f in files if f["type"] == 1), None)
+        clip = next((f["url"] for f in files if f["type"] == 2), None)  # Wyze's own short cloud video
+        name = display_name(stream.camera)
+        label = "ring" if ring else next((WYZE_TAGS[t] for t in tags or [] if t in WYZE_TAGS), "motion")
+        msg = phrases.describe(label, name, phrases.place_of(stream.uri, name))
+        return {"uri": stream.uri, "name": name, "ts": ts, "img": img, "clip": clip, "text": msg} | (
+            {"label": "rang the doorbell"} if ring else {"label": label} if label != "motion" else {}
+        )
+
     def set_motion(self, mac: str, files: list, ring: bool = False, tags: list | None = None) -> None:
         for stream in self.streams.values():
             if stream.camera.mac == mac and not stream.options.substream:
-                if img := next((f["url"] for f in files if f["type"] == 1), None):
+                entry = self.log_entry(stream, self.last_ts, files, ring, tags)
+                img, name, msg = entry["img"], entry["name"], entry["text"]
+                if img:
                     stream.camera.thumbnail = img
-                clip = next((f["url"] for f in files if f["type"] == 2), None)  # Wyze's own short cloud video
                 stream.motion = self.last_ts
-                name = display_name(stream.camera)
-                label = "ring" if ring else next((WYZE_TAGS[t] for t in tags or [] if t in WYZE_TAGS), "motion")
-                msg = phrases.describe(label, name, phrases.place_of(stream.uri, name))
                 logger.info(f"[MOTION] {msg} ({name})")
-                EVENT_LOG.appendleft(
-                    {"uri": stream.uri, "name": name, "ts": self.last_ts, "img": img, "clip": clip, "text": msg}
-                    | ({"label": "rang the doorbell"} if ring else {"label": label} if label != "motion" else {})
-                )
+                EVENT_LOG.appendleft(entry)
                 send_webhook("motion", stream.uri, msg, img, title=name)
                 if ALERTS.get("siren_away") and ALERTS.get("mode") == "away":
                     sound_siren(stream)
@@ -86,6 +91,13 @@ class WyzeEvents:
                 if ring:
                     visitors.add(stream.uri, name, self.last_ts)
 
+    @staticmethod
+    def parse(event: dict) -> tuple:
+        # v2 uses device_mac and v4 uses device_id
+        # event_value 10 is a doorbell press (wyze-sdk's EventAlarmType.DOORBELL_RANG)
+        tags = [t for t in event.get("tag_list") or [] if isinstance(t, int)]
+        return event["device_id"], event["file_list"], str(event.get("event_value")) == "10", tags
+
     def process_event(self, event: dict):
         if event["event_id"] in self.events:
             return
@@ -93,12 +105,25 @@ class WyzeEvents:
         self.events.append(event["event_id"])
         self.last_ts = int(event["event_ts"] / 1000)
         if time.time() - self.last_ts < 30:
-            # v2 uses device_mac and v4 uses device_id
-            # event_value 10 is a doorbell press (wyze-sdk's EventAlarmType.DOORBELL_RANG)
-            tags = [t for t in event.get("tag_list") or [] if isinstance(t, int)]
-            self.set_motion(event["device_id"], event["file_list"], str(event.get("event_value")) == "10", tags)
+            self.set_motion(*self.parse(event))
+
+    def backfill(self):
+        """After a restart, fill the timeline with the last day of Wyze events. Timeline only: no alerts for old events."""
+        self.last_check, resp = self.api.get_events(self.enabled_cams(), history=86400)
+        streams = {s.camera.mac: s for s in self.streams.values() if not s.options.substream}
+        for event in resp:  # newest first, and older than anything already logged
+            mac, files, ring, tags = self.parse(event)
+            if len(EVENT_LOG) >= EVENT_LOG.maxlen:
+                break
+            if stream := streams.get(mac):
+                EVENT_LOG.append(self.log_entry(stream, int(event["event_ts"] / 1000), files, ring, tags))
+        if resp:
+            self.last_ts = int(resp[0]["event_ts"] / 1000)
+            logger.info(f"[MOTION] Loaded {len(resp)} Wyze events from the last day into the timeline")
 
     def check_motion(self):
+        if not self.last_check:
+            return self.backfill()
         if time.time() - self.last_check < MOTION_INT:
             return
         for event in self.get_events():
