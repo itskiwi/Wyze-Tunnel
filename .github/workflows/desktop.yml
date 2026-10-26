@@ -78,7 +78,8 @@ jobs:
           path: ${{ matrix.out }}
 
   release:
-    if: github.ref_type == 'tag' || inputs.version
+    # Publish even when the Mac build couldn't get a runner; Windows is the platform that must ship.
+    if: ${{ !cancelled() && (github.ref_type == 'tag' || inputs.version) }}
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -86,6 +87,7 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - run: ls dist/*.exe
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
