@@ -17,7 +17,7 @@ SOUND_EVENTS = ("glass", "gunshot", "crying", "barking", "meowing", "talking")
 ALERT_EVENTS = ("motion", "person", "offline", "summary", "cleared") + SOUND_EVENTS
 # Smoke and CO alarms ignore the checkboxes and quiet hours: nobody wants to miss them.
 URGENT = {"smoke": "Smoke alarm", "co": "Carbon monoxide alarm"}
-ALWAYS = ("test", "update", "street", "away", *URGENT)
+ALWAYS = ("test", "update", "street", "away", "tamper", *URGENT)
 # Chat apps an alert can also go to, by webhook host. Only these, so a saved URL can't reach other servers.
 CHAT_HOSTS = {"discord.com": "discord", "discordapp.com": "discord", "hooks.slack.com": "slack", "api.telegram.org": "telegram"}
 # home: no motion alerts. away (holiday): motion alerts even in quiet hours. schedule: quiet hours apply.

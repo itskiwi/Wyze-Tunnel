@@ -12,7 +12,7 @@ from flask import url_for as _url_for
 from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import check_password_hash
 from wyzebridge import config
-from wyzebridge import guests, integrations, phrases, pocket
+from wyzebridge import guests, integrations, phrases, pocket, tamper
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
@@ -299,6 +299,9 @@ def bridge_issues(cams: dict[str, dict]) -> list[dict]:
             "sd_card_full": sd.get("status") == "1" and _int(sd.get("capacity")) > 0
             and _int(sd.get("free")) / _int(sd.get("capacity")) < 0.1,
             "using_relay": cam.get("net_mode") == "relay",
+            "lens_covered": tamper.STATE.get(uri) == "covered",
+            "camera_moved": tamper.STATE.get(uri) == "moved",
+            "night_vision_broken": tamper.STATE.get(uri) == "night_vision",
         }
         issues += [{"camera": uri, "issue": issue} for issue, hit in checks.items() if hit]
     return issues
