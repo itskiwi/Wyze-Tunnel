@@ -224,6 +224,32 @@
                             <button class="button btn" data-cmd="floodlight" data-payload="off">Off</button>
                         </div>
                         {% endif %}
+                        {% if camera.product_model == "HL_CFL2" %}
+                        <p class="menu-label"><i class="fas fa-person-running"></i> Motion light</p>
+                        <div class="grid grid-cols-2 gap-1 p-1">
+                            <button class="button btn" data-cmd="fl_motion" data-payload="on">On</button>
+                            <button class="button btn" data-cmd="fl_motion" data-payload="off">Off</button>
+                        </div>
+                        <p class="menu-label" title="How bright the floodlight is, in percent">Brightness</p>
+                        <div class="grid grid-cols-3 gap-1 p-1">
+                            <button class="button btn" data-cmd="fl_brightness" data-payload="25">25%</button>
+                            <button class="button btn" data-cmd="fl_brightness" data-payload="50">50%</button>
+                            <button class="button btn" data-cmd="fl_brightness" data-payload="100">100%</button>
+                        </div>
+                        <p class="menu-label" title="How long the light stays on after motion">Stay on for</p>
+                        <div class="grid grid-cols-3 gap-1 p-1">
+                            <button class="button btn" data-cmd="fl_duration" data-payload="30">30 s</button>
+                            <button class="button btn" data-cmd="fl_duration" data-payload="60">1 min</button>
+                            <button class="button btn" data-cmd="fl_duration" data-payload="300">5 min</button>
+                        </div>
+                        {% endif %}
+                        {% if camera.product_model == "HL_DB2" %}
+                        <p class="menu-label" title="Wide dynamic range evens out bright and dark parts of the picture"><i class="fas fa-circle-half-stroke"></i> WDR</p>
+                        <div class="grid grid-cols-2 gap-1 p-1">
+                            <button class="button btn" data-cmd="wdr" data-payload="on">On</button>
+                            <button class="button btn" data-cmd="wdr" data-payload="off">Off</button>
+                        </div>
+                        {% endif %}
                         {% if camera.is_doorbell %}
                         <p class="menu-label"><i class="fas fa-comment"></i> Quick reply</p>
                         <div class="grid gap-1 p-1">

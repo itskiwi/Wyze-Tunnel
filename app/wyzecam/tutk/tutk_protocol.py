@@ -1245,11 +1245,75 @@ class K10720GetAccessoriesInfo(TutkWyzeProtocolMessage):
 
 class K10788GetIntegratedFloodlightInfo(TutkWyzeProtocolMessage):
     """
-    A message used to get the integrated floodlight info.
+    A message used to get the integrated floodlight info (Floodlight v2).
+
+    Returns the "floodlightInfo" dict (brightness, motion, motionSwitch...).
     """
 
     def __init__(self):
         super().__init__(10788)
+
+    def parse_response(self, resp_data):
+        return json.loads(resp_data)["floodlightInfo"]
+
+
+class K10790SetIntegratedFloodlightInfo(TutkWyzeProtocolMessage):
+    """
+    A message used to change integrated floodlight (Floodlight v2) settings.
+
+    Args:
+    - info (dict): only the keys to change, like {"brightness": "50"}. Values are strings.
+    """
+
+    def __init__(self, info: dict):
+        super().__init__(10790)
+        self.info = info
+
+    def encode(self) -> bytes:
+        info = {"floodlightInfo": {**self.info, "protocolVersion": "1"}}
+        return encode(self.code, json.dumps(info).encode())
+
+
+class K12084GetDb2BatteryLevel(TutkWyzeProtocolMessage):
+    """
+    A message used to get the Doorbell v2 battery level (first byte of the reply).
+    """
+
+    def __init__(self):
+        super().__init__(12084)
+
+    def parse_response(self, resp_data):
+        return resp_data[0]
+
+
+class K12090GetDb2WDRStatus(TutkWyzeProtocolMessage):
+    """
+    A message used to get the Doorbell v2 WDR status: 1 for on; 2 for off.
+    """
+
+    def __init__(self):
+        super().__init__(12090)
+
+    def parse_response(self, resp_data):
+        return resp_data[0]
+
+
+class K12092SetDb2WDRStatus(TutkWyzeProtocolMessage):
+    """
+    A message used to set the Doorbell v2 WDR status.
+
+    Args:
+    - value (int): 1 for on; 2 for off.
+    """
+
+    def __init__(self, value):
+        super().__init__(12092)
+
+        assert 1 <= value <= 2, "value must be 1 or 2"
+        self.value: int = value
+
+    def encode(self) -> bytes:
+        return encode(self.code, bytes([self.value]))
 
 
 class K10820GetWhiteLightInfo(TutkWyzeProtocolMessage):

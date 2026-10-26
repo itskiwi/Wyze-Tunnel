@@ -785,7 +785,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // "night_vision" + "auto" reads as "Night vision auto" in the toast; a few commands need their own words.
   const COMMAND_WORDS = { rotary_degree: "Moved", reset_rotation: "Back to center", cruise_point: "Went to position", alarm: "Siren",
-    state: "Stream", net_mode: "Connection", quick_response: "Played reply", power: "Power" };
+    state: "Stream", net_mode: "Connection", quick_response: "Played reply", power: "Power",
+    fl_motion: "Motion light", fl_brightness: "Brightness", fl_duration: "Stays on for", wdr: "WDR" };
   const PAYLOAD_WORDS = { hd: "HD", sd: "SD", no_relay: "no relay", enable: "turned on", disable: "turned off", start: "started", stop: "stopped", 3: "" };
   function commandText(cmd, payload = "") {
     const label = COMMAND_WORDS[cmd] || cmd[0].toUpperCase() + cmd.slice(1).replaceAll("_", " ");

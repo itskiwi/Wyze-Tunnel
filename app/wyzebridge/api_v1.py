@@ -77,6 +77,8 @@ def blueprint(wb, auth_required) -> Blueprint:
     def command(cam: str, cmd: str, value=None) -> tuple[dict, int]:
         if web_ui.api_scope() != "control":
             return {"error": "This token can only view."}, 403
+        if web_ui.owner_cmd_denied(str(cmd).lower(), value):
+            return {"error": "Only the owner can do this."}, 403
         if not wb.streams.get(cam):
             return {"error": f"No camera called {cam}"}, 404
         return wb.streams.send_cmd(cam, str(cmd).lower(), "" if value is None else value), 200

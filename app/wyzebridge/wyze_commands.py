@@ -24,6 +24,8 @@ GET_CMDS = {
     "rtsp": "K10604GetRtspParam",
     "accessories": "K10720GetAccessoriesInfo",
     "floodlight": "K10788GetIntegratedFloodlightInfo",
+    "wdr": "K12090GetDb2WDRStatus",
+    "db2_battery": "K12084GetDb2BatteryLevel",
     "whitelight": "K10820GetWhiteLightInfo",
     "param_info": "K10020CheckCameraParams",  # Requires a Payload
     "_bitrate": "K10050GetVideoParam",  # Only works on newer firmware
@@ -63,8 +65,15 @@ SET_CMDS = {
     "quick_response": "K11635ResponseQuickMessage",
     "spotlight": "K10646SetSpotlightStatus",
     "floodlight": "K12060SetFloodLightSwitch",
+    "wdr": "K12092SetDb2WDRStatus",
+    "fl_motion": None,  # Floodlight v2, see wyze_control.floodlight_v2_set
+    "fl_duration": None,
+    "fl_brightness": None,
     "format_sd": "K10242FormatSDCard",
 }
+
+# Commands that change something on the camera when given a value. Guests and family can't send these.
+OWNER_CMDS = {"wdr", "fl_motion", "fl_duration", "fl_brightness"}
 
 CMD_VALUES = {
     "on": 1,

@@ -309,6 +309,8 @@ def create_app():
         elif not payload and request.data:
             payload = request.data.decode()
 
+        if web_ui.owner_cmd_denied(cam_cmd.lower(), payload):
+            return {"error": "Only the owner can do this."}, 403
         return wb.streams.send_cmd(cam_name, cam_cmd.lower(), payload)
 
     def shared(name: str) -> bool:

@@ -17,6 +17,7 @@ from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
 from wyzebridge.stream import Stream, StreamManager
+from wyzebridge.wyze_commands import OWNER_CMDS
 
 auth = HTTPBasicAuth()
 
@@ -83,6 +84,11 @@ def current_guest() -> Optional[dict]:
     """The guest or family member viewing this page, or None for the owner."""
     user = auth.current_user()
     return user if isinstance(user, dict) else None
+
+
+def owner_cmd_denied(cmd: str, value) -> bool:
+    """True for a guest or family member trying to change a camera setting (reads are fine)."""
+    return cmd in OWNER_CMDS and value not in ("", None) and current_guest() is not None
 
 
 def cross_site_request() -> bool:
