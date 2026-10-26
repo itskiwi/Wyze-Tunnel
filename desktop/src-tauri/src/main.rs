@@ -165,6 +165,7 @@ mod vm {
         }
         fs::copy(n.join("mediamtx.yml"), d.join("mediamtx.yml")).ok()?; // fresh each start; the bridge edits it
         seal_password();
+        pick_record_drive();
         let log = fs::File::create(d.join("bridge.log")).ok()?;
         let path = std::env::var("PATH").unwrap_or_default();
         // Tailscale only (Health page): Wyze Tunnel's own Tailscale reaches the web page from this PC, nothing else can.
@@ -203,6 +204,40 @@ mod vm {
                 None => (k, v),
             })
             .collect()
+    }
+    /// A new install records to the internal drive with the most room when this PC's own drive is short on it
+    /// (a small C: next to a big D:). Once only: after the first clip, or a RECORD_PATH set by hand, it stays put.
+    fn pick_record_drive() {
+        use windows_sys::Win32::Storage::FileSystem::{GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDrives};
+        const DRIVE_FIXED: u32 = 3;
+        const GB: u64 = 1 << 30;
+        if settings().iter().any(|(k, _)| k == "RECORD_PATH") || fs::read_dir(data().join("record")).is_ok_and(|mut d| d.next().is_some()) {
+            return;
+        }
+        let free = |root: &str| {
+            let wide: Vec<u16> = root.encode_utf16().chain([0]).collect();
+            let mut bytes = 0u64;
+            let fixed = unsafe { GetDriveTypeW(wide.as_ptr()) } == DRIVE_FIXED;
+            let ok = unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut bytes, std::ptr::null_mut(), std::ptr::null_mut()) } != 0;
+            (fixed && ok).then_some(bytes)
+        };
+        let home = dir().to_string_lossy().chars().next().unwrap_or('C');
+        let Some(home_free) = free(&format!("{home}:\\")) else { return };
+        let mask = unsafe { GetLogicalDrives() };
+        let best = (0..26u8)
+            .filter(|i| mask & (1 << i) != 0)
+            .map(|i| (b'A' + i) as char)
+            .filter(|&c| !c.eq_ignore_ascii_case(&home))
+            .filter_map(|c| Some((c, free(&format!("{c}:\\"))?)))
+            .max_by_key(|&(_, f)| f);
+        // Only worth moving when this drive is tight and the other has far more room.
+        if let Some((drive, bytes)) = best.filter(|&(_, f)| home_free < 100 * GB && f >= 100 * GB && f > 2 * home_free) {
+            let line = format!("RECORD_PATH={drive}:\\Wyze Tunnel recordings\\%path\\%Y-%m-%d_%H-%M-%S-%f");
+            let note = format!("# Recordings go to {drive}: ({} GB free when Wyze Tunnel was set up). Change or remove this line to move them.", bytes / GB);
+            let file = dir().join("wyze-tunnel.env");
+            let text = fs::read_to_string(&file).unwrap_or_default();
+            let _ = fs::write(&file, format!("{}\r\n{note}\r\n{line}\r\n", text.trim_end()));
+        }
     }
     /// The web password is kept in wyze-tunnel.env sealed with DPAPI for this Windows user ("dpapi:" + hex), so a
     /// copied file is useless elsewhere. Install and hand edits write it plain; the next start seals it.

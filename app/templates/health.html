@@ -97,7 +97,7 @@
             {% if cam.sources and cam.sources != ["tutk"] %}<dt>Connects with</dt><dd>{{ {"tutk": "Wyze SDK", "lan": "go2rtc (local)", "webrtc": "Wyze WebRTC"}.get(cam.source, cam.source) }}{% if cam.sources|length > 1 %} <span class="text-zinc-500">of {{ cam.sources|length }} ways</span>{% endif %}</dd>{% endif %}
             {% if cam.ip %}<dt>IP address</dt><dd class="font-mono">{{ cam.ip }}</dd>{% endif %}
             {% if cam.net_mode %}<dt>Connection</dt><dd>{{ {"local": "Local network", "internet": "Over the internet (direct)", "relay": "Through Wyze's relay"}[cam.net_mode] }}</dd>{% endif %}
-            {% if wifi >= 0 %}<dt>Wi-Fi signal</dt><dd>{{ wifi }}%</dd>{% endif %}
+            {% if wifi >= 0 %}{% set tier = wifi|wifi_tier %}<dt>Wi-Fi signal</dt><dd><span class="chip {{ {'Good': 'chip-ok', 'Fair': 'chip-warn', 'Weak': 'chip-bad'}[tier] }}">{{ tier }}</span> <span class="text-zinc-500">{{ wifi }}%</span></dd>{% endif %}
             {% if sd_free >= 0 %}<dt>SD card free</dt><dd>{{ sd_free }}%</dd>{% endif %}
             <dt>Data use</dt><dd class="usage" data-cam="{{ uri }}">Not streaming</dd>
             {% if cam.status == 3 and cam.start_time %}<dt>Streaming for</dt><dd>{{ ((now - cam.start_time) / 60)|int }} min</dd>{% endif %}

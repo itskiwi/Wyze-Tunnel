@@ -267,3 +267,13 @@ ol:has(> .num-step) { counter-reset: step; }
 .vp:fullscreen > video { width: 100%; height: 100%; max-height: none; object-fit: contain; }
 .vp-freeze { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .vp:has(> video.hidden) > .vp-freeze { display: none; }
+
+/* Package card on the home timeline: the porch before the drop-off and after, side by side. */
+[data-thumb].pkg { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 18rem; aspect-ratio: 32 / 9; background: none; }
+@media (max-width: 639px) { a:has(> .pkg) { flex-wrap: wrap; } [data-thumb].pkg { width: 100%; } }
+.pkg figure { position: relative; margin: 0; overflow: hidden; border-radius: .75rem; background: #000; }
+.pkg figure:only-child { grid-column: span 2; }
+.pkg figcaption {
+  position: absolute; left: .3rem; bottom: .3rem; padding: 0 .4rem; border-radius: .375rem;
+  background: rgb(0 0 0 / .6); color: #fff; font-size: 10px; font-weight: 600; line-height: 1.5;
+}
