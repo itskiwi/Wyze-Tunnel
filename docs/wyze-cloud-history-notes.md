@@ -12,7 +12,22 @@ Paths are relative to a jadx decompile of the Wyze Android app (v3.24) unless no
   (`:177-181`); the Wyze Lock label is "Keypad". 2218 appends `yunding_open_alarm_time1[left_open_time - 2]` (`:372`; array in `values/arrays.xml`).
 - Implemented in `devices.py` (`LOCK_EVENTS`, `LOCK_SOURCES`, `_lock_event`). Unknown ids still show "Event N" / "source N".
 
-## 2. Thermostat temperature and runtime history (not implemented)
+## 2. Thermostat runtime history (done) and temperature history (empty)
+
+The `com.wyze.earth` plugin ships as the on-demand split `split_CocleanPluginEarthAndroidContainer.apk`, which the app installs only once a
+thermostat is added, so it was missing from the downloaded copy. Pulled from an installed app (3.24.0.1011):
+
+- `com/wyze/earth/EarthApi.java`: `WORK_STATISTICS = /plugin/earth/work_statistics`, `GET_INDOOR_CHART = /plugin/earth/query_earth_history`,
+  base `https://wyze-earth-service.wyzecam.com`, signed like `get_iot_prop`.
+- Run time: `EarthUsageActivity.java:402` sends `device_id`, `begin_time`, `last_time` in milliseconds; the reply is one row per day of
+  `{time, heat, cool}` in milliseconds (`:262` divides by 3,600,000 for hours). Checked live: 30 rows for 30 days. Wyze Tunnel uses it for
+  the heating/cooling totals (`devices.wyze_run_minutes`).
+- Indoor chart: `EarthInsightsActivity.java:221` sends `begin_time`/`last_time` in seconds (milliseconds is refused with code 1001) and
+  `interval=5`; the reply has `sensor` (temperature, create_time) and `meta` (set_point, work_model). Checked live: `sensor` was empty in every
+  3-day window over 30 days (the screen sits behind a feature flag, `enable_insight`), so temperatures stay the bridge's own `device_history.json`.
+
+Earlier notes, from the base APK alone:
+
 
 - `SensorApi.java:43,53` (`URL_GET_IOT_HISTORY`, `WORK_STATISTICS`) and the sun/pluto copies (`com/wyze/sun/DeviceApi.java:56,84`,
   `com/wyze/pluto/network/DeviceApi.java:117,134`) are never called anywhere in the base.
@@ -22,7 +37,6 @@ Paths are relative to a jadx decompile of the Wyze Android app (v3.24) unless no
   `com/hualai/home/application/SHApplication.java:424` and `defpackage/dqx.java:23-30` and mapped to `WyzeThermostatUpdate` in
   `WyzePluginUpgradeFactory.java:156`, but no `com/wyze/earth` class is defined in any of the 36 dex files (only name references) and none of the four
   `*PluginContainer.apk` splits (Lockwood, Saturn, Scale, Watch/Band) contain it. `SensorHomeActivity.toChartActivity()` is an empty stub.
-  So the request shape (and whether `work_statistics` is the runtime report) is not provable here; the bridge keeps its own `device_history.json`.
 
 ## 3. Plug usage history (done: time on, not energy)
 

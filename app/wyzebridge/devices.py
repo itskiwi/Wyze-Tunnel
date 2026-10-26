@@ -136,12 +136,15 @@ def _device(auth: WyzeCredential, d: dict) -> dict:
     return dev
 
 
-def earth_props(auth: WyzeCredential, did: str, keys: str, extra: dict | None = None) -> dict:
-    """GET /plugin/earth/get_iot_prop. Signature2 signs the sorted k=v query (WpkWyzeExService.java:246-250)."""
-    params = {"did": did, "keys": keys, "nonce": str(int(time.time() * 1000))} | (extra or {})
+def earth_get(auth: WyzeCredential, path: str, params: dict) -> Any:
+    """GET on the earth service. Signature2 signs the sorted k=v query (WpkWyzeExService.java:246-250)."""
+    params = params | {"nonce": str(int(time.time() * 1000))}
     query = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
-    resp = get(f"{EARTH_API}/get_iot_prop", params=params, headers=sign_payload(auth, APP_ID, query), verify=EARTH_CA)
-    return validate_resp(resp)["props"]
+    return validate_resp(get(f"{EARTH_API}/{path}", params=params, headers=sign_payload(auth, APP_ID, query), verify=EARTH_CA))
+
+
+def earth_props(auth: WyzeCredential, did: str, keys: str, extra: dict | None = None) -> dict:
+    return earth_get(auth, "get_iot_prop", {"did": did, "keys": keys} | (extra or {}))["props"]
 
 
 def set_thermostat(auth: WyzeCredential, did: str, props: dict) -> None:
@@ -302,6 +305,19 @@ def history(mac: str, hours: int, now: float | None = None) -> dict:
         if r.get("run"):
             run[r["run"]] += min(nxt - r["t"], 600) // 60
     return {"points": rows, "heat_minutes": int(run["heat"]), "cool_minutes": int(run["cool"])}
+
+
+def wyze_run_minutes(auth: WyzeCredential, mac: str, hours: int, now: float | None = None) -> dict:
+    """Heating and cooling minutes from Wyze's own record, so hours the bridge was off still count (read-only).
+
+    GET work_statistics from the thermostat plugin (split_CocleanPluginEarthAndroidContainer, not in the base APK):
+    times in milliseconds, one row per day of heat/cool milliseconds (EarthUsageActivity.java:262,402).
+    query_earth_history (the Insights chart) returned no readings for a live thermostat over 30 days, so temperatures stay the bridge's own.
+    shortcut: rows are whole days, so the 24 hour total covers the days the window touches.
+    """
+    now = int(now or time.time())
+    days = earth_get(auth, "work_statistics", {"device_id": mac, "begin_time": (now - hours * 3600) * 1000, "last_time": now * 1000})
+    return {f"{k}_minutes": sum(int(d.get(k) or 0) for d in days or []) // 60000 for k in ("heat", "cool")}
 
 
 def plug_usage(auth: WyzeCredential, dev: dict, fresh: bool = False, now: float | None = None) -> list[dict]:

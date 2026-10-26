@@ -821,11 +821,18 @@ def create_app():
     @app.route("/api/devices/history")
     @auth_required
     def api_device_history():
-        """Thermostat and room sensor readings the bridge has kept, for the last 24 hours or 7 days."""
+        """Readings the bridge has kept for the last 24 hours or 7 days; a thermostat's run time comes from Wyze when it answers."""
         hours = request.args.get("hours", "24")
         if hours not in ("24", "168"):
             return {"error": "hours must be 24 or 168."}, 400
-        return devices.history(request.args.get("mac", ""), int(hours))
+        mac = request.args.get("mac", "")
+        out = devices.history(mac, int(hours))
+        try:
+            if (dev := device_call(devices.find, mac)) and dev["model"] == "CO_EA1":
+                out |= device_call(devices.wyze_run_minutes, mac, int(hours))
+        except (WyzeAPIError, RateLimitError, AccessTokenError, requests.RequestException, KeyError, TypeError, ValueError) as ex:
+            logger.warning(f"[DEVICES] Wyze thermostat run time failed, showing the bridge's own: {ex}")
+        return out
 
     @app.route("/api/devices/usage")
     @auth_required
