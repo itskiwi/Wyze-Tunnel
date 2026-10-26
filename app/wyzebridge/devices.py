@@ -42,10 +42,15 @@ FORD_API = "https://yd-saas-toc.wyzecam.com"
 FORD_KEY, FORD_SECRET = "275965684684dbdaf29a0ed9", "4deekof1ba311c5c33a9cb8e12787e8c"
 # The earth service takes the main app's signature2, like post_device(api_version=4).
 APP_ID = "9319141212m2ik"
-THERMOSTAT_KEYS = "temperature,humidity,mode_sys,heat_sp,cool_sp,temp_unit,working_state,iot_state"
+# EarthMainActivity.java:938; dev_holdtime and asw_hold only come back once set.
+THERMOSTAT_KEYS = ("temperature,humidity,mode_sys,heat_sp,cool_sp,temp_unit,working_state,iot_state,fan_mode,fancirc_time,current_scenario,"
+                   "config_scenario,dev_hold,dev_holdtime,asw_hold,emheat,avg_temper,avg_humid,sensor_using,app_version")
+FILTER_KEYS = ",".join(f"filter_{n},filtercnt_{n}" for n in range(1, 6))
 ROOM_KEYS = "temperature,humidity,battery,temperature_unit"  # SensorHomeActivity.java:399, SensorIotSettingActivity.java:71
 BULB_PIDS = {"P3": "on", "P1501": "brightness", "P1502": "color_temp", "P1507": "color"}
 MODES = {"auto", "heat", "cool", "off"}
+FAN_MODES = {"auto", "on"}  # EarthHomeControls.java:215-224
+PRESETS = {"home", "away", "sleep"}  # ScenarioEnum.java
 HIDDEN = {"Camera"}
 # The outdoor plug's own row duplicates its two outlets (WLPPO-SUB), which are what the app switches.
 HIDDEN_MODELS = {"WLPPO"}
@@ -94,6 +99,11 @@ def list_devices(auth: WyzeCredential, fresh: bool = False) -> list[dict]:
         return _cache["devices"]
     data = validate_resp(post(f"{WYZE_API}/v2/home_page/get_object_list", json=_payload(auth), headers=_headers()))
     devices = [_device(auth, d) for d in data["device_list"] if d["product_type"] not in HIDDEN and d["product_model"] not in HIDDEN_MODELS]
+    # Room sensors are keyed by their mac in the thermostat's sensor_using; "_up" means it counts (EarthSensorsActivity.java:365-366).
+    using = {k: v for d in devices if d["model"] == "CO_EA1" for k, v in _json(d["state"].get("sensor_using")).items()}
+    for d in devices:
+        if d["mac"] in using:
+            d["state"]["in_use"] = str(using[d["mac"]]).endswith("_up")
     _cache.update(at=time.time(), devices=devices)
     record_history(devices)
     for d in devices:
@@ -151,6 +161,27 @@ def set_thermostat(auth: WyzeCredential, did: str, props: dict) -> None:
     """POST /plugin/earth/set_iot_prop_by_topic; Signature2 signs the exact JSON body."""
     body = sort_dict({"did": did, "model": "CO_EA1", "props": props, "is_sub_device": 0, "nonce": str(int(time.time() * 1000))})
     validate_resp(post(f"{EARTH_API}/set_iot_prop_by_topic", data=body, headers=sign_payload(auth, APP_ID, body), verify=EARTH_CA))
+
+
+def filters(auth: WyzeCredential, mac: str) -> list[dict]:
+    """Air filters the app tracks: on/off props, run seconds, and names and life (months) in device_info (EarthFilterActivity.java:129-180).
+    The app counts a month as 43200 minutes and says to replace at 95% (:320-323)."""
+    props = earth_props(auth, mac, FILTER_KEYS)
+    named = earth_get(auth, "device_info", {"device_id": mac, "keys": "filters"})["settings"].get("filters") or {}
+    out = []
+    for n in range(1, 6):
+        if props.get(f"filter_{n}", "0") == "0":
+            continue
+        info = named.get(f"filter_{n}") or {}
+        life = float(info.get("filter_life") or 0)
+        used = round(int(props.get(f"filtercnt_{n}") or 0) / (life * 43200 * 60) * 100) if life else None
+        out.append({"n": n, "name": info.get("filter_name") or f"Filter {n}", "size": info.get("filter_size") or "", "life_months": life,
+                    "used": used, "replace": used is not None and used >= 95})
+    return out
+
+
+def _version(text: str) -> tuple:
+    return tuple(int(p) for p in re.findall(r"\d+", text or ""))
 
 
 def bulb_props(auth: WyzeCredential, mac: str, model: str) -> dict:
@@ -256,6 +287,14 @@ def lock_alert(devs: list[dict], now: float | None = None) -> None:
         elif now - _unlocked.setdefault(d["mac"], now) >= minutes * 60 and d["mac"] not in _alerted:
             _alerted.add(d["mac"])
             send_webhook("lock", d["name"], f"{d['name']} has been unlocked for {minutes} minutes.", title="Door left unlocked")
+
+
+def _json(text: Any) -> dict:
+    try:
+        value = json.loads(text) if isinstance(text, str) else text
+    except ValueError:
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
 def _number_or_none(value: Any) -> float | None:
@@ -505,13 +544,48 @@ def control(auth: WyzeCredential, dev: dict, data: dict) -> str:
             if data["mode"] not in MODES:
                 raise ValueError(f"mode must be one of {sorted(MODES)}")
             props["mode_sys"] = data["mode"]
+        if "preset" in data:
+            if data["preset"] not in PRESETS:
+                raise ValueError(f"preset must be one of {sorted(PRESETS)}")
+            # The app sends the preset's own set points with it (EarthMainActivity.java:1056-1066); explicit ones below win.
+            points = _json(_json(dev["state"].get("config_scenario")).get(data["preset"]))
+            props |= {"current_scenario": data["preset"]} | {f"{k}_sp": str(points[k]) for k in ("heat", "cool") if k in points}
         for key in ("heat_sp", "cool_sp"):
             if key in data:
                 props[key] = _number(data, key, 4, 95)
+        if "fan_mode" in data:
+            if data["fan_mode"] not in FAN_MODES:
+                raise ValueError(f"fan_mode must be one of {sorted(FAN_MODES)}")
+            props["fan_mode"] = data["fan_mode"]
+        if "fancirc_time" in data:
+            props["fancirc_time"] = _number(data, "fancirc_time", 0, 30)
+            if int(props["fancirc_time"]) % 5:
+                raise ValueError("fancirc_time must be a multiple of 5")
+        if "emheat" in data:
+            if not isinstance(data["emheat"], bool):
+                raise ValueError("emheat must be true or false")
+            props["emheat"] = "1" if data["emheat"] else "0"
+        if "hold" in data:  # false resumes the schedule; hours 1-24 holds that long, 0 until resumed (EarthHomeControls.java:230-235,397-405)
+            if data["hold"] is False:
+                props |= {"dev_hold": "0", "asw_hold": "0", "dev_holdtime": "0"}
+            elif isinstance(data["hold"], bool):
+                raise ValueError("hold must be false or a number of hours")
+            else:
+                hours = int(_number(data, "hold", 0, 24))
+                props |= {"dev_hold": "1", "dev_holdtime": str(int(time.time()) + hours * 3600) if hours else "0"}
+        if "filter_reset" in data:  # firmware 1.1.2 and later reset with "2" (EarthFilterActivity.java:71)
+            props[f"filter_{_number(data, 'filter_reset', 1, 5)}"] = "2" if _version(dev["state"].get("app_version")) >= (1, 1, 2) else "1"
         if not props:
             raise ValueError("Nothing to change.")
         set_thermostat(auth, mac, props)
         result = f"set {props}"
+    elif model == "CO_TH1" and isinstance(data.get("in_use"), bool):
+        thermo = next((d for d in list_devices(auth) if d["model"] == "CO_EA1" and dev["mac"] in _json(d["state"].get("sensor_using"))), None)
+        if not thermo:
+            raise ValueError("This sensor isn't paired with a thermostat.")
+        using = _json(thermo["state"]["sensor_using"]) | {dev["mac"]: "manual_up" if data["in_use"] else "manual_down"}  # EarthSensorsActivity.java:436-456
+        set_thermostat(auth, thermo["mac"], {"sensor_using": json.dumps(using, separators=(",", ":"))})
+        result = f"{'used' if data['in_use'] else 'stopped using'} for the thermostat"
     elif kind == "Lock" and data.get("lock") in (True, False):
         set_lock(auth, mac, data["lock"])
         result = "locked" if data["lock"] else "unlocked"

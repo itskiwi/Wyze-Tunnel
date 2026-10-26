@@ -848,6 +848,20 @@ def create_app():
         except (WyzeAPIError, requests.RequestException) as ex:
             return {"error": f"Wyze didn't answer: {ex}"}, 502
 
+    @app.route("/api/devices/filters")
+    @auth_required
+    def api_thermostat_filters():
+        """The thermostat's air filters: name, size, life and how used each one is."""
+        try:
+            dev = device_call(devices.find, request.args.get("mac", ""))
+            if not dev or dev["model"] != "CO_EA1":
+                return {"error": "Unknown thermostat."}, 404
+            return {"filters": device_call(devices.filters, dev["mac"])}
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException, KeyError, ValueError) as ex:
+            return {"error": f"Wyze didn't answer: {ex}"}, 502
+
     @app.route("/api/devices/schedules")
     @auth_required
     def api_device_schedules():

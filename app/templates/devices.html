@@ -48,6 +48,12 @@
         if (s.humidity !== undefined) out.push(`${s.humidity}% humidity`);
         if (s.mode_sys) out.push(`Mode ${s.mode_sys}${s.working_state ? `, ${s.working_state}` : ""}`);
         if (s.heat_sp) out.push(`Heat to ${s.heat_sp}, cool to ${s.cool_sp}`);
+        if (s.fan_mode) out.push(`Fan ${s.fan_mode}`);
+        if (s.current_scenario) out.push(`Preset ${s.current_scenario}`);
+        if (s.dev_hold === "1") out.push(Number(s.dev_holdtime) > 0 ? `Held until ${when(Number(s.dev_holdtime))}` : "Held");
+        if (s.emheat === "1") out.push("Emergency heat on");
+        if (s.avg_temper) out.push(`Room sensor average ${s.avg_temper}°`);
+        if (s.in_use !== undefined) out.push(s.in_use ? "Counts for the thermostat" : "Not used by the thermostat");
         if (s.brightness) out.push(`${s.brightness}% bright`);
         if (s.battery !== undefined && s.battery !== null) out.push(`Battery ${s.battery}${s.locked !== undefined ? "%" : ""}`);
         if (s.low_battery) out.push("Low battery");
@@ -81,6 +87,21 @@
             cool.setAttribute("aria-label", "Cool to");
             box.append(mode, el("span", "text-sm text-zinc-400", "Heat"), heat, el("span", "text-sm text-zinc-400", "Cool"), cool,
                 button("Save", () => send(dev, { mode: mode.value, heat_sp: Number(heat.value), cool_sp: Number(cool.value) }), true));
+            const pick = (label, key, values, current) => {
+                const sel = el("select", "field w-28");
+                sel.setAttribute("aria-label", label);
+                sel.append(...values.map((v) => new Option(`${label} ${v}`, v, false, v === current)));
+                sel.addEventListener("change", () => send(dev, { [key]: sel.value }));
+                return sel;
+            };
+            const emheat = Object.assign(el("input"), { type: "checkbox", checked: s.emheat === "1" });
+            emheat.addEventListener("change", () => send(dev, { emheat: emheat.checked }));
+            const em = el("label", "flex items-center gap-1 text-sm text-zinc-400");
+            em.append(emheat, "Emergency heat");
+            box.append(pick("Fan", "fan_mode", ["auto", "on"], s.fan_mode), pick("Preset", "preset", ["home", "away", "sleep"], s.current_scenario),
+                s.dev_hold === "1" ? button("Resume schedule", () => send(dev, { hold: false })) : button("Hold", () => send(dev, { hold: 0 })), em);
+        } else if (dev.model === "CO_TH1" && s.in_use !== undefined) {
+            box.append(button(s.in_use ? "Stop using for the thermostat" : "Use for the thermostat", () => send(dev, { in_use: !s.in_use })));
         } else if (dev.type === "Lock") {
             box.append(button("Lock", () => send(dev, { lock: true }), true),
                 button("Unlock", () => confirm(`Unlock ${dev.name}?`) && send(dev, { lock: false })));
@@ -210,6 +231,25 @@
         return box;
     }
 
+    function filterPanel(dev) {
+        const box = el("details", "mt-3 text-sm"), body = el("div", "mt-2 space-y-2 text-zinc-400", "Loading…");
+        box.append(el("summary", "cursor-pointer text-zinc-300", "Air filters"), body);
+        box.addEventListener("toggle", () => {
+            if (!box.open || box.dataset.loaded) return;
+            box.dataset.loaded = "1";
+            getJson(`api/devices/filters?mac=${encodeURIComponent(dev.mac)}`).then((data) => {
+                const rows = data.filters.map((f) => {
+                    const row = el("div", "flex flex-wrap items-center gap-2");
+                    row.append(el("span", f.replace ? "text-rose-300" : "", `${f.name}${f.size ? ` (${f.size})` : ""}: ${f.used ?? "?"}% used of ${f.life_months} months${f.replace ? ", replace it" : ""}`),
+                        button("I replaced it", () => confirm(`Reset ${f.name}?`) && send(dev, { filter_reset: f.n })));
+                    return row;
+                });
+                body.replaceChildren(...(rows.length ? rows : [el("p", "", "No filters set up in the Wyze app.")]));
+            }).catch((err) => { delete box.dataset.loaded; body.textContent = err.message; });
+        });
+        return box;
+    }
+
     function render(list, lockMinutes, scheds) {
         const groups = {};
         list.forEach((d) => (groups[GROUPS[d.type] || "Hubs and other devices"] ??= []).push(d));
@@ -226,6 +266,7 @@
                 if (dev.type === "Lock") row.append(lockPanel(dev, lockMinutes));
                 if (dev.type === "Plug" || dev.type === "OutdoorPlug") row.append(usagePanel(dev));
                 if (dev.model === "CO_EA1" || dev.model === "CO_TH1") row.append(historyPanel(dev));
+                if (dev.model === "CO_EA1") row.append(filterPanel(dev));
                 section.append(row);
             });
             return section;
