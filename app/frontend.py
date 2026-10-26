@@ -321,8 +321,11 @@ def create_app():
     @app.route("/signaling/<string:name>")
     @auth_required
     def webrtc_signaling(name):
-        # "relay" is go2rtc fetching the one connection the tunnel holds.
-        if "kvs" in request.args and ("relay" in request.args or not shared(name)):
+        # "relay" is go2rtc fetching the one connection the tunnel holds; "talk" is the owner's push-to-talk,
+        # a second Kinesis session that sends the browser's mic (MediaMTX's shared stream can't carry it back).
+        if "talk" in request.args and (guest := web_ui.current_guest()) and not guest["family"]:
+            return {"result": "Guests can watch but not talk through cameras.", "cam": name}, 403
+        if "kvs" in request.args and ("relay" in request.args or "talk" in request.args or not shared(name)):
             return wb.api.get_kvs_signal(name)
         if web_ui.current_guest():
             return web_ui.get_webrtc_signal(name, guests.stream_key(), guests.STREAM_USER)
