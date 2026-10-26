@@ -247,7 +247,7 @@
                         <details class="mt-1">
                             <summary class="menu-label cursor-pointer list-none"><i class="fas fa-gear"></i> Camera settings <i class="fas fa-angle-down ml-auto"></i></summary>
                             {% set settings = [("status_light", "Status light"), ("osd_timestamp", "Timestamp"), ("motion_tagging", "Motion box"),
-                                ("motion_detection", "Wyze motion detection"), ("notifications", "Wyze app alerts"),
+                                ("motion_detection", "Wyze motion detection"), ("sound_detection", "Wyze sound detection"), ("notifications", "Wyze app alerts"),
                                 ("hor_flip", "Mirror image"), ("ver_flip", "Upside down")] %}
                             {% if camera.is_pan_cam %}{% set settings = settings + [("motion_tracking", "Follow motion"), ("pan_cruise", "Patrol")] %}{% endif %}
                             {% for cmd, label in settings %}
@@ -255,6 +255,15 @@
                                 <span class="truncate pl-1 text-zinc-300">{{ label }}</span>
                                 <button class="button btn px-2.5 py-1" data-cmd="{{ cmd }}" data-payload="on" aria-label="{{ label }} on">On</button>
                                 <button class="button btn px-2.5 py-1" data-cmd="{{ cmd }}" data-payload="off" aria-label="{{ label }} off">Off</button>
+                            </div>
+                            {% endfor %}
+                            {# Sensitivity is set on the camera itself, so it needs the camera on this network. #}
+                            {% for cmd, label in [("motion_sensitivity", "Motion sensitivity"), ("sound_sensitivity", "Sound sensitivity")] %}
+                            <div class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-1 px-1 py-0.5">
+                                <span class="truncate pl-1 text-zinc-300">{{ label }}</span>
+                                {% for level, value in [("Low", 20), ("Med", 50), ("High", 80)] %}
+                                <button class="button btn px-2.5 py-1" data-cmd="{{ cmd }}" data-payload="{{ value }}" aria-label="{{ label }} {{ level }}">{{ level }}</button>
+                                {% endfor %}
                             </div>
                             {% endfor %}
                         </details>

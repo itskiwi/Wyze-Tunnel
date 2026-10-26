@@ -48,3 +48,21 @@ def test_reading_state():
     stream, api = fake_stream()
     assert control(stream, "alarm", "")["value"] == "on"
     assert api.calls == [("get", "P1049")]
+
+
+def test_sound_detection_sets_alarm_and_recording():
+    stream, api = fake_stream()
+    assert control(stream, "sound_detection", "off")["value"] == "off"
+    assert control(stream, "sound_detection", "")["value"] == "on"
+    assert api.calls == [("P1048", "0"), ("P1002", "0"), ("get", "P1048")]
+
+
+def test_sensitivity_uses_the_apps_0_to_255_scale():
+    from wyzebridge.wyze_control import parse_cmd
+    from wyzecam.tutk.tutk_protocol import K10204GetMotionAlarmParam
+
+    _, msg, _ = parse_cmd(("sound_sensitivity", "50"), "debug")
+    assert (msg.code, msg.encode()[-2:]) == (10256, bytes([0, 127]))  # 0 keeps the on/off switch
+    _, msg, _ = parse_cmd(("motion_sensitivity", "500"), "debug")
+    assert msg.encode()[-2:] == bytes([0, 254])  # clamped to 100; the app's 100 * 2.55 truncates to 254 too
+    assert K10204GetMotionAlarmParam().parse_response(bytes([1, 128])) == 50
