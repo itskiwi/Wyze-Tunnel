@@ -385,6 +385,7 @@ class WyzeStream:
             "is_floodlight": self.camera.is_floodlight,
             "is_spotlight": self.camera.is_spotlight,
             "is_doorbell": self.camera.is_doorbell,
+            "product_model": self.camera.product_model,
             "webrtc": self.camera.webrtc_support,
             "start_time": self.start_time,
             "quality": self.options.quality[:2],

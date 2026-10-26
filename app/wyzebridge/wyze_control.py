@@ -173,6 +173,8 @@ def handle_cmd(sess: WyzeIOTCSession, cmd: tuple | str, boa: Optional[dict] = No
             }
     elif topic == "cruise_point":
         resp = pan_to_cruise_point(sess, cmd)
+    elif topic in FL_V2 and payload:
+        resp = floodlight_v2_set(sess, topic, payload)
     elif topic in {"bitrate", "fps"} and payload:
         resp = update_bit_fps(sess, topic, payload)
     else:
@@ -270,6 +272,36 @@ def pan_to_cruise_point(sess: WyzeIOTCSession, cmd):
         "status": "success",
         "response": ",".join(map(str, res)) if isinstance(res, bytes) else res,
     }
+
+
+FL_V2 = {"fl_motion", "fl_duration", "fl_brightness"}
+
+
+def floodlight_v2_set(sess: WyzeIOTCSession, topic: str, payload: Any) -> dict:
+    """Floodlight v2: motion light on/off, how long it stays on (seconds) or brightness (1-100)."""
+    resp = {"command": topic, "payload": payload, "status": "error", "value": None}
+    logger.info(f"[CONTROL] Attempting to SET: {topic}={payload}")
+    on_off = {"on": 1, "off": 2}.get(str(payload).strip().lower())
+    num = int(payload) if str(payload).strip().isdigit() else 0
+    # shortcut: duration cap of 1 hour is a guess (the app shows a fixed list), widen if the camera takes more
+    if (topic == "fl_motion" and not on_off) or (topic == "fl_brightness" and not 1 <= num <= 100) or (topic == "fl_duration" and not 1 <= num <= 3600):
+        return resp | {"response": "Use on/off for motion, 1-100 for brightness or 1-3600 seconds for duration."}
+    try:
+        with sess.iotctrl_mux() as mux:
+            info = {"brightness": str(num)}
+            if topic != "fl_brightness":
+                # The app always sends the whole motion block, so read it first and change one thing.
+                cur = _ioctl_retry(mux, tutk_protocol.K10788GetIntegratedFloodlightInfo)
+                motion = {k: v for k, v in (cur.get("motion") or {}).items() if k in {"model", "dispose", "durations", "schedule"}}
+                if not motion:
+                    return resp | {"response": "The camera didn't send its motion settings."}
+                if topic == "fl_duration":
+                    motion["durations"] = str(num)
+                info = {"motion": motion, "motionSwitch": str(on_off or cur.get("motionSwitch", "1"))}
+            _ioctl_retry(mux, partial(tutk_protocol.K10790SetIntegratedFloodlightInfo, info))
+    except Exception as ex:
+        return resp | {"response": str(ex)}
+    return resp | {"status": "success", "value": payload, "response": payload}
 
 
 def update_mqtt_values(cam_name: str, res: dict):

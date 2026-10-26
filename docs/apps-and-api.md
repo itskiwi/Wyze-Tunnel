@@ -245,6 +245,8 @@ Send these to `POST /api/v1/cameras/{id}/commands/{command}`. Leave out `value` 
 | `night_vision` | `on`, `off`, `auto` |
 | `irled`, `status_light`, `motion_detection`, `motion_tracking` | `on`, `off` |
 | `spotlight`, `floodlight` | `on`, `off` |
+| `fl_motion` (Floodlight v2), `wdr` (Doorbell v2) | `on`, `off` |
+| `fl_brightness`, `fl_duration` (Floodlight v2) | `1`-`100` percent, seconds |
 | `alarm` (siren) | `on`, `off` |
 | `rotary_action` (pan cams) | `left`, `right`, `up`, `down` |
 | `quality` | `hd180`, `sd60` and so on |
