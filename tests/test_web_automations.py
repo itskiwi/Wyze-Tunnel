@@ -1,5 +1,6 @@
 # Sorts after test_security.py, which reloads wyzebridge.auth (see test_web_recordings.py).
 from base64 import b64encode
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest import mock
 
@@ -162,6 +163,83 @@ def test_settings_are_validated(client):
                 {"heat": {"on": True, "sensors": "DOOR"}},
                 {"heat": "on"}, {"other": {}}, {}):
         assert client.post("/api/automations", json=bad).status_code == 400, bad
+
+
+LIGHTS = {"lights": {"on": True, "cameras": ["CAM1"], "devices": ["PLUG", "BULB"], "minutes": 5, "also_motion": False}}
+# Mid-June at about New York: sunrise 09:25 UTC, sunset 00:30 UTC.
+utc = lambda h, day=19: datetime(2026, 6, day, h, tzinfo=timezone.utc).timestamp()  # noqa: E731
+NIGHT, DAY = utc(7), utc(16)
+
+
+@pytest.fixture
+def dark(monkeypatch, home):
+    monkeypatch.setattr(automations.weather, "location", lambda: {"lat": 40.71, "lon": -74.0})
+
+
+def test_sun_math(dark):
+    assert automations.is_night(NIGHT) and not automations.is_night(DAY)
+    assert automations.is_night(utc(9)) and not automations.is_night(utc(11))  # 5 am and 7 am in New York
+    assert not automations.is_night(utc(23)) and automations.is_night(utc(1, 20))  # 7 pm and 9 pm
+
+
+def test_fallback_window_without_a_location(monkeypatch, home):
+    monkeypatch.setattr(automations.weather, "location", lambda: None)
+    at = lambda h: datetime(2026, 6, 19, h).timestamp()  # noqa: E731
+    assert automations.is_night(at(23)) and automations.is_night(at(3)) and not automations.is_night(at(12))
+
+
+def test_lights_come_on_for_a_person_and_go_off_after_the_timer(dark, home):
+    run(NIGHT, **LIGHTS)
+    automations.on_motion(API, "CAM1", "person", NIGHT)
+    assert home.on == {"PLUG": True, "BULB": True}
+    automations.tick(API, {}, NIGHT + 200)
+    assert home.on["PLUG"]  # not yet
+    automations.on_motion(API, "CAM1", "person", NIGHT + 240)  # seen again: the timer starts over
+    automations.tick(API, {}, NIGHT + 400)
+    assert home.on["PLUG"]
+    automations.tick(API, {}, NIGHT + 240 + 301)
+    assert home.on == {"PLUG": False, "BULB": False}
+    assert not automations._state().get("lights")
+
+
+def test_a_light_that_was_already_on_is_left_alone(dark, home):
+    home.on["BULB"] = True
+    run(NIGHT, **LIGHTS)
+    automations.on_motion(API, "CAM1", "person", NIGHT)
+    automations.tick(API, {}, NIGHT + 1000)
+    assert home.on == {"PLUG": False, "BULB": True}
+    assert not [s for s in home.sent if s[0] == "BULB"]
+
+
+def test_the_timer_survives_a_restart(dark, home):
+    run(NIGHT, **LIGHTS)
+    automations.on_motion(API, "CAM1", "person", NIGHT)
+    automations.tick(API, {}, NIGHT + 301)  # a new process only has the state file
+    assert home.on == {"PLUG": False, "BULB": False}
+
+
+def test_lights_ignore_daytime_other_cameras_plain_motion_and_the_off_switch(dark, home):
+    run(DAY, **LIGHTS)
+    automations.on_motion(API, "CAM1", "person", DAY)
+    automations.on_motion(API, "CAM2", "person", NIGHT)
+    automations.on_motion(API, "CAM1", "motion", NIGHT)
+    assert home.sent == []
+    run(NIGHT, lights=LIGHTS["lights"] | {"on": False})
+    automations.on_motion(API, "CAM1", "person", NIGHT)
+    assert home.sent == []
+
+
+def test_plain_motion_counts_when_the_setting_says_so(dark, home):
+    run(NIGHT, lights=LIGHTS["lights"] | {"also_motion": True})
+    automations.on_motion(API, "CAM1", "motion", NIGHT)
+    assert home.on["PLUG"]
+
+
+def test_lights_settings_are_validated(client):
+    good = {"on": True, "cameras": ["CAM1"], "devices": ["PLUG"], "minutes": 10}
+    assert client.post("/api/automations", json={"lights": good}).json["settings"]["lights"]["minutes"] == 10
+    for bad in (good | {"cameras": ["CAM9"]}, good | {"devices": ["THERMO"]}, good | {"devices": []}, good | {"minutes": 99}):
+        assert client.post("/api/automations", json={"lights": bad}).status_code == 400, bad
 
 
 def test_only_the_owner_changes_automations(client, monkeypatch):

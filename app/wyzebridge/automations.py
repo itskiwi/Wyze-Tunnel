@@ -1,11 +1,13 @@
 """Automations across devices. Each is off until the owner turns it on, and none of them ever locks or unlocks a door."""
 
 import json
+import math
 import os
 import threading
 import time
+from datetime import datetime, timezone
 
-from wyzebridge import devices
+from wyzebridge import devices, weather
 from wyzebridge.config import TOKEN_PATH
 from wyzebridge.logging import logger
 from wyzecam.api import AccessTokenError
@@ -66,7 +68,19 @@ def _heat(form: dict, cams: set, devs: dict) -> dict:
     return {"on": on, "sensors": sensors, "minutes": _minutes(form.get("minutes"), 2)}
 
 
-SECTIONS = {"heat": _heat}
+LIGHT_TYPES = {"OutdoorPlug", "Plug", "MeshLight"}
+
+
+def _lights(form: dict, cams: set, devs: dict) -> dict:
+    on = form.get("on") is True
+    cameras = _macs(form.get("cameras") or [], dict.fromkeys(cams), "cameras")
+    lights = _macs(form.get("devices") or [], {m: t for m, t in devs.items() if t in LIGHT_TYPES}, "plugs and lights")
+    if on and not (cameras and lights):
+        raise ValueError("Pick at least one camera and one plug or light.")
+    return {"on": on, "cameras": cameras, "devices": lights, "minutes": _minutes(form.get("minutes"), 5), "also_motion": form.get("also_motion") is True}
+
+
+SECTIONS = {"heat": _heat, "lights": _lights}
 
 
 def save(form: dict, cams: set, devs: dict) -> dict:
@@ -124,6 +138,73 @@ def _pause_heat(api, cfg: dict, state: dict, now: float) -> None:
         logger.warning(f"[AUTOMATIONS] A door has been open {cfg['minutes']} min: {thermo['name']} off (was {mode})")
 
 
+def is_night(ts: float) -> bool:
+    """After sunset and before sunrise at the saved home spot (NOAA's approximation, good to a few minutes). 19:00 to 06:00 if unknown."""
+    if not (loc := weather.location()):
+        hour = datetime.fromtimestamp(ts).hour
+        return hour >= 19 or hour < 6
+    d = datetime.fromtimestamp(ts, timezone.utc)
+    g = 2 * math.pi / 365 * (d.timetuple().tm_yday - 1 + (d.hour - 12) / 24)
+    eqtime = 229.18 * (0.000075 + 0.001868 * math.cos(g) - 0.032077 * math.sin(g) - 0.014615 * math.cos(2 * g) - 0.040849 * math.sin(2 * g))
+    decl = (0.006918 - 0.399912 * math.cos(g) + 0.070257 * math.sin(g) - 0.006758 * math.cos(2 * g) + 0.000907 * math.sin(2 * g)
+            - 0.002697 * math.cos(3 * g) + 0.00148 * math.sin(3 * g))
+    lat = math.radians(loc["lat"])
+    cos_ha = math.cos(math.radians(90.833)) / (math.cos(lat) * math.cos(decl)) - math.tan(lat) * math.tan(decl)
+    if abs(cos_ha) >= 1:  # polar night or midnight sun
+        return cos_ha > 0
+    ha = math.degrees(math.acos(cos_ha))
+    rise = (720 - 4 * (loc["lon"] + ha) - eqtime) % 1440
+    sset = (720 - 4 * (loc["lon"] - ha) - eqtime) % 1440
+    minute = d.hour * 60 + d.minute
+    # In UTC the sun can set "tomorrow", so the daylight span may wrap past midnight.
+    return not (rise <= minute < sset if rise < sset else minute >= rise or minute < sset)
+
+
+def on_motion(api, cam_mac: str, label: str, now: float | None = None) -> None:
+    """A camera saw something. At night, switch the chosen lights on for a while; later sightings extend it."""
+    cfg = load().get("lights") or {}
+    if not cfg.get("on") or cam_mac not in cfg.get("cameras", []):
+        return
+    if label != "person" and not (label == "motion" and cfg.get("also_motion")):
+        return
+    now = time.time() if now is None else now
+    if not is_night(now):
+        return
+    with _lock:
+        state = _state()
+        mine = state.setdefault("lights", {})
+        found = None
+        try:
+            for mac in cfg["devices"]:
+                if mac in mine:  # ours already: just more time
+                    mine[mac]["off_at"] = now + cfg["minutes"] * 60
+                    continue
+                found = found or {d["mac"]: d for d in _call(api, devices.list_devices, True)}
+                dev = found.get(mac)
+                if not dev or dev["state"].get("on") is not False:  # gone, unreadable or already on: not ours to turn off
+                    continue
+                _call(api, devices.control, dev, {"on": True})
+                mine[mac] = {"off_at": now + cfg["minutes"] * 60, "name": dev["name"], "type": dev["type"], "model": dev["model"]}
+                logger.warning(f"[AUTOMATIONS] Someone is outside: {dev['name']} on for {cfg['minutes']} min")
+        except Exception as ex:
+            logger.warning(f"[AUTOMATIONS] Lights: {ex}")
+        _write(STATE_FILE, state)
+
+
+def _lights_off(api, state: dict, now: float) -> None:
+    for mac, light in list(state.get("lights", {}).items()):
+        if now < light["off_at"]:
+            continue
+        try:
+            _call(api, devices.control, {"mac": mac, "type": light["type"], "model": light["model"]}, {"on": False})
+            del state["lights"][mac]
+            logger.warning(f"[AUTOMATIONS] {light['name']} off again")
+        except Exception as ex:
+            light["off_at"] = now + 60
+            logger.warning(f"[AUTOMATIONS] Couldn't turn {light['name']} off, trying again in a minute: {ex}")
+        _write(STATE_FILE, state)
+
+
 def tick(api, streams: dict, now: float | None = None) -> None:
     """Run every few seconds from the stream monitor. One at a time; a slow Wyze call just skips the next tick."""
     if not _lock.acquire(blocking=False):
@@ -131,6 +212,7 @@ def tick(api, streams: dict, now: float | None = None) -> None:
     try:
         now = time.time() if now is None else now
         settings, state = load(), _state()
+        _lights_off(api, state, now)
         if now - _last_poll["at"] >= POLL_SECONDS:
             _last_poll["at"] = now
             try:

@@ -122,6 +122,12 @@
             blurb: "When a chosen door or window has been open for a while, the thermostat goes off. When they are all closed again it goes back to the mode it had. If you change the thermostat yourself in between, it's left alone.",
             fields: [{ name: "sensors", kind: "pick", label: "Doors and windows", options: ofType("ContactSensor") },
                 { name: "minutes", kind: "number", label: "Open for (minutes)", fallback: 2 }] },
+        { key: "lights", title: "Lights follow people at night",
+            blurb: "When a chosen camera sees a person between sunset and sunrise, the chosen plugs and lights come on for a while, then go off. Anything that was already on is left on. Uses Wyze's own person detection (Cam Plus), so keep Event Recording on.",
+            fields: [{ name: "cameras", kind: "pick", label: "Cameras", options: () => autos.cameras },
+                { name: "devices", kind: "pick", label: "Plugs and lights", options: ofType("Plug", "OutdoorPlug", "MeshLight") },
+                { name: "also_motion", kind: "check", label: "Also react to plain motion (for cameras without person detection)" },
+                { name: "minutes", kind: "number", label: "Stay on for (minutes)", fallback: 5 }] },
     ];
 
     // Returns the row and a function that reads its value back.
