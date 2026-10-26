@@ -765,7 +765,7 @@ def create_app():
         """Plugs, bulbs, sensors, thermostat, locks and chimes. POST {"mac": ..., "on" | "lock" | ...: ...} changes one."""
         try:
             if request.method == "GET":
-                return {"devices": device_call(devices.list_devices, bool(request.args.get("fresh")))}
+                return {"devices": device_call(devices.list_devices, bool(request.args.get("fresh"))), "lock_minutes": webhooks.ALERTS.get("lock_minutes") or 0}
             data = request.get_json(silent=True) or {}
             # Door locks only for the owner's password: API-keyed stream links and family logins can't unlock a door.
             if "lock" in data and not web_ui.owner_password():
@@ -803,6 +803,51 @@ def create_app():
             return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
         except (WyzeAPIError, requests.RequestException) as ex:
             return {"error": f"Couldn't read your devices from Wyze: {ex}"}, 502
+
+    @app.route("/api/devices/lock-log")
+    @owner_only  # who comes and goes, and code names/schedules: not for family
+    def api_lock_log():
+        """Recent activity and keypad code names for one lock. Never the code digits."""
+        try:
+            dev = device_call(devices.find, request.args.get("mac", ""))
+            if not dev or dev["type"] != "Lock":
+                return {"error": "Unknown lock."}, 404
+            return device_call(devices.lock_log, dev["mac"], bool(request.args.get("fresh")))
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException) as ex:
+            return {"error": f"Wyze didn't answer: {ex}"}, 502
+
+    @app.route("/api/devices/history")
+    @auth_required
+    def api_device_history():
+        """Thermostat and room sensor readings the bridge has kept, for the last 24 hours or 7 days."""
+        hours = request.args.get("hours", "24")
+        if hours not in ("24", "168"):
+            return {"error": "hours must be 24 or 168."}, 400
+        return devices.history(request.args.get("mac", ""), int(hours))
+
+    @app.route("/api/devices/usage")
+    @auth_required
+    def api_plug_usage():
+        """Hours each day a plug was on, from Wyze's usage record (plugs only: no lock or camera data)."""
+        try:
+            dev = device_call(devices.find, request.args.get("mac", ""))
+            if not dev or dev["type"] not in ("OutdoorPlug", "Plug"):
+                return {"error": "Unknown plug."}, 404
+            return {"days": device_call(devices.plug_usage, dev, bool(request.args.get("fresh")))}
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException) as ex:
+            return {"error": f"Wyze didn't answer: {ex}"}, 502
+
+    @app.route("/api/devices/lock-alert", methods=["POST"])
+    @owner_only
+    def api_lock_alert():
+        try:
+            return {"lock_minutes": webhooks.set_lock_alert((request.get_json(silent=True) or {}).get("minutes"))}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
 
     @app.route("/privacy", methods=["GET", "POST"])
     @app.route("/battery-saver", methods=["GET", "POST"], endpoint="battery_saver")

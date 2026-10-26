@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 from threading import Thread
 
-from wyzebridge import config, detect, guests, integrations, phone_cams, phrases, pocket, recording, sd_copy, tamper, timelapse, webhooks
+from wyzebridge import config, detect, devices, guests, integrations, phone_cams, phrases, pocket, recording, sd_copy, tamper, timelapse, webhooks
 from wyzebridge.auth import STREAM_AUTH, WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream
 from wyzebridge.go2rtc import lan_controls, tutk_available
@@ -38,6 +38,7 @@ class WyzeBridge(Thread):
         sd_copy.start(self.streams)
         timelapse.start(self.streams.get_rtsp_snap)
         tamper.start(self.streams.get_rtsp_snap, lambda: [u for u, s in self.streams.streams.items() if s.state == 3])
+        devices.start_watch(lambda: self.api.auth, self.api.refresh_token)
 
     def run(self, fresh_data: bool = False) -> None:
         self._initialize(fresh_data)
