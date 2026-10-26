@@ -16,6 +16,7 @@ from requests.exceptions import ConnectionError, HTTPError, RequestException, Ti
 from wyzebridge.auth import get_secret
 from wyzebridge.bridge_utils import env_bool, env_filter
 from wyzebridge.config import IMG_PATH, MOTION, TOKEN_PATH
+from wyzebridge import vault
 from wyzebridge.logging import logger
 from wyzecam.api import RateLimitError, WyzeAPIError, post_device, post_upgrade
 from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeCredential, is_min_version
@@ -30,9 +31,8 @@ def cached(func: Callable[..., Any]) -> Callable[..., Any]:
             if getattr(self, name, None):
                 return func(self, *args, **kwargs)
             try:
-                with open(TOKEN_PATH + name + ".pickle", "rb") as pkl_f:
-                    if not (data := pickle.load(pkl_f)):
-                        raise OSError
+                if not (data := pickle.loads(vault.read_bytes(TOKEN_PATH + name + ".pickle"))):
+                    raise OSError
                 if name == "user" and not self.creds.same_email(data.email):
                     raise ValueError("🕵️ Cached email doesn't match 'WYZE_EMAIL'")
                 logger.info(f"📚 Using '{name}' from local cache...")
@@ -589,15 +589,13 @@ def save_lan_keys(cams: list[WyzeCamera]) -> None:
 
     Unlike the *.pickle cache, clear_cache() leaves this file alone.
     """
-    path = Path(LAN_KEYS_FILE)
-    path.write_text(json.dumps([c.model_dump(exclude={"camera_info"}) for c in cams]))
-    path.chmod(0o600)
+    vault.write_text(LAN_KEYS_FILE, json.dumps([c.model_dump(exclude={"camera_info"}) for c in cams]))
 
 
 def load_lan_keys() -> list[WyzeCamera]:
     try:
-        cams = [WyzeCamera(**c) for c in json.loads(Path(LAN_KEYS_FILE).read_text())]
-    except (FileNotFoundError, ValueError, TypeError):
+        cams = [WyzeCamera(**c) for c in json.loads(vault.read_text(LAN_KEYS_FILE))]
+    except (OSError, ValueError, TypeError):
         return []
     if cams:
         logger.debug(f"[API] Wyze unreachable, using saved keys for {len(cams)} cameras")
@@ -648,9 +646,8 @@ def filter_cams(cams: list[WyzeCamera]) -> list[WyzeCamera]:
 
 
 def pickle_dump(name: str, data: object):
-    with open(TOKEN_PATH + name + ".pickle", "wb") as f:
-        logger.info(f"💾 Saving '{name}' to local cache...")
-        pickle.dump(data, f)
+    logger.info(f"💾 Saving '{name}' to local cache...")
+    vault.write_bytes(TOKEN_PATH + name + ".pickle", pickle.dumps(data))
 
 
 def parse_token(access_token: Optional[str]) -> tuple[Optional[str], Optional[str]]:

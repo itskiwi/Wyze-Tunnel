@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 from threading import Thread
 
-from wyzebridge import config, detect, devices, guests, integrations, phone_cams, phrases, pocket, recording, sd_copy, tamper, timelapse, webhooks
+from wyzebridge import config, detect, devices, guests, integrations, lockdown, phone_cams, phrases, pocket, recording, sd_copy, tamper, timelapse, webhooks
 from wyzebridge.auth import STREAM_AUTH, WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream
 from wyzebridge.go2rtc import lan_controls, tutk_available
@@ -29,6 +29,7 @@ class WyzeBridge(Thread):
         print(f"\n🚀 DOCKER-WYZE-BRIDGE v{config.VERSION} {config.BUILD_STR}\n")
         self.api: WyzeApi = WyzeApi()
         self.streams: StreamManager = StreamManager()
+        lockdown.seal_secrets()
         self.mtx: MtxServer = MtxServer()
         self.mtx.setup_webrtc(config.BRIDGE_IP)
         if config.LLHLS:

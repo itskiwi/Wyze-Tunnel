@@ -164,10 +164,13 @@ mod vm {
             fs::create_dir_all(d.join(sub)).ok()?;
         }
         fs::copy(n.join("mediamtx.yml"), d.join("mediamtx.yml")).ok()?; // fresh each start; the bridge edits it
+        seal_password();
         let log = fs::File::create(d.join("bridge.log")).ok()?;
         let path = std::env::var("PATH").unwrap_or_default();
+        // Tailscale only (Health page): Wyze Tunnel's own Tailscale reaches the web page from this PC, nothing else can.
+        let host = if d.join(r"tokens\tailscale-only").exists() { "127.0.0.1" } else { "0.0.0.0" };
         let mut c = cmd(n.join(r"python\python.exe"));
-        c.args(["-m", "flask", "run", "--host=0.0.0.0"])
+        c.args(["-m", "flask", "run", &format!("--host={host}")])
             .current_dir(n.join("app"))
             .env("FLASK_APP", "frontend")
             .env("PYTHONUNBUFFERED", "1")
@@ -195,7 +198,59 @@ mod vm {
             .filter(|l| !l.starts_with('#'))
             .filter_map(|l| l.split_once('='))
             .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
+            .map(|(k, v)| match v.strip_prefix(SEALED) {
+                Some(hex) => (k, unseal(hex).unwrap_or_default()),
+                None => (k, v),
+            })
             .collect()
+    }
+    /// The web password is kept in wyze-tunnel.env sealed with DPAPI for this Windows user ("dpapi:" + hex), so a
+    /// copied file is useless elsewhere. Install and hand edits write it plain; the next start seals it.
+    const SEALED: &str = "dpapi:";
+    fn seal_password() {
+        let file = dir().join("wyze-tunnel.env");
+        let Ok(text) = fs::read_to_string(&file) else { return };
+        let mut changed = false;
+        let lines: Vec<String> = text
+            .lines()
+            .map(|l| match l.trim().strip_prefix("WB_PASSWORD=").map(str::trim) {
+                Some(v) if !v.is_empty() && !v.starts_with(SEALED) => match dpapi(v.as_bytes(), true) {
+                    Some(blob) => {
+                        changed = true;
+                        format!("WB_PASSWORD={SEALED}{}", blob.iter().map(|b| format!("{b:02x}")).collect::<String>())
+                    }
+                    None => l.to_string(),
+                },
+                _ => l.to_string(),
+            })
+            .collect();
+        if changed {
+            let _ = fs::write(&file, lines.join("\r\n") + "\r\n");
+        }
+    }
+    fn unseal(hex: &str) -> Option<String> {
+        let bytes = (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok()).collect::<Option<Vec<u8>>>()?;
+        String::from_utf8(dpapi(&bytes, false)?).ok()
+    }
+    fn dpapi(data: &[u8], seal: bool) -> Option<Vec<u8>> {
+        use std::ptr::{null, null_mut};
+        use windows_sys::Win32::Foundation::LocalFree;
+        use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB};
+        let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
+        let mut out = CRYPT_INTEGER_BLOB { cbData: 0, pbData: null_mut() };
+        let ok = unsafe {
+            if seal {
+                CryptProtectData(&input, null(), null(), null(), null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out)
+            } else {
+                CryptUnprotectData(&input, null_mut(), null(), null(), null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out)
+            }
+        };
+        if ok == 0 {
+            return None;
+        }
+        let v = unsafe { std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec() };
+        unsafe { LocalFree(out.pbData as _) };
+        Some(v)
     }
     pub fn stop() {
         if let Some(mut c) = CHILD.lock().unwrap().take() {

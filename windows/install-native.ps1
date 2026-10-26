@@ -15,14 +15,21 @@ function Say($m) { Write-Output "`n==> $m" }
 
 # Phones reach the web app (python.exe), cameras answer go2rtc and wyze-ioctl over UDP, other devices reach MediaMTX,
 # and phones away from home connect straight to wyze-away (embedded Tailscale), so all need inbound firewall rules.
-# One Windows permission prompt, only when a rule is missing or a Block rule (from a canceled firewall prompt) exists.
+# One Windows permission prompt, only when a rule is missing, too open, or a Block rule (from a canceled firewall prompt) exists.
 # Only Wyze Tunnel's own programs are touched (approved by the project owner, 2026-10-24).
 $Exes = 'go2rtc.exe', 'mediamtx.exe', 'wyze-ioctl.exe', 'wyze-away.exe', 'python\python.exe' | ForEach-Object { Join-Path $Native "wyze-tunnel\$_" }
+# The web page and video server only take visitors from home networks and Tailscale (100.64.0.0/10), never the internet.
+# The other three only get answers to their own calls out (cameras, Wyze's cloud, Tailscale peers), so they stay open.
+$Reachable = 'LocalSubnet', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10', 'fc00::/7', 'fe80::/10'
+function Get-Scope($exe) { if ((Split-Path $exe -Leaf) -in 'python.exe', 'mediamtx.exe') { $Reachable } else { @('Any') } }
 function Get-Blocked {
     $Exes | Where-Object {
         $rules = Get-NetFirewallApplicationFilter -Program $_ -ErrorAction SilentlyContinue | Get-NetFirewallRule -ErrorAction SilentlyContinue |
             Where-Object { $_.Direction -eq 'Inbound' -and $_.Enabled -eq 'True' }
-        -not ($rules | Where-Object Action -eq 'Allow') -or ($rules | Where-Object Action -eq 'Block')
+        $open = $rules | Where-Object Action -eq 'Allow'
+        # An allow rule open to any address (Windows' own prompt makes those) counts as needing a fix too.
+        $tooOpen = (Get-Scope $_) -notcontains 'Any' -and ($open | Get-NetFirewallAddressFilter | Where-Object { $_.RemoteAddress -contains 'Any' })
+        -not $open -or ($rules | Where-Object Action -eq 'Block') -or $tooOpen
     }
 }
 function Fix-Firewall {
@@ -32,7 +39,7 @@ function Fix-Firewall {
     Say 'Letting phones and cameras through Windows Firewall (click Yes on the Windows permission prompt)'
     $Fix = ($Exes -replace "'", "''" | ForEach-Object {
         "Get-NetFirewallApplicationFilter -Program '$_' -ErrorAction SilentlyContinue | Get-NetFirewallRule | Where-Object Direction -eq Inbound | Remove-NetFirewallRule; " +
-        "New-NetFirewallRule -DisplayName 'Wyze Tunnel ($(Split-Path $_ -Leaf))' -Direction Inbound -Action Allow -Program '$_' -Profile Any | Out-Null"
+        "New-NetFirewallRule -DisplayName 'Wyze Tunnel ($(Split-Path $_ -Leaf))' -Direction Inbound -Action Allow -Program '$_' -Profile Any -RemoteAddress '$((Get-Scope $_) -join "','")' | Out-Null"
     }) -join '; '
     try {
         $Encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Fix))  # no quoting to get wrong

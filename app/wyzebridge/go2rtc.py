@@ -19,7 +19,7 @@ from urllib.parse import urlencode
 
 import requests
 import yaml
-from wyzebridge import homekit
+from wyzebridge import homekit, lockdown
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import kill_orphan
@@ -225,7 +225,7 @@ class Go2rtcServer:
             "log": {"level": env_bool("GO2RTC_LOGLEVEL", "warn")},
             "streams": self.streams | hk_streams,
         }
-        if accessories:
+        if accessories and not lockdown.tailscale_only():  # Apple Home needs the home network
             # Apple devices pair on the API port, so it opens to the network, but only for HomeKit's two
             # pairing paths: go2rtc then drops the rest of its API and web page. Pairing itself is HAP-encrypted.
             cfg["api"] = {"listen": f":{API_PORT}", "allow_paths": ["/pair-setup", "/pair-verify"]}

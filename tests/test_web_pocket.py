@@ -56,11 +56,11 @@ def test_pair_code_expires(setup):  # noqa: F811
 
 
 FAKE_AWAY = """#!/usr/bin/env python3
-import json, sys
+import json, os, sys
 args = dict(zip(sys.argv[1::2], sys.argv[2::2]))
 status = {"state": "Running", "auth_url": "", "host": "wyze-tunnel.tail1234.ts.net", "public": "", "funnel_url": ""}
-if "-funnel" in sys.argv:
-    status["public"] = "https://wyze-tunnel.tail1234.ts.net"
+status["funnel"] = "-funnel" in sys.argv
+status["portmapper_off"] = os.environ.get("TS_DISABLE_PORTMAPPER") == "1"
 json.dump(status, open(args["-status"], "w"))
 sys.stdin.read()  # like wyze-away, it exits when the bridge closes its stdin
 """
@@ -82,7 +82,10 @@ def test_away_access_turns_on_and_heals(setup, tmp_path):  # noqa: F811
                 break
             pocket.time.sleep(0.1)
         codes = client.post("/pair", headers=owner).json
-        assert codes["anywhere"]["url"].startswith("https://wyze-tunnel.tail1234.ts.net/pair/")
+        # Tailnet only: no public Funnel link, and Tailscale never asks the router to open a port.
+        assert codes["anywhere"]["url"].startswith("http://wyze-tunnel.tail1234.ts.net/pair/")
+        away = pocket.Away.status()
+        assert not away["funnel"] and away["portmapper_off"]
 
         pocket.Away.proc.kill()
         pocket.Away.proc.wait()
