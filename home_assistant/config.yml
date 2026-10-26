@@ -3,7 +3,7 @@ description: Stable releases. WebRTC/RTSP/RTMP/HLS for your Wyze cams
 slug: docker_wyze_bridge
 url: https://github.com/itskiwi/Wyze-Tunnel
 image: ghcr.io/itskiwi/wyze-tunnel
-version: 2.17.0
+version: 2.17.1
 stage: stable
 arch:
   - armv7
