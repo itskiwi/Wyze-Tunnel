@@ -232,6 +232,40 @@
                             <button class="button btn justify-start" data-cmd="quick_response" data-payload="3">"Leave the package at the door"</button>
                         </div>
                         {% endif %}
+                        {% if camera.is_doorbell and not current_guest() %}
+                        {# Chime controls change real hardware, so the server only lets the owner use them. The Wyze Chime part needs one paired with this doorbell. #}
+                        <details class="chime-box mt-1" data-cam="{{ cam_uri }}">
+                            <summary class="menu-label cursor-pointer list-none"><i class="fas fa-bell-concierge"></i> Chime <i class="fas fa-angle-down ml-auto"></i></summary>
+                            <div class="grid grid-cols-[1fr_auto_auto] items-center gap-1 px-1 py-0.5">
+                                <span class="truncate pl-1 text-zinc-300">Doorbell ring sound</span>
+                                <button class="button btn px-2.5 py-1" data-chime-key="ring_sound" data-chime-value="on">On</button>
+                                <button class="button btn px-2.5 py-1" data-chime-key="ring_sound" data-chime-value="off">Off</button>
+                            </div>
+                            <div class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-1 px-1 py-0.5">
+                                <span class="truncate pl-1 text-zinc-300">Chime in the door</span>
+                                <button class="button btn px-2.5 py-1" data-chime-key="chime_type" data-chime-value="none">None</button>
+                                <button class="button btn px-2.5 py-1" data-chime-key="chime_type" data-chime-value="mechanical">Mechanical</button>
+                                <button class="button btn px-2.5 py-1" data-chime-key="chime_type" data-chime-value="digital">Digital</button>
+                            </div>
+                            <label class="grid grid-cols-[1fr_auto] items-center gap-1 px-1 py-0.5"><span class="pl-1 text-zinc-300">Ring length</span>
+                                <select class="button btn px-2 py-1" data-chime-key="chime_seconds" aria-label="Ring length in seconds">
+                                    <option value="" selected disabled>Seconds</option>{% for n in range(1, 10) %}<option value="{{ n }}">{{ n }} s</option>{% endfor %}
+                                </select></label>
+                            {% set chime_sounds = ["Space Wave", "Wind Chime", "Curiosity", "Surprise", "Cheerful", "Doorbell 1", "Doorbell 2", "Doorbell 3", "Doorbell 4", "Bird Chirp", "Dog Bark 1", "Dog Bark 2", "Door Close", "Door Open", "Simple 1", "Simple 2", "Simple 3", "Simple 4", "Intruder Alarm"] %}
+                            <div class="grid grid-cols-[1fr_auto] items-center gap-1 px-1 py-0.5">
+                                <span class="pl-1 text-zinc-300">Wyze Chime sound</span>
+                                <select class="chime-sound button btn px-2 py-1" aria-label="Wyze Chime sound">
+                                    {% for name in chime_sounds %}<option value="{{ loop.index }}">{{ name }}</option>{% endfor %}
+                                </select>
+                                <span class="pl-1 text-zinc-300">Volume</span>
+                                <input class="chime-volume" type="range" min="1" max="100" value="50" aria-label="Wyze Chime volume" />
+                            </div>
+                            <div class="grid grid-cols-1 gap-1 p-1">
+                                <button class="button btn" data-chime-save title="The chime rings once so you can hear it">Save Wyze Chime</button>
+                            </div>
+                            <p class="chime-status px-2 pb-1 text-xs text-zinc-400" role="status"></p>
+                        </details>
+                        {% endif %}
                         {% if camera.is_spotlight %}
                         <p class="menu-label"><i class="fas fa-sun"></i> Spotlight</p>
                         <div class="grid grid-cols-2 gap-1 p-1">
@@ -359,6 +393,25 @@
     document.addEventListener('DOMContentLoaded', addApiKey);
 </script>
 {% endif %}
+<script>
+    // Chime changes go to the owner-only API; the answer is shown as text.
+    document.addEventListener("change", (e) => e.target.matches("select[data-chime-key]") && chime(e.target, { [e.target.dataset.chimeKey]: +e.target.value }));
+    document.addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-chime-key], button[data-chime-save]");
+        if (!b) return;
+        const box = b.closest(".chime-box");
+        chime(b, b.dataset.chimeKey ? { [b.dataset.chimeKey]: b.dataset.chimeValue }
+            : { chime_sound: +box.querySelector(".chime-sound").value, chime_volume: +box.querySelector(".chime-volume").value });
+    });
+    function chime(el, body) {
+        const box = el.closest(".chime-box"), status = box.querySelector(".chime-status");
+        status.textContent = "Sending…";
+        fetch(`api/${box.dataset.cam}/chime`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+            .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+            .then(({ ok, j }) => status.textContent = ok ? "Done." : j.error || Object.values(j.results || {}).map((r) => r.response).filter(Boolean).join(" ") || "That didn't work.")
+            .catch(() => status.textContent = "Couldn't reach the bridge.");
+    }
+</script>
 <script src="static/site.js?v={{ version }}"></script>
 {% if show_video %}
 {% if (webrtc and video_format == "webrtc") or video_format =="kvs" %}

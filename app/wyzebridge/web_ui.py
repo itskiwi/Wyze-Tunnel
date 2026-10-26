@@ -85,6 +85,12 @@ def current_guest() -> Optional[dict]:
     return user if isinstance(user, dict) else None
 
 
+def owner_password() -> bool:
+    """Signed in with the owner's own password: not the API key, Home Assistant, an app token, a guest or family."""
+    creds = request.authorization
+    return bool(WbAuth.enabled and creds and creds.username == WbAuth.username and check_password_hash(WbAuth.hashed_password(), creds.password or ""))
+
+
 def cross_site_request() -> bool:
     """True when a browser sent this request from another website (CSRF)."""
     if site := request.headers.get("Sec-Fetch-Site"):

@@ -311,6 +311,84 @@ def create_app():
 
         return wb.streams.send_cmd(cam_name, cam_cmd.lower(), payload)
 
+    CHIME_TYPES = {"none": 1, "mechanical": 2, "digital": 3}
+
+    def chime_input(data: dict) -> tuple[dict, str]:
+        """Check a chime change from the page: ring sound, wired chime type and length, Wyze Chime sound and volume."""
+        keys = {"ring_sound", "chime_type", "chime_seconds", "chime_sound", "chime_volume"}
+        if not isinstance(data, dict) or not data or not keys.issuperset(data):
+            return {}, "Nothing to change."
+
+        def num(key: str, low: int, high: int) -> bool:
+            return type(data[key]) is int and low <= data[key] <= high
+
+        if data.get("ring_sound", "on") not in ("on", "off") or data.get("chime_type", "none") not in tuple(CHIME_TYPES):
+            return {}, "Invalid ring sound or chime type."
+        if ("chime_seconds" in data and not num("chime_seconds", 1, 9)) or ("chime_sound" in data and not num("chime_sound", 1, 19)):
+            return {}, "Invalid chime length or sound."
+        if "chime_volume" in data and not num("chime_volume", 1, 100):
+            return {}, "Invalid chime volume."
+        if ("chime_sound" in data) != ("chime_volume" in data):
+            return {}, "The Wyze Chime needs its sound and volume together."
+        return data, ""
+
+    def doorbell_stream(cam_name: str):
+        stream = wb.streams.get(cam_name)
+        return stream if stream and stream.camera.is_doorbell else None
+
+    @app.route("/api/<string:cam_name>/chime")
+    @auth_required
+    def api_chime(cam_name: str):
+        """What the doorbell v2 reports for its ring sound and wired chime."""
+        if not doorbell_stream(cam_name):
+            return {"error": "Not a doorbell."}, 404
+        return {
+            "ring_sound": wb.streams.send_cmd(cam_name, "ring_sound").get("value"),
+            "doorbell_chime": wb.streams.send_cmd(cam_name, "doorbell_chime").get("value"),
+        }
+
+    @app.route("/api/<string:cam_name>/chime", methods=["POST"])
+    @owner_only
+    def api_chime_set(cam_name: str):
+        if not (stream := doorbell_stream(cam_name)):
+            return {"error": "Not a doorbell."}, 404
+        data, error = chime_input(request.get_json(silent=True))
+        if error:
+            return {"error": error}, 400
+        results = {}
+        if "ring_sound" in data:
+            results["ring_sound"] = wb.streams.send_cmd(cam_name, "ring_sound", data["ring_sound"])
+        if "chime_type" in data:
+            results["chime_type"] = wb.streams.send_cmd(cam_name, "doorbell_chime", f"{CHIME_TYPES[data['chime_type']]},0,0")
+        if "chime_seconds" in data:
+            results["chime_seconds"] = wb.streams.send_cmd(cam_name, "doorbell_chime", f"0,0,{data['chime_seconds']}")
+        if "chime_sound" in data:
+            results["wyze_chime"] = wb.api.set_chime(stream.camera, data["chime_sound"], data["chime_volume"]) or {"status": "error", "response": "Wyze isn't signed in"}
+        return {"results": results}, 200 if all(r.get("status") == "success" for r in results.values()) else 502
+
+    @app.route("/rules")
+    @auth_required
+    def rules():
+        return render_template("rules.html", version=config.VERSION)
+
+    @app.route("/api/rules")
+    @auth_required
+    def api_rules():
+        """The Wyze account's rules and shortcuts (names only)."""
+        return wb.api.get_rules() or {"status": "error", "response": "Wyze isn't signed in"}
+
+    @app.route("/api/rules/<string:auto_id>/run", methods=["POST"])
+    @owner_only
+    def api_run_shortcut(auto_id: str):
+        """Run a Wyze shortcut. A shortcut can unlock doors or switch plugs, so the API key and apps can't."""
+        if not web_ui.owner_password():
+            return {"error": "Sign in with the owner's own password to run shortcuts."}, 403
+        found = wb.api.get_rules() or {}
+        if not any(r["id"] == auto_id and r["shortcut"] for r in found.get("rules", [])):
+            return {"error": "No such shortcut."}, 404
+        result = wb.api.run_shortcut(auto_id) or {"status": "error", "response": "Wyze isn't signed in"}
+        return result, 200 if result["status"] == "success" else 502
+
     def shared(name: str) -> bool:
         """Whether viewers can share the tunnel's own camera connection instead of opening one each.
 

@@ -733,6 +733,51 @@ class K10206SetMotionAlarm(TutkWyzeProtocolMessage):
         return encode(self.code, bytes([self.value, 0]))
 
 
+class K12080SetDb2DdqParameter(TutkWyzeProtocolMessage):
+    """Doorbell v2 wired chime (the app calls it ddq): type 1 none, 2 mechanical, 3 digital; ring length 1-9 s.
+
+    A 0 leaves that field as it is, like the Wyze app (ConnectControl.func_setDb2DdqParameter sends one at a time).
+    The middle byte is the app's on/off switch; its meaning differs between two app screens, so it is always 0 here.
+    """
+
+    def __init__(self, chime_type: int = 0, switch: int = 0, seconds: int = 0):
+        super().__init__(12080)
+        assert chime_type in {0, 1, 2, 3} and switch == 0 and 0 <= seconds <= 9, "invalid chime setting"
+        self.values = bytes([chime_type, switch, seconds])
+
+    def encode(self) -> bytes:
+        return encode(self.code, self.values)
+
+
+class K12082GetDb2DdqParameter(TutkWyzeProtocolMessage):
+    def __init__(self):
+        super().__init__(12082)
+
+    def parse_response(self, resp_data):
+        chime_type, _switch, seconds = resp_data[:3]
+        return {"type": {1: "none", 2: "mechanical", 3: "digital"}.get(chime_type), "seconds": seconds}
+
+
+class K12086SetDb2RingSound(TutkWyzeProtocolMessage):
+    """The doorbell's own ring sound: 1 on, 2 off."""
+
+    def __init__(self, value: int):
+        super().__init__(12086)
+        assert value in {1, 2}, "value must be 1 or 2"
+        self.value: int = value
+
+    def encode(self) -> bytes:
+        return encode(self.code, bytes([self.value]))
+
+
+class K12088GetDb2RingSound(TutkWyzeProtocolMessage):
+    def __init__(self):
+        super().__init__(12088)
+
+    def parse_response(self, resp_data):
+        return "on" if resp_data[0] == 1 else "off"
+
+
 class K10292SetMotionTagging(TutkWyzeProtocolMessage):
     """
     A message used to enable/disable motion tagging (green box around motion).

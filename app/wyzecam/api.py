@@ -268,6 +268,28 @@ def run_action(auth_info: WyzeCredential, camera: WyzeCamera, action: str):
     return validate_resp(resp)
 
 
+def get_auto_list(auth_info: WyzeCredential) -> list[dict]:
+    """The account's rules and shortcuts (CloudApi.URL_V2_GET_AUTO_LIST; a shortcut has is_hot_button 1)."""
+    resp = post(f"{WYZE_API}/v2/auto/get_auto_list", json=_payload(auth_info), headers=_headers())
+
+    return validate_resp(resp).get("auto_list") or []
+
+
+def run_auto(auth_info: WyzeCredential, auto_id: str) -> dict:
+    """Run one rule or shortcut now (CloudApi.URL_V2_RUN_AUTO)."""
+    payload = dict(_payload(auth_info), auto_id=auto_id)
+    resp = post(f"{WYZE_API}/v2/auto/run_auto", json=payload, headers=_headers())
+
+    return validate_resp(resp)
+
+
+def set_property_list(auth_info: WyzeCredential, mac: str, model: str, props: dict[str, int]) -> dict:
+    """Set several properties at once, like the Wyze app's chime screen (CloudProtocol.setPropertyList)."""
+    params = {"device_mac": mac, "device_model": model, "property_list": [{"pid": k, "pvalue": v} for k, v in props.items()]}
+
+    return post_device(auth_info, "set_property_list", params, api_version=2)
+
+
 def post_device(
     auth_info: WyzeCredential, endpoint: str, params: dict, api_version: int = 1
 ) -> dict:
