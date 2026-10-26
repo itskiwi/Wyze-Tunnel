@@ -97,6 +97,33 @@
 </div>
 {% endif %}
 
+{% if not current_guest() and timelapse_from %}
+<section id="sd" class="surface mt-5 p-5">
+    <h2 class="font-semibold">Camera SD card</h2>
+    <p class="mt-1 text-sm text-zinc-400">Plays what the camera saved on its own card. It uses one of the camera's connections while it plays, so stop it when you're done.</p>
+    <form id="sdForm" class="mt-3 flex flex-wrap items-end gap-3">
+        <label class="block text-sm">Camera
+            <select name="cam" class="field mt-1">
+                {% for uri, name in timelapse_from.items() %}<option value="{{ uri }}">{{ name }}</option>{% endfor %}
+            </select></label>
+        <label class="block text-sm">Day
+            <input type="date" name="day" class="field mt-1" required /></label>
+        <button class="btn btn-primary" type="submit">Show</button>
+        <span id="sdStatus" class="text-sm text-zinc-400" role="status"></span>
+    </form>
+    <div class="mt-3 grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div id="sdPlayerBox" class="hidden overflow-hidden rounded-3xl bg-black">
+            <video id="sdPlayer" class="aspect-video w-full" controls muted playsinline></video>
+            <div class="flex items-center gap-3 bg-zinc-900 px-4 py-3 text-sm">
+                <span id="sdNow" class="text-zinc-400"></span>
+                <button id="sdStop" class="btn ml-auto" type="button"><i class="fas fa-stop"></i>Stop</button>
+            </div>
+        </div>
+        <div id="sdList" class="max-h-[70vh] overflow-auto"></div>
+    </div>
+</section>
+{% endif %}
+
 {% if not current_guest() %}
 <section id="cloud" class="surface mt-5 p-5">
     <h2 class="font-semibold">Back up clips to the cloud</h2>
@@ -330,5 +357,77 @@
         select.addEventListener("change", () => load(select.value));
         load(select.value, Number(new URLSearchParams(location.search).get("t")) || 0);
     }
+</script>
+<script src="static/hls.min.js?v={{ version }}"></script>
+<script>
+    // SD card: list a day from the camera, then play it through MediaMTX at /<cam>-sd.
+    const sdForm = document.getElementById("sdForm");
+    const sdStatus = document.getElementById("sdStatus");
+    const sdList = document.getElementById("sdList");
+    const sdPlayer = document.getElementById("sdPlayer");
+    let sdCam = "", sdHls = null;
+    const json = (resp) => resp.json().then((r) => resp.ok ? r : Promise.reject(new Error(r.error || resp.statusText)));
+    const clock = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+    function sdStop() {
+        if (!sdCam) return;
+        navigator.sendBeacon(`sd/${encodeURIComponent(sdCam)}/stop`);
+        sdHls?.destroy();
+        sdHls = null;
+        sdPlayer.removeAttribute("src");
+        sdCam = "";
+        document.getElementById("sdPlayerBox").classList.add("hidden");
+    }
+
+    // MediaMTX only serves the path once the camera sends video, which takes a few seconds.
+    async function sdAttach(src) {
+        for (let i = 0; i < 20 && sdCam; i++) {
+            if ((await fetch(src).catch(() => ({}))).ok) break;
+            await new Promise((r) => setTimeout(r, 1500));
+        }
+        if (sdPlayer.canPlayType("application/vnd.apple.mpegurl")) sdPlayer.src = src;
+        else if (window.Hls?.isSupported()) { sdHls = new Hls(); sdHls.loadSource(src); sdHls.attachMedia(sdPlayer); }
+        sdPlayer.play().catch(() => { });
+    }
+
+    function sdPlay(cam, ts) {
+        if (sdCam && sdCam !== cam) sdStop();
+        document.getElementById("sdPlayerBox").classList.remove("hidden");
+        document.getElementById("sdNow").textContent = `Starting at ${clock(ts)}…`;
+        fetch(`sd/${encodeURIComponent(cam)}/play`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ts }) })
+            .then(json)
+            .then((r) => {
+                document.getElementById("sdNow").textContent = `From ${clock(ts)}`;
+                if (sdCam === cam) return; // already playing: the camera seeks on the same stream
+                sdCam = cam;
+                sdAttach(r.hls);
+            })
+            .catch((err) => { document.getElementById("sdNow").textContent = err.message; });
+    }
+
+    sdForm?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const cam = sdForm.cam.value;
+        const start = Math.floor(new Date(`${sdForm.day.value}T00:00`).getTime() / 1000); // the viewer's local midnight
+        sdStatus.textContent = "Asking the camera…";
+        sdList.replaceChildren();
+        fetch(`sd/${encodeURIComponent(cam)}?start=${start}`)
+            .then(json)
+            .then((r) => {
+                sdStatus.textContent = !r.sd_card ? "This camera has no SD card." : r.segments.length ? "" : "Nothing on the card for that day.";
+                for (const [from, to] of r.segments) {
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.className = "menu-item";
+                    button.textContent = `${clock(from)} – ${clock(to)}`;
+                    button.addEventListener("click", () => sdPlay(cam, from));
+                    sdList.append(button);
+                }
+            })
+            .catch((err) => { sdStatus.textContent = err.message; });
+    });
+    if (sdForm) sdForm.day.valueAsDate = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+    document.getElementById("sdStop")?.addEventListener("click", sdStop);
+    addEventListener("pagehide", sdStop);
 </script>
 {% endblock %}

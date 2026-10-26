@@ -874,6 +874,63 @@ class K10148StartBoa(TutkWyzeProtocolMessage):
         return encode(self.code, bytes([0, 1, 0, 0, 0]))
 
 
+class K10150Replay(TutkWyzeProtocolMessage):
+    """
+    Start, seek or stop SD card playback on this session's AV channel.
+
+    Playback frames carry `ts` as their n_play_token; send start again with a new ts to seek.
+
+    Parameters:
+    - ts (int): epoch seconds to play from.
+    - start (bool): False stops playback and the camera goes back to live.
+    """
+
+    def __init__(self, ts: int, start: bool = True):
+        super().__init__(10150)
+        self.ts, self.start = int(ts), start
+
+    def encode(self) -> bytes:
+        return encode(self.code, pack("<BBI", 1 if self.start else 2, 1, self.ts))
+
+    def parse_response(self, resp_data: bytes) -> bool:
+        return bool(resp_data) and resp_data[0] == 1
+
+
+class K10350GetRecordInfo(TutkWyzeProtocolMessage):
+    """
+    Which minutes of a 12-hour window are on the SD card.
+
+    Ask twice for a day: local midnight, then midnight + 43200.
+
+    Parameters:
+    - start (int): epoch seconds the window starts at.
+    - minutes (int): window length; the app always asks for 720.
+    """
+
+    def __init__(self, start: int = 0, minutes: int = 720):  # a default, so a bare GET can't crash the control thread
+        super().__init__(10350)
+        self.start, self.minutes = int(start), int(minutes)
+
+    def encode(self) -> bytes:
+        return encode(self.code, pack("<BBIH", 1, 1, self.start, self.minutes))
+
+    def parse_response(self, resp_data: bytes) -> dict:
+        if len(resp_data) < 11 or resp_data[1] != 1:
+            raise TutkWyzeProtocolError(f"Unexpected record info: {resp_data[:11].hex()}")
+        start, nbytes = unpack("<I", resp_data[3:7])[0], unpack("<H", resp_data[9:11])[0]
+        bits = int.from_bytes(resp_data[11 : 11 + nbytes], "little")  # one bit per minute, LSB first
+        segments: list[list[int]] = []
+        for minute in range(nbytes * 8):
+            if not bits >> minute & 1:
+                continue
+            ts = start + minute * 60
+            if segments and segments[-1][1] == ts:
+                segments[-1][1] = ts + 60
+            else:
+                segments.append([ts, ts + 60])
+        return {"sd_card": resp_data[2] == 1, "start": start, "segments": segments}
+
+
 class K10242FormatSDCard(TutkWyzeProtocolMessage):
     """
     Format SD Card.

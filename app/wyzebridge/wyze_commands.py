@@ -26,11 +26,12 @@ GET_CMDS = {
     "floodlight": "K10788GetIntegratedFloodlightInfo",
     "whitelight": "K10820GetWhiteLightInfo",
     "param_info": "K10020CheckCameraParams",  # Requires a Payload
+    "sd_minutes": "K10350GetRecordInfo",  # Requires a Payload: epoch start of a 12-hour window
     "_bitrate": "K10050GetVideoParam",  # Only works on newer firmware
 }
 
 # These GET_CMDS can include a payload:
-GET_PAYLOAD = {"param_info"}
+GET_PAYLOAD = {"param_info", "sd_minutes"}
 
 SET_CMDS = {
     "state": None,
