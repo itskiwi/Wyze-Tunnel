@@ -8,6 +8,7 @@ from typing import Optional
 
 import requests
 import yaml
+from wyzebridge import lockdown
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
 from wyzebridge.mtx_event import event_cmd
@@ -20,6 +21,8 @@ RECORD_LENGTH = env_bool("RECORD_LENGTH", "60s")
 RECORD_KEEP = env_bool("RECORD_KEEP", "0s")
 rec_file = env_bool("RECORD_FILE_NAME", style="original").strip("/")
 rec_path = env_bool("RECORD_PATH", "record/%path/%Y-%m-%d_%H-%M-%S-%f", style="original")
+# Stock MediaMTX listens on every network for these.
+LISTENERS = {"rtspAddress": 8554, "rtpAddress": 8000, "rtcpAddress": 8001, "rtmpAddress": 1935, "hlsAddress": 8888, "webrtcAddress": 8889, "webrtcLocalUDPAddress": 8189}
 PLAYBACK_ADDR = "127.0.0.1:9996"
 API_ADDR = "127.0.0.1:9997"  # local only; feeds the data use meter
 RECORD_PATH = f"{Path('/') / Path(rec_path) / Path(rec_file)}".removesuffix(".mp4")
@@ -104,6 +107,15 @@ class MtxServer:
             mtx.set("playbackAddress", PLAYBACK_ADDR)
             mtx.set("api", True)
             mtx.set("apiAddress", API_ADDR)
+        self.set_reach()
+
+    def set_reach(self):
+        """Readers on the home network too, or (Tailscale only) this PC alone, where Wyze Tunnel's own Tailscale arrives."""
+        host = "127.0.0.1" if lockdown.tailscale_only() else ""
+        with MtxInterface() as mtx:
+            mtx.set("srt", False)  # nothing uses it; one less open port
+            for key, port in LISTENERS.items():
+                mtx.set(key, f"{host}:{port}")
 
     def setup_auth(self, api: Optional[str], stream: Optional[str]):
         publisher = [

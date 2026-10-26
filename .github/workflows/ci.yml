@@ -133,6 +133,14 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           if (-not (Test-Path "$env:LOCALAPPDATA\Wyze Tunnel\native\wyze-tunnel\python\python.exe")) { exit 1 }
           Get-NetFirewallRule -DisplayName 'Wyze Tunnel (go2rtc.exe)', 'Wyze Tunnel (mediamtx.exe)', 'Wyze Tunnel (python.exe)' | Format-Table DisplayName, Action, Profile
+          # The web page and video server take home networks and Tailscale only, never any address.
+          foreach ($name in 'python.exe', 'mediamtx.exe') {
+            $from = (Get-NetFirewallRule -DisplayName "Wyze Tunnel ($name)" | Get-NetFirewallAddressFilter).RemoteAddress
+            Write-Output "$name accepts: $($from -join ', ')"
+            if ($from -contains 'Any' -or -not ($from -match '^100\.64\.0\.0/')) { exit 1 }
+          }
+          windows\install-native.ps1 -CheckFirewall
+          if ($LASTEXITCODE) { Write-Output 'The firewall check still wants a fix'; exit 1 }
       - uses: actions/download-artifact@v4
         with:
           name: windows-bundle
@@ -187,6 +195,28 @@ jobs:
           watcher.check(Fake(), frame)
           assert (detect.THUMB_DIR / "1.jpg").exists() and detect.search()[0]["label"] == "person"
           print("detection ok")
+          '@ | & "$n\python\python.exe" -
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      # Saved sign-ins are sealed with the real DPAPI, and plain ones from older versions still open and get sealed.
+      - name: Secrets are encrypted on Windows
+        shell: pwsh
+        run: |
+          $n = "$PWD\bundle\wyze-tunnel"; $d = "$PWD\vault-data"
+          New-Item -ItemType Directory -Force $d | Out-Null; 'paths: {}' | Set-Content "$d\mediamtx.yml"
+          $env:TOKEN_PATH = "$d\"; $env:IMG_DIR = "$d\img\"; $env:MEDIAMTX_CONFIG = "$d\mediamtx.yml"
+          @'
+          import os
+          from pathlib import Path
+          from wyzebridge import lockdown, vault
+          tokens = Path(os.environ["TOKEN_PATH"])
+          assert vault.enabled()
+          vault.write_text(tokens / "wb_api", "ci-secret")
+          assert vault.sealed(tokens / "wb_api") and b"ci-secret" not in (tokens / "wb_api").read_bytes()
+          assert vault.read_text(tokens / "wb_api") == "ci-secret"
+          (tokens / "auth.pickle").write_bytes(b"old plain cache")
+          lockdown.seal_secrets()
+          assert vault.sealed(tokens / "auth.pickle") and vault.read_bytes(tokens / "auth.pickle") == b"old plain cache"
+          print("vault ok")
           '@ | & "$n\python\python.exe" -
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Bridge logs

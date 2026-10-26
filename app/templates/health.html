@@ -24,6 +24,41 @@
         <p class="text-zinc-500">{{ (disk.free / 1024**3)|round(1) }} GB free on the drive</p></div>
     {% endif %}
 </section>
+{% if lockdown %}
+{% set loose = lockdown|rejectattr("ok")|list %}
+<section class="surface mb-4 p-5 text-sm" aria-labelledby="lockdownTitle">
+    <div class="flex flex-wrap items-center gap-2">
+        <h2 id="lockdownTitle" class="font-semibold text-zinc-100"><i class="fas fa-shield-halved mr-1.5 text-zinc-400"></i>Lockdown</h2>
+        <span class="chip {{ 'chip-warn' if loose else 'chip-ok' }} ml-auto">{{ "Needs a look" if loose else "Private" }}</span>
+    </div>
+    <ul class="mt-3 space-y-3">
+        {% for row in lockdown %}
+        <li class="flex gap-2.5">
+            <i class="fas {{ 'fa-check text-emerald-400' if row.ok else 'fa-triangle-exclamation text-amber-300' }} mt-0.5 w-4 flex-none text-center" aria-hidden="true"></i>
+            <div><p class="text-zinc-100">{{ row.title }}</p>{% if not row.ok %}<p class="text-zinc-400">{{ row.fix }}</p>{% endif %}</div>
+        </li>
+        {% endfor %}
+    </ul>
+    <details class="mt-4 border-t border-zinc-800 pt-3"{{ ' open' if tailscale_only }}>
+        <summary class="cursor-pointer text-zinc-400">Advanced</summary>
+        <label class="mt-3 flex items-start gap-3">
+            <input id="tailscaleOnly" type="checkbox" role="switch" class="mt-0.5 h-5 w-5 flex-none accent-accent" {{ 'checked' if tailscale_only }} />
+            <span><span class="font-medium text-zinc-100">Tailscale only</span>
+                <span class="block text-zinc-400">Close your home network too. Every phone then needs the Tailscale app, even at home, and Apple Home, Home Assistant and video players on your Wi-Fi stop working. Wyze Tunnel restarts to switch.</span></span>
+        </label>
+        {% if not away_on %}<p class="mt-2 text-amber-200">Away access is off, so with this on only this computer could open Wyze Tunnel. Turn it on from Login first.</p>{% endif %}
+    </details>
+</section>
+<script>
+    document.getElementById("tailscaleOnly").addEventListener("change", async (e) => {
+        e.target.disabled = true;
+        const r = await fetch("health/tailscale-only", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: e.target.checked }) }).then((x) => x.json()).catch(() => ({}));
+        if (!("on" in r)) { e.target.checked = !e.target.checked; e.target.disabled = false; return toast("Couldn't switch", r.error || "Wyze Tunnel didn't answer. Try again.", "warning"); }
+        toast("Restarting", "Wyze Tunnel is switching. This page reloads in about 20 seconds.", "info");
+        setTimeout(() => location.reload(), 20000);
+    });
+</script>
+{% endif %}
 {% set labels = {-90: "offline", -1: "stopping", 0: "turned off", 1: "idle", 2: "connecting", 3: "streaming"} %}
 <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
     {% for uri, cam in cameras.items() %}

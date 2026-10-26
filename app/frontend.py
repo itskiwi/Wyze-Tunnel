@@ -3,7 +3,7 @@ import secrets
 import subprocess
 import time
 from datetime import datetime, timezone
-from threading import Thread
+from threading import Thread, Timer
 from functools import wraps
 from pathlib import Path
 from urllib.parse import quote_plus, urlencode
@@ -22,13 +22,13 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, automations, backup, camera_settings, config, detect, devices, event_archive, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, visitors, weather, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, automations, backup, camera_settings, config, detect, devices, event_archive, floorplan, go2rtc, guests, homekit, integrations, lockdown, masks, network, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, visitors, weather, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
 from wyzebridge.logging import logger
-from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED, path_bytes
+from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED, MtxInterface, path_bytes
 from wyzebridge.web_ui import url_for
 from wyzebridge.wyze_events import EVENT_LOG
 from wyzebridge.wyze_stream import WyzeStream
@@ -89,6 +89,12 @@ def create_app():
             return
         if web_ui.cross_site_request():
             return {"error": "Cross-site request blocked"}, 403
+
+    @app.before_request
+    def tailscale_only():
+        # Belt and braces: the Windows tray also binds the web page to this PC only after a restart.
+        if lockdown.tailscale_only() and not lockdown.allowed(request.remote_addr):
+            return "Wyze Tunnel is set to Tailscale only. Open it through Tailscale, or on this computer.", 403
 
     @app.before_request
     def public_link_paired_only():
@@ -557,7 +563,25 @@ def create_app():
             now=time.time(),
             api=WbAuth.api,
             version=config.VERSION,
+            lockdown=None if web_ui.current_guest() else lockdown_checks(),
+            tailscale_only=lockdown.tailscale_only(),
+            away_on=pocket.Away.on(),
         )
+
+    def lockdown_checks() -> list[dict]:
+        with MtxInterface() as mtx:
+            users = mtx.get("authInternalUsers")
+        return lockdown.checks(pocket.Away.status()["public"], WbAuth.enabled, users)
+
+    @app.route("/health/tailscale-only", methods=["POST"])
+    @owner_only
+    def set_tailscale_only():
+        on = bool((request.get_json(silent=True) or {}).get("on"))
+        lockdown.set_tailscale_only(on)
+        logger.warning(f"[LOCKDOWN] Tailscale only turned {'on' if on else 'off'}")
+        # The tray (or systemd) starts it again with the web page bound to match; elsewhere only video and Apple Home move.
+        Timer(1, wb.clean_up if os.getenv("WT_UPDATE_FILE") else lambda: (wb.mtx.set_reach(), wb.restart())).start()
+        return {"on": on}
 
     @app.route("/health/tamper", methods=["POST"])
     @owner_only

@@ -111,8 +111,9 @@ class Away:
             logger.error(f"[AWAY] wyze-away exited with code {cls.proc.returncode}, restarting")
         (AWAY_DIR / "status.json").unlink(missing_ok=True)
         # It exits when our end of its stdin closes, so it never outlives the bridge.
-        args = [AWAY_BIN, "-dir", str(AWAY_DIR), "-port", str(AWAY_PORT), "-status", str(AWAY_DIR / "status.json"), "-funnel"]
-        cls.proc = Popen(args, stdin=PIPE, stdout=DEVNULL)
+        # No -funnel: phones use the Tailscale app, never a public link. No UPnP/NAT-PMP asks to the router either.
+        args = [AWAY_BIN, "-dir", str(AWAY_DIR), "-port", str(AWAY_PORT), "-status", str(AWAY_DIR / "status.json")]
+        cls.proc = Popen(args, stdin=PIPE, stdout=DEVNULL, env=os.environ | {"TS_DISABLE_PORTMAPPER": "1"})
 
     @classmethod
     def check_sign_in(cls) -> None:
