@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, phrases, pocket, privacy, recording, shares, street_watch, timelapse, visitors, weather, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, detect, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, phrases, pocket, privacy, recording, shares, street_watch, tamper, timelapse, visitors, weather, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.diagnostics import build_report
@@ -442,10 +442,28 @@ def create_app():
             cameras=cams,
             disk=None if web_ui.current_guest() else recording.disk_use(),
             issues=web_ui.bridge_issues(cams),
+            tamper_on=tamper.enabled(),
+            tamper_state=tamper.STATE,
             now=time.time(),
             api=WbAuth.api,
             version=config.VERSION,
         )
+
+    @app.route("/health/tamper", methods=["POST"])
+    @owner_only
+    def tamper_setting():
+        try:
+            return {"status": "saved", "on": tamper.set_enabled((request.get_json(silent=True) or {}).get("on"))}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
+    @app.route("/health/tamper/<string:cam_name>/reset", methods=["POST"])
+    @owner_only
+    def tamper_reset(cam_name: str):
+        if cam_name not in wb.streams.streams:
+            return {"error": "Unknown camera"}, 404
+        tamper.reset(cam_name)
+        return {"status": "saved"}
 
     @app.route("/network")
     @auth_required

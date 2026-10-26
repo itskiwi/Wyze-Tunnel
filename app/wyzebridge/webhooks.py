@@ -87,7 +87,7 @@ def chat_payload(service: str, title: str, msg: str, img: Optional[str]) -> dict
 
 
 def alert_url(event: str) -> str:
-    if ALERTS.get("topic") and (ALERTS.get(event) or event in ("test", "update", "street", "away")):
+    if ALERTS.get("topic") and (ALERTS.get(event) or event in ("test", "update", "street", "away", "tamper")):
         return f"{ALERTS['server']}/{ALERTS['topic']}"
     return ""
 
@@ -110,7 +110,7 @@ def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None, t
         if event in ("motion", "person", "cleared") and (mode == "home" or (mode == "schedule" and in_quiet_hours(ALERTS))):
             return False
         url = alert_url(event)
-    chat = ALERTS.get("chat_url") if not env_url and (ALERTS.get(event) or event in ("test", "update", "street", "away")) else ""
+    chat = ALERTS.get("chat_url") if not env_url and (ALERTS.get(event) or event in ("test", "update", "street", "away", "tamper")) else ""
     if not url and not chat:
         return False
     title = title or {"update": "Wyze Tunnel updated", "street": "Street Watch request", "away": "Away access needs you", "summary": "Last night at home"}.get(event) or f"{event} event".title()
