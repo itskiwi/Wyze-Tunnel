@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, phrases, pocket, privacy, recording, shares, street_watch, timelapse, visitors, weather, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, backup, config, detect, event_archive, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, phrases, pocket, privacy, recording, shares, street_watch, timelapse, visitors, weather, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.diagnostics import build_report
@@ -507,15 +507,12 @@ def create_app():
     @app.route("/wyze-clip")
     @auth_required
     def wyze_clip():
-        """Play Wyze's cloud clip of a motion event. Only Wyze's own hosts are fetched."""
+        """Play Wyze's cloud clip, or show the picture, of a motion event. Only Wyze's own hosts are fetched."""
         url = request.args.get("u", "")
         if not wyze_api.wyze_media_url(url):
             return {"error": "Not a Wyze clip"}, 400
         try:
-            resp = requests.get(url, stream=True, timeout=15, allow_redirects=False)
-            if resp.status_code == 401 and wb.api.auth:
-                headers = {"Authorization": wb.api.auth.access_token}
-                resp = requests.get(url, stream=True, timeout=15, allow_redirects=False, headers=headers)
+            resp = wb.api.get_media(url, stream=True, timeout=15, allow_redirects=False)
         except requests.RequestException as ex:
             return {"error": str(ex)}, 502
         if not resp.ok:
@@ -897,6 +894,39 @@ def create_app():
             api=WbAuth.api,
             version=config.VERSION,
         )
+
+    @app.route("/history")
+    @auth_required
+    def history_page():
+        return render_template("history.html", api=WbAuth.api, version=config.VERSION)
+
+    @app.route("/history/events")
+    @auth_required
+    def history_events():
+        a = request.args
+
+        def num(key: str) -> int:
+            return int(a[key]) if a.get(key, "").isdigit() else 0
+
+        return event_archive.search(a.get("device", "")[:100], a.get("type", "")[:30], num("since"), num("until"), a.get("q", "")[:100], num("before"), num("limit") or 60)
+
+    @app.route("/history/media/<string:eid>/<string:kind>")
+    @auth_required
+    def history_media(eid: str, kind: str):
+        if not (path := event_archive.media_file(eid, kind)):
+            return {"error": "Not found"}, 404
+        return send_file(path, mimetype="image/jpeg" if kind == "img" else "video/mp4", conditional=True)
+
+    @app.route("/history/<string:eid>/delete", methods=["POST"])
+    @owner_only
+    def history_delete(eid: str):
+        return ({"status": "deleted"}, 200) if event_archive.delete(eid) else ({"error": "Not found"}, 404)
+
+    @app.route("/history/clear", methods=["POST"])
+    @owner_only
+    def history_clear():
+        event_archive.clear()
+        return {"status": "cleared"}
 
     @app.route("/recordings/settings", methods=["POST"])
     @auth_required

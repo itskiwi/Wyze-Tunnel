@@ -99,6 +99,8 @@ class WyzeCredentials:
     def same_email(self, email: str) -> bool:
         return self.email.lower() == email.lower() if self.is_set else True
 
+SENSOR_MODELS = ("DWS", "PIR")  # contact and motion sensors (DWS3U, PIR3U, ...)
+
 
 class WyzeApi:
     __slots__ = "auth", "user", "creds", "cameras", "_last_pull", "mfa", "login_error", "login_retry_at"
@@ -267,10 +269,7 @@ class WyzeApi:
 
         logger.info(f'☁️ Pulling "{uri}" thumbnail to {save_to}')
         try:
-            img = get(thumb, timeout=15)
-            if img.status_code == 401 and self.auth:
-                # Newer Wyze thumbnail hosts (prod-sight-safe-auth.wyze.com) reject the bare signed URL.
-                img = get(thumb, headers={"Authorization": self.auth.access_token}, timeout=15)
+            img = self.get_media(thumb, timeout=15)
             img.raise_for_status()
         except Exception as ex:
             logger.warning(f"ERROR pulling thumbnail：{ex}")
@@ -284,6 +283,14 @@ class WyzeApi:
             elif ts := int(datetime.strptime(modified, ts_format).timestamp()):
                 utime(save_to, (ts, ts))
         return True
+
+    def get_media(self, url: str, **kwargs):
+        """Get a Wyze event picture or clip. Newer hosts (prod-sight-safe-auth.wyze.com) 401 the bare signed URL
+        and want the token in Wyze-Authorization, like the app sends; older ones take the bare URL."""
+        resp = get(url, **kwargs)
+        if resp.status_code == 401 and self.auth:
+            resp = get(url, headers={"Wyze-Authorization": self.auth.access_token}, **kwargs)
+        return resp
 
     @authenticated
     def get_kvs_signal(self, cam_name: str) -> Optional[dict]:
@@ -397,6 +404,24 @@ class WyzeApi:
         except (HTTPError, RequestException, WyzeAPIError) as ex:
             logger.error(f"[EVENTS] {type(ex).__name__}: {ex}, cooling down.")
             return time() + 60, []
+
+    @authenticated
+    def get_sensor_events(self, since_ms: int) -> list[dict]:
+        """Open/close and motion events from Sense Hub sensors, newest first. Read-only; same call the Wyze app's sensor History page makes."""
+        try:
+            devices = wyzecam.api.get_homepage_object_list(self.auth)["device_list"]
+            found = []
+            for dev in devices:
+                model = str(dev.get("product_model") or "")
+                if not model.startswith(SENSOR_MODELS) or not dev.get("mac"):
+                    continue
+                params = {"device_mac": dev["mac"], "event_type": "2", "begin_time": since_ms, "end_time": int(time() + 60) * 1000, "count": 50, "order_by": 2}
+                for ev in post_device(self.auth, "get_event_list", params, api_version=2).get("event_list") or []:
+                    found.append(ev | {"nickname": dev.get("nickname") or model, "device_model": model})
+            return found
+        except (HTTPError, RequestException, WyzeAPIError, RateLimitError, KeyError, ValueError) as ex:
+            logger.error(f"[EVENTS] sensor history: {type(ex).__name__}: {ex}")
+            return []
 
     @authenticated
     def set_device_info(self, cam: WyzeCamera, params: dict):

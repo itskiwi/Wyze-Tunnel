@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+
+{% block title %}Event history · {% endblock %}
+{% block content %}
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Event history</h1>
+    {% if not current_guest() %}<button id="clear" type="button" class="btn ml-auto">Delete all</button>{% endif %}
+</header>
+<p class="mb-4 text-sm text-zinc-400">Every camera event's picture and clip, and open/close and motion history from your sensors, saved here after Wyze deletes its own copies.</p>
+
+<form id="filters" class="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <label><span class="text-sm text-zinc-400">Device</span><select name="device" class="field mt-1"><option value="">All</option></select></label>
+    <label><span class="text-sm text-zinc-400">Type</span><select name="type" class="field mt-1"><option value="">All</option></select></label>
+    <label><span class="text-sm text-zinc-400">From</span><input type="date" name="since" class="field mt-1" /></label>
+    <label><span class="text-sm text-zinc-400">To</span><input type="date" name="until" class="field mt-1" /></label>
+    <label><span class="text-sm text-zinc-400">Search</span><input type="search" name="q" maxlength="100" class="field mt-1" /></label>
+</form>
+
+<ul id="list" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></ul>
+<p id="empty" class="hidden text-zinc-500">No events saved yet.</p>
+<button id="more" type="button" class="btn mx-auto mt-5 hidden">Show more</button>
+{% endblock %}
+
+{% block javascript %}
+<script>
+    const form = document.getElementById("filters"), list = document.getElementById("list");
+    const more = document.getElementById("more"), empty = document.getElementById("empty");
+    const media = (id, kind) => `history/media/${id}/${kind}`;
+    let last = 0, ready = false;
+
+    function fill(select, values) {
+        select.append(...values.map(v => Object.assign(document.createElement("option"), { value: v, textContent: v })));
+    }
+
+    function card(e) {
+        const li = document.createElement("li"), box = document.createElement("div");
+        li.className = "surface overflow-hidden";
+        if (e.img) {
+            const img = document.createElement("img");
+            img.src = media(e.id, "img"); img.loading = "lazy"; img.alt = ""; img.className = "aspect-video w-full object-cover";
+            li.append(img);
+        }
+        box.className = "p-3";
+        const text = document.createElement("p"), when = document.createElement("p");
+        text.className = "font-semibold"; text.textContent = e.text;
+        when.className = "text-sm text-zinc-400";
+        when.textContent = `${e.device} · ${e.type} · ${new Date(e.ts * 1000).toLocaleString()}`;
+        box.append(text, when);
+        if (e.clip) {
+            const play = document.createElement("button");
+            play.type = "button"; play.className = "btn mt-2"; play.textContent = "Play clip";
+            play.onclick = () => {
+                const v = document.createElement("video");
+                v.src = media(e.id, "clip"); v.controls = v.autoplay = true; v.className = "w-full";
+                play.replaceWith(v);
+            };
+            box.append(play);
+        }
+        {% if not current_guest() %}
+        const del = document.createElement("button");
+        del.type = "button"; del.className = "btn ml-2 mt-2"; del.textContent = "Delete";
+        del.onclick = async () => {
+            if (confirm("Delete this event and its files?") && (await fetch(`history/${e.id}/delete`, { method: "POST" })).ok) li.remove();
+        };
+        box.append(del);
+        {% endif %}
+        li.append(box);
+        return li;
+    }
+
+    async function load(append) {
+        const p = new URLSearchParams();
+        for (const [k, v] of new FormData(form)) {
+            if (!v) continue;
+            // dates are local midnight; "To" includes its whole day
+            const day = new Date(v + "T00:00").getTime() / 1000;
+            p.set(k, k === "since" ? day : k === "until" ? day + 86400 : v);
+        }
+        if (append) p.set("before", last);
+        const resp = await fetch("history/events?" + p);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!ready) { fill(form.device, data.devices); fill(form.type, data.types); ready = true; }
+        if (!append) list.replaceChildren();
+        list.append(...data.events.map(card));
+        last = data.events.length ? data.events[data.events.length - 1].ts : last;
+        more.classList.toggle("hidden", data.events.length < 60);
+        empty.classList.toggle("hidden", list.children.length > 0);
+    }
+
+    let timer;
+    form.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => load(false), 300); });
+    more.onclick = () => load(true);
+    {% if not current_guest() %}
+    document.getElementById("clear").onclick = async () => {
+        if (confirm("Delete every saved event, picture and clip? This can't be undone.") && (await fetch("history/clear", { method: "POST" })).ok) load(false);
+    };
+    {% endif %}
+    load(false);
+</script>
+{% endblock %}
