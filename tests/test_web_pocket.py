@@ -21,7 +21,10 @@ def test_pair_phone_with_qr_code(setup):  # noqa: F811
     assert "localhost" not in home and re.fullmatch(r"http://[\d.]+:5000/pair/[\w-]+", home)
 
     path = "/pair/" + home.rpartition("/")[2]
-    resp = client.get(path, headers=IPHONE)
+    # Opening the link (or a link preview fetching it) only asks; the button press pairs.
+    assert b"Pair this phone" in client.get(path, headers=IPHONE).data
+    assert client.get(path, headers=IPHONE).status_code == 200
+    resp = client.post(path, headers=IPHONE)
     assert resp.status_code == 302 and "pocket=1" in resp.location
     assert "HttpOnly" in resp.headers["Set-Cookie"]
     page = client.get("/?pocket=1")
@@ -30,9 +33,10 @@ def test_pair_phone_with_qr_code(setup):  # noqa: F811
 
     # One use only, and a second phone gets its own login.
     assert client.get(path, headers=IPHONE).status_code == 410
+    assert client.post(path, headers=IPHONE).status_code == 410
     client2 = client.application.test_client()
     code2 = client.post("/pair", headers=owner).json["home"]["url"].rpartition("/")[2]
-    client2.get("/pair/" + code2, headers=IPHONE)
+    client2.post("/pair/" + code2, headers=IPHONE)
     assert {g["name"] for g in guests.list_guests()} == {"iPhone", "iPhone 2"}
 
     # Removing it on the Login page unpairs it.
@@ -47,6 +51,7 @@ def test_pair_code_expires(setup):  # noqa: F811
     code = client.post("/pair", headers=basic("owner", "ownerpass")).json["home"]["url"].rpartition("/")[2]
     with mock.patch("wyzebridge.pocket.time.time", return_value=10**12):
         assert client.get("/pair/" + code).status_code == 410
+        assert client.post("/pair/" + code).status_code == 410
     assert client.get("/pair/nope").status_code == 410
 
 
@@ -99,11 +104,17 @@ def test_public_link_only_lets_paired_phones_in(setup):  # noqa: F811
     assert client.get("/", headers=owner | public).status_code == 403
     assert b"for paired phones" in client.get("/login", headers=public).data
     assert client.get("/api", headers=public | {"api": "nope"}).status_code == 403
-    assert client.get("/static/site.css", headers=public).status_code == 200
+    # Nothing that hints at the app: no shared files, no server name, and no indexing.
+    assert client.get("/static/site.css", headers=public).status_code == 403
+    assert b"Wyze" not in client.get("/", headers=public).data
+    assert client.get("/robots.txt", headers=public).data == b"User-agent: *\nDisallow: /\n"
+    assert "noindex" in client.get("/robots.txt", headers=public).headers["X-Robots-Tag"]
 
     code = client.post("/pair", headers=owner).json["home"]["url"].rpartition("/")[2]
     phone = client.application.test_client()
-    assert phone.get("/pair/" + code, headers=IPHONE | public).status_code == 302
+    # Scanned with the camera, the link arrives from another app: the browser marks it cross-site.
+    assert phone.get("/pair/" + code, headers=IPHONE | public | {"Sec-Fetch-Site": "cross-site"}).status_code == 200
+    assert phone.post("/pair/" + code, headers=IPHONE | public | {"Sec-Fetch-Site": "same-origin"}).status_code == 302
     assert phone.get("/", headers=public).status_code == 200
     assert phone.post("/away", json={"on": False}, headers=public).status_code == 403  # a family login, not the owner
 

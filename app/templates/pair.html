@@ -1,24 +1,37 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-zinc-950 antialiased">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow, noarchive, noai, noimageai" />
     <meta name="color-scheme" content="dark light" />
-    <title>Wyze Tunnel</title>
-    <link rel="icon" href="../static/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="../static/tailwind.css" />
-    <link rel="stylesheet" href="../static/site.css" />
+    {# No app name, icon or shared files: over the public link, this page is all a stranger sees. #}
+    <title>Private</title>
+    <style>
+        :root { --bg: #f4f4f5; --card: #fff; --text: #18181b; --muted: #52525b; --accent: #0f766e; --on-accent: #fff; }
+        @media (prefers-color-scheme: dark) { :root { --bg: #09090b; --card: #18181b; --text: #fafafa; --muted: #a1a1aa; --accent: #2dd4bf; --on-accent: #042f2e; } }
+        html, body { height: 100%; margin: 0; }
+        body { display: grid; place-items: center; padding: 16px; box-sizing: border-box; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+        main { width: 100%; max-width: 22rem; padding: 24px; border-radius: 16px; background: var(--card); text-align: center; }
+        h1 { margin: 0; font-size: 1.25rem; }
+        p { margin: 8px 0 0; color: var(--muted); font-size: 0.9rem; }
+        button { margin-top: 20px; width: 100%; padding: 12px; border: 0; border-radius: 999px; background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 600; }
+    </style>
 </head>
 
-<body class="grid min-h-full place-items-center p-4 font-sans text-[15px] text-zinc-100">
-    <main class="surface w-full max-w-sm p-6 text-center">
+<body>
+    <main>
         {% if public_only %}
-        <h1 class="font-display text-xl font-extrabold text-zinc-50">This link is for paired phones</h1>
-        <p class="mt-2 text-sm text-zinc-400">On your computer, open Login, then Pair a phone, and scan the Anywhere code with this phone.</p>
+        <h1>This link is for paired phones</h1>
+        <p>On your computer, open Login, then Pair a phone, and scan the Anywhere code with this phone.</p>
+        {% elif ready %}
+        <h1>Pair this phone?</h1>
+        <p>It signs this phone in to your cameras. You can remove it later on your computer under Share access.</p>
+        <form method="post"><button type="submit">Pair this phone</button></form>
         {% else %}
-        <h1 class="font-display text-xl font-extrabold text-zinc-50">This code has been used or is too old</h1>
-        <p class="mt-2 text-sm text-zinc-400">Codes work once, for 10 minutes. On your computer, open Login, then Pair a phone, and scan the new code.</p>
+        <h1>This code has been used or is too old</h1>
+        <p>Codes work once, for 10 minutes. On your computer, open Login, then Pair a phone, and scan the new code.</p>
         {% endif %}
     </main>
 </body>

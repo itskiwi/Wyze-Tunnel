@@ -85,7 +85,8 @@ def create_app():
         if request.path.startswith(("/static/", "/img/", "/snapshot/", "/thumb/", "/photo/", "/share/")):
             return
         # A neighbor opens their Street Watch link from a chat app; sending the form is still same-site only.
-        if request.method == "GET" and (request.path in ("/", "/live", "/login", "/cams.m3u8") or request.path.startswith(("/street/", "/phone-cam/"))):
+        # A pairing link arrives from the phone's QR scanner; its one-time code is the protection.
+        if request.method == "GET" and (request.path in ("/", "/live", "/login", "/cams.m3u8") or request.path.startswith(("/street/", "/phone-cam/", "/pair/"))):
             return
         if web_ui.cross_site_request():
             return {"error": "Cross-site request blocked"}, 403
@@ -93,8 +94,19 @@ def create_app():
     @app.before_request
     def public_link_paired_only():
         # Pages without a login (Wyze sign-in, setup, shares...) stay home-only too: the public link only pairs.
-        if pocket.public_request() and not request.path.startswith(("/static/", "/pair/")) and not web_ui.verify_password("", ""):
+        # No styles or scripts either, so a stranger can't tell what the link leads to.
+        if pocket.public_request() and not request.path.startswith(("/pair/", "/robots.txt")) and not web_ui.verify_password("", ""):
             return render_template("pair.html", public_only=True), 403
+
+    @app.after_request
+    def no_indexing(resp):
+        # Private cameras: no search engine or AI crawler may index, cache or train on any of it.
+        resp.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet, noimageindex, noai, noimageai"
+        return resp
+
+    @app.route("/robots.txt")
+    def robots_txt():
+        return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
 
     @app.route("/login", methods=["GET", "POST"])
     def wyze_login():
@@ -1049,10 +1061,14 @@ def create_app():
             pocket.Away.turn(bool((request.get_json(silent=True) or {}).get("on")))
         return pocket.Away.status()
 
-    @app.route("/pair/<string:code>")
+    @app.route("/pair/<string:code>", methods=["GET", "POST"])
     def pair_phone(code: str):
         if not WbAuth.enabled:
             return redirect(url_for("index"))
+        # Scanners and link previews fetch the link too, so only the button press (a POST) uses up the code.
+        if request.method == "GET":
+            valid = pocket.code_valid(code)
+            return render_template("pair.html", ready=valid), 200 if valid else 410
         if not (cookie := pocket.claim(code, request.user_agent.string, WbAuth.username)):
             return render_template("pair.html", version=config.VERSION), 410
         resp = redirect(url_for("index", pocket=1))

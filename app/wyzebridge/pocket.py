@@ -41,6 +41,10 @@ def new_code() -> str:
     return code
 
 
+def code_valid(code: str) -> bool:
+    return _codes.get(code, 0) >= time.time()
+
+
 def claim(code: str, user_agent: str, owner: str) -> Optional[str]:
     """Use up a pairing code and return the phone's cookie, or None if the code is wrong or old."""
     if _codes.pop(code, 0) < time.time():

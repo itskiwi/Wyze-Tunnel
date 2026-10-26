@@ -74,6 +74,8 @@ func publicProxy(target string) *httputil.ReverseProxy {
 			r.Out.Header.Set(PublicHeader, "1")
 		},
 		FlushInterval: -1, // live status and video stream as they come
+		// Don't tell strangers what's behind the link.
+		ModifyResponse: func(r *http.Response) error { r.Header.Del("Server"); return nil },
 	}
 }
 
