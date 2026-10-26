@@ -292,6 +292,32 @@ def create_app():
         probe = probe_stream(cam_name)
         return probe | {"warnings": stream_warnings(probe, wb.streams.get_info(cam_name) or info)}
 
+    @app.route("/api/<string:cam_name>/firmware")
+    @owner_only
+    def api_firmware(cam_name: str):
+        """Whether Wyze offers this camera a newer firmware (read-only)."""
+        if not (cam := wb.api.get_camera(cam_name)):
+            return {"error": f"Could not find camera [{cam_name}]"}, 404
+        return wb.api.check_firmware(cam) or {"status": "error", "response": "Not signed in to Wyze."}
+
+    @app.route("/api/<string:cam_name>/firmware/install", methods=["POST"])
+    @owner_only
+    def api_firmware_install(cam_name: str):
+        """Start the firmware upgrade Wyze offers this camera. Needs the owner's own password, not the API key."""
+        if not web_ui.owner_password():
+            return {"error": "Sign in with the owner password to update firmware."}, 403
+        if not (cam := wb.api.get_camera(cam_name)):
+            return {"error": f"Could not find camera [{cam_name}]"}, 404
+        body = request.get_json(silent=True)
+        version = body.get("version") if isinstance(body, dict) else None
+        if not isinstance(version, str) or not version:
+            return {"error": "Say which firmware version to install."}, 400
+        offer = wb.api.check_firmware(cam) or {}
+        if offer.get("status") != "success" or not offer.get("update") or offer["latest"] != version:
+            return {"error": "Wyze isn't offering that update for this camera."}, 409
+        logger.warning(f"[FIRMWARE] {request.authorization.username} started {cam.name_uri} {cam.firmware_ver} -> {version}")
+        return wb.api.begin_firmware_upgrade(cam, offer) or {"status": "error", "response": "Not signed in to Wyze."}
+
     @app.route("/api/<cam_name>/<cam_cmd>", methods=["GET", "PUT", "POST"])
     @app.route("/api/<cam_name>/<cam_cmd>/<path:payload>")
     @auth_required

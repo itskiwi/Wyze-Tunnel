@@ -17,8 +17,8 @@ from wyzebridge.auth import get_secret
 from wyzebridge.bridge_utils import env_bool, env_filter
 from wyzebridge.config import IMG_PATH, MOTION, TOKEN_PATH
 from wyzebridge.logging import logger
-from wyzecam.api import RateLimitError, WyzeAPIError, post_device
-from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeCredential
+from wyzecam.api import RateLimitError, WyzeAPIError, post_device, post_upgrade
+from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeCredential, is_min_version
 
 
 def cached(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -375,6 +375,28 @@ class WyzeApi:
         return {"status": "success", "response": res.get("result")}
 
     @authenticated
+    def check_firmware(self, cam: WyzeCamera) -> dict:
+        """Ask Wyze (read-only, like the app's firmware page) whether a newer firmware is offered."""
+        params = {"device_id": cam.mac, "device_model": cam.product_model, "current_ver": cam.firmware_ver or "", "testcode": "Official Version"}
+        try:
+            offer = post_upgrade(self.auth, "get_upgrade_firmware", params)
+        except (ValueError, WyzeAPIError) as ex:
+            logger.error(f"[FIRMWARE] ERROR: {ex}")
+            return {"status": "error", "response": str(ex)}
+        return {"status": "success"} | firmware_offer(cam.firmware_ver, offer)
+
+    @authenticated
+    def begin_firmware_upgrade(self, cam: WyzeCamera, offer: dict):
+        """Tell Wyze to start the upgrade the check offered; the camera downloads and installs it."""
+        params = {"id": offer["id"], "deviceId": cam.mac, "deviceModel": cam.product_model, "currentVer": cam.firmware_ver or "", "targetVer": offer["latest"], "testCode": "Official Version"}
+        try:
+            resp = post_upgrade(self.auth, "begin_upgrade", params)
+        except (ValueError, WyzeAPIError) as ex:
+            logger.error(f"[FIRMWARE] ERROR: {ex}")
+            return {"status": "error", "response": str(ex)}
+        return {"status": "success", "response": resp.get("msg", "started")}
+
+    @authenticated
     def get_events(self, macs: Optional[list] = None, last_ts: int = 0):
         current_ms = int(time() + 60) * 1000
         params = {
@@ -429,6 +451,16 @@ class WyzeApi:
                 setattr(self, data_attr, None)
             for token_file in Path(TOKEN_PATH).glob("*.pickle"):
                 token_file.unlink()
+
+
+def firmware_offer(current: Optional[str], offer: dict) -> dict:
+    """What the upgrade service offered, and whether it is newer than what the camera runs."""
+    latest = str(offer.get("firmware_ver") or "")
+    try:
+        newer = bool(latest and latest != current and is_min_version(latest, current))
+    except ValueError:
+        newer = False
+    return {"current": current, "latest": latest, "update": newer, "id": offer.get("id") if newer else None}
 
 
 def url_timestamp(url: str) -> int:

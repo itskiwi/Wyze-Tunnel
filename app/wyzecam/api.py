@@ -24,6 +24,7 @@ AUTH_API = "https://auth-prod.api.wyze.com"
 WYZE_API = "https://api.wyzecam.com/app"
 CLOUD_API = "https://app-core.cloud.wyze.com/app"
 APP_API = "https://app.wyzecam.com/app"
+UPGRADE_API = "https://wyze-upgrade-service.wyzecam.com/app/v2/upgrade"
 SC_SV = {
     "default": {
         "sc": "9f275790cab94a72bd206c8876429f3c",
@@ -284,6 +285,13 @@ def post_device(
         resp = post(device_url, json=params, headers=_headers())
 
     return validate_resp(resp)
+
+
+def post_upgrade(auth_info: WyzeCredential, endpoint: str, params: dict) -> dict:
+    """Post to the Wyze upgrade service, signed like the app's "dynamic signature" calls."""
+    payload = sort_dict(params)
+    headers = sign_payload(auth_info, "9319141212m2ik", payload)
+    return validate_resp(post(f"{UPGRADE_API}/{endpoint}", data=payload, headers=headers))
 
 
 def get_cam_webrtc(auth_info: WyzeCredential, mac_id: str, model: str = "") -> dict:
