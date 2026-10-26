@@ -628,6 +628,30 @@ def create_app():
             return {"error": "hours must be 24 or 168."}, 400
         return devices.history(request.args.get("mac", ""), int(hours))
 
+    @app.route("/api/devices/schedules")
+    @auth_required
+    def api_device_schedules():
+        """Saved plug and light schedules with each one's next run."""
+        return devices.schedules()
+
+    @app.route("/api/devices/schedules", methods=["POST"])
+    @owner_only
+    def api_device_schedules_save():
+        """{"mac": ..., "schedules": [{"time": "07:30", "on": true, "days": [1, 2, 3]}]}. An empty list clears it."""
+        data = request.get_json(silent=True) or {}
+        try:
+            if not (dev := device_call(devices.find, str(data.get("mac", "")))):
+                return {"error": "Unknown device."}, 404
+            devices.save_schedules(dev, data.get("schedules"))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException) as ex:
+            return {"error": f"Wyze didn't answer: {ex}"}, 502
+        logger.warning(f"[DEVICES] owner ({request.remote_addr}) saved the schedule for {dev['name']}")
+        return devices.schedules().get(dev["mac"], [])
+
     @app.route("/api/devices/lock-alert", methods=["POST"])
     @owner_only
     def api_lock_alert():

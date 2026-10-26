@@ -5,7 +5,9 @@ Endpoints come from the Wyze Android app (v3.24); file references are to its dec
 
 import json
 import os
+import re
 import time
+from datetime import datetime, timedelta
 from hashlib import md5
 from threading import Thread
 from typing import Any
@@ -52,6 +54,10 @@ LOG_CACHE_SECONDS = 120
 HISTORY_FILE = TOKEN_PATH + "device_history.json"
 HISTORY_STEP = 300  # one reading per device every 5 minutes, kept 7 days
 HISTORY_MODELS = {"CO_EA1", "CO_TH1"}
+SCHEDULE_FILE = TOKEN_PATH + "device_schedules.json"
+SCHEDULE_TYPES = {"OutdoorPlug", "Plug", "MeshLight"}  # never locks
+MAX_SCHEDULES = 10
+BATTERY_MIN_DAYS = 3
 WATCH_SECONDS = 180
 # com/yunding/commonbiz/ui/adapter/HomeListAdapter.java:336-389 (the other ids are alarms; the app's strings aren't in the decompile)
 LOCK_EVENTS = {2203: "Unlocked", 2216: "Locked", 2214: "Door opened", 2215: "Door closed"}
@@ -60,6 +66,7 @@ _cache: dict[str, Any] = {"at": 0.0, "devices": []}
 _lock_cache: dict[str, tuple[float, dict]] = {}
 _unlocked: dict[str, float] = {}  # lock mac -> when we first saw it unlocked
 _alerted: set[str] = set()
+_ran: set[tuple] = set()  # schedule entries already sent today
 
 
 def _load_history() -> dict[str, list[dict]]:
@@ -81,6 +88,9 @@ def list_devices(auth: WyzeCredential, fresh: bool = False) -> list[dict]:
     devices = [_device(auth, d) for d in data["device_list"] if d["product_type"] not in HIDDEN and d["product_model"] not in HIDDEN_MODELS]
     _cache.update(at=time.time(), devices=devices)
     record_history(devices)
+    for d in devices:
+        if (days := battery_days_left(d["mac"])) is not None:
+            d["battery_days"] = days
     lock_alert(devices)
     return devices
 
@@ -250,7 +260,8 @@ def record_history(devs: list[dict], now: float | None = None) -> None:
     changed = False
     for d in devs:
         s = d["state"]
-        if d["model"] not in HISTORY_MODELS or "error" in s:
+        # Battery % is only known for locks; the room sensor's battery scale isn't confirmed.
+        if (d["model"] not in HISTORY_MODELS and d.get("type") != "Lock") or "error" in s:
             continue
         rows = _history.setdefault(d["mac"], [])
         if rows and now - rows[-1]["t"] < HISTORY_STEP:
@@ -258,7 +269,8 @@ def record_history(devs: list[dict], now: float | None = None) -> None:
         state = str(s.get("working_state") or "").lower()
         row = {"t": int(now), "temp": _number_or_none(s.get("temperature")), "hum": _number_or_none(s.get("humidity")),
                "heat": _number_or_none(s.get("heat_sp")), "cool": _number_or_none(s.get("cool_sp")),
-               "run": "heat" if "heat" in state else "cool" if "cool" in state else None}
+               "run": "heat" if "heat" in state else "cool" if "cool" in state else None,
+               "bat": _number_or_none(s.get("battery")) if d.get("type") == "Lock" else None}
         rows.append({k: v for k, v in row.items() if v is not None})
         rows[:] = [r for r in rows if r["t"] > now - 7 * 86400]
         changed = True
@@ -279,6 +291,108 @@ def history(mac: str, hours: int, now: float | None = None) -> dict:
         if r.get("run"):
             run[r["run"]] += min(nxt - r["t"], 600) // 60
     return {"points": rows, "heat_minutes": int(run["heat"]), "cool_minutes": int(run["cool"])}
+
+
+def battery_days_left(mac: str, now: float | None = None) -> int | None:
+    """Days until 0% from a least-squares line through the kept battery readings; None under 3 days of data or if not draining.
+
+    shortcut: a battery swap (a jump up) isn't detected, so the estimate is off until the old readings age out of the 7 days.
+    """
+    now = now or time.time()
+    rows = [(r["t"], r["bat"]) for r in _history.get(mac, []) if "bat" in r and r["t"] > now - 7 * 86400]
+    if len(rows) < 2 or rows[-1][0] - rows[0][0] < BATTERY_MIN_DAYS * 86400:
+        return None
+    n, mt, mb = len(rows), sum(t for t, _ in rows) / len(rows), sum(b for _, b in rows) / len(rows)
+    var = sum((t - mt) ** 2 for t, _ in rows)
+    slope = sum((t - mt) * (b - mb) for t, b in rows) / var  # percent per second
+    return round(rows[-1][1] / -slope / 86400) if slope < 0 else None
+
+
+def load_schedules() -> dict[str, dict]:
+    try:
+        with open(SCHEDULE_FILE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_schedules(dev: dict, entries: Any) -> list[dict]:
+    """Replace one plug or bulb's schedule. Each entry is {"time": "HH:MM", "on": bool, "days": [0-6, Sunday is 0]}. ValueError means bad input."""
+    if dev["type"] not in SCHEDULE_TYPES:
+        raise ValueError("Only plugs and lights can be scheduled.")
+    if not isinstance(entries, list) or len(entries) > MAX_SCHEDULES:
+        raise ValueError(f"Send a list of at most {MAX_SCHEDULES} schedules.")
+    clean = []
+    for e in entries:
+        if not isinstance(e, dict) or not isinstance(e.get("time"), str) or not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", e["time"]):
+            raise ValueError("time must be HH:MM (24 hour).")
+        days = e.get("days")
+        if not isinstance(e.get("on"), bool) or not isinstance(days, list) or not days or not all(type(d) is int and 0 <= d <= 6 for d in days):
+            raise ValueError("Each schedule needs on (true/false) and days (0-6, Sunday is 0).")
+        clean.append({"time": e["time"], "on": e["on"], "days": sorted(set(days))})
+    data = load_schedules()
+    if clean:
+        data[dev["mac"]] = {"type": dev["type"], "model": dev["model"], "name": dev["name"], "entries": clean}
+    else:
+        data.pop(dev["mac"], None)
+    try:
+        with open(SCHEDULE_FILE, "w") as f:
+            json.dump(data, f)
+    except OSError as ex:
+        raise ValueError(f"Couldn't save the schedule: {ex}")
+    return clean
+
+
+def _next_run(entry: dict, now: datetime) -> int:
+    hh, mm = map(int, entry["time"].split(":"))
+    for i in range(8):
+        at = (now + timedelta(days=i)).replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if at > now and (at.weekday() + 1) % 7 in entry["days"]:
+            return int(at.timestamp())
+    return 0
+
+
+def schedules(now: datetime | None = None) -> dict[str, list[dict]]:
+    """Every saved schedule with the epoch second of its next run (server time zone)."""
+    now = now or datetime.now()
+    return {mac: [e | {"next": _next_run(e, now)} for e in v["entries"]] for mac, v in load_schedules().items()}
+
+
+def run_due(auth: WyzeCredential, now: datetime | None = None) -> None:
+    """Send the on/off commands scheduled for this minute. Called from the scheduler thread; the stored type and model mean no device lookup."""
+    now = now or datetime.now()
+    stamp, day = now.strftime("%H:%M"), (now.weekday() + 1) % 7
+    for mac, v in load_schedules().items():
+        for e in v["entries"]:
+            key = (mac, e["time"], e["on"], now.strftime("%Y%m%d"))
+            if e["time"] != stamp or day not in e["days"] or key in _ran or v["type"] not in SCHEDULE_TYPES:
+                continue
+            _ran.add(key)
+            try:
+                done = control(auth, {"mac": mac, "type": v["type"], "model": v["model"]}, {"on": e["on"]})
+                logger.warning(f"[DEVICES] schedule {done}: {v.get('name', mac)}")
+            except AccessTokenError:
+                _ran.discard(key)
+                raise
+            except (WyzeAPIError, RequestException, ValueError) as ex:
+                logger.warning(f"[DEVICES] schedule for {v.get('name', mac)} failed: {ex}")
+
+
+def start_scheduler(get_auth, refresh) -> None:
+    def loop():
+        while True:
+            time.sleep(20)  # run_due remembers what it already sent, so checking more than once a minute is safe
+            try:
+                if get_auth() and load_schedules():
+                    try:
+                        run_due(get_auth())
+                    except AccessTokenError:
+                        refresh()
+                        run_due(get_auth())
+                _ran.intersection_update({k for k in _ran if k[3] == datetime.now().strftime("%Y%m%d")})
+            except Exception:
+                logger.exception("[DEVICES] Schedule check failed")
+    Thread(target=loop, daemon=True, name="devices-schedule").start()
 
 
 def start_watch(get_auth, refresh) -> None:
