@@ -7,7 +7,7 @@ from wyzebridge import event_archive, phrases, visitors
 from wyzebridge.config import MOTION_INT, MOTION_START
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import update_preview
-from wyzebridge.webhooks import ALERTS, send_webhook
+from wyzebridge.webhooks import ALERTS, SOUND_EVENTS, URGENT, send_webhook
 from wyzebridge.wyze_api import display_name
 from wyzebridge.wyze_stream import WyzeStream
 
@@ -15,9 +15,12 @@ from wyzebridge.wyze_stream import WyzeStream
 # shortcut: kept in memory, so the history clears on restart; persist it if people want older events.
 EVENT_LOG: deque[dict] = deque(maxlen=100)
 # Wyze's own AI tags (Cam Plus); without them an event is plain movement.
-WYZE_TAGS = {101: "person", 102: "vehicle", 103: "pet", 104: "package"}
+# Sound tags 8000xx: the app's GmCommonData.AiTagCons. Smoke/CO are event_value 4/5, not tags (parse adds them).
+WYZE_TAGS = {101: "person", 102: "vehicle", 103: "pet", 104: "package", 800001: "crying", 800002: "barking",
+             800003: "meowing", 800005: "talking", 800006: "glass", 800007: "gunshot", 4: "smoke", 5: "co"}
 
 
+SOUND_LABELS = SOUND_EVENTS + tuple(URGENT)
 SIREN_SECONDS = 30
 SIREN_COOLDOWN = 120
 _last_siren: dict[str, float] = {}
@@ -61,24 +64,30 @@ class WyzeEvents:
             logger.debug(f"[MOTION] Got {len(resp)} events")
         return resp
 
+    def log_entry(self, stream, ts: int, files: list, ring: bool, tags: list | None) -> dict:
+        img = next((f["url"] for f in files if f["type"] == 1), None)
+        clip = next((f["url"] for f in files if f["type"] == 2), None)  # Wyze's own short cloud video
+        name = display_name(stream.camera)
+        label = "ring" if ring else next((WYZE_TAGS[t] for t in tags or [] if t in WYZE_TAGS), "motion")
+        msg = phrases.describe(label, name, phrases.place_of(stream.uri, name))
+        return {"uri": stream.uri, "name": name, "ts": ts, "img": img, "clip": clip, "text": msg} | (
+            {"label": "rang the doorbell"} if ring else {"label": label} if label != "motion" else {}
+        )
+
     def set_motion(self, mac: str, files: list, ring: bool = False, tags: list | None = None, event_id: str = "") -> None:
         for stream in self.streams.values():
             if stream.camera.mac == mac and not stream.options.substream:
-                if img := next((f["url"] for f in files if f["type"] == 1), None):
+                entry = self.log_entry(stream, self.last_ts, files, ring, tags)
+                img, name, msg = entry["img"], entry["name"], entry["text"]
+                if img:
                     stream.camera.thumbnail = img
-                clip = next((f["url"] for f in files if f["type"] == 2), None)  # Wyze's own short cloud video
                 stream.motion = self.last_ts
-                name = display_name(stream.camera)
-                label = "ring" if ring else next((WYZE_TAGS[t] for t in tags or [] if t in WYZE_TAGS), "motion")
-                msg = phrases.describe(label, name, phrases.place_of(stream.uri, name))
                 logger.info(f"[MOTION] {msg} ({name})")
-                entry = {"uri": stream.uri, "name": name, "ts": self.last_ts, "img": img, "clip": clip, "text": msg} | (
-                    {"label": "rang the doorbell"} if ring else {"label": label} if label != "motion" else {}
-                )
                 EVENT_LOG.appendleft(entry)
                 if event_id:  # Wyze deletes its copies after 14 days; ours stay. A thread: the downloads take seconds.
-                    Thread(target=event_archive.save_event, args=(self.api, event_id, entry, img, clip), daemon=True).start()
-                send_webhook("motion", stream.uri, msg, img, title=name)
+                    Thread(target=event_archive.save_event, args=(self.api, event_id, entry, img, entry["clip"]), daemon=True).start()
+                sound = entry.get("label") in SOUND_LABELS
+                send_webhook(entry["label"] if sound else "motion", stream.uri, msg, img, title=f"{URGENT[entry['label']]}: {name}" if entry.get("label") in URGENT else name)
                 if ALERTS.get("siren_away") and ALERTS.get("mode") == "away":
                     sound_siren(stream)
                 if MOTION_START:
@@ -88,6 +97,15 @@ class WyzeEvents:
                 if ring:
                     visitors.add(stream.uri, name, self.last_ts)
 
+    @staticmethod
+    def parse(event: dict) -> tuple:
+        # v2 uses device_mac and v4 uses device_id
+        # event_value 10 is a doorbell press (wyze-sdk's EventAlarmType.DOORBELL_RANG)
+        tags = [t for t in event.get("tag_list") or [] if isinstance(t, int)]
+        if str(event.get("event_value")) in ("4", "5"):  # smoke, CO: first, so they win over other tags
+            tags.insert(0, int(event["event_value"]))
+        return event["device_id"], event["file_list"], str(event.get("event_value")) == "10", tags
+
     def process_event(self, event: dict):
         if event["event_id"] in self.events:
             return
@@ -95,12 +113,25 @@ class WyzeEvents:
         self.events.append(event["event_id"])
         self.last_ts = int(event["event_ts"] / 1000)
         if time.time() - self.last_ts < 30:
-            # v2 uses device_mac and v4 uses device_id
-            # event_value 10 is a doorbell press (wyze-sdk's EventAlarmType.DOORBELL_RANG)
-            tags = [t for t in event.get("tag_list") or [] if isinstance(t, int)]
-            self.set_motion(event["device_id"], event["file_list"], str(event.get("event_value")) == "10", tags, str(event["event_id"]))
+            self.set_motion(*self.parse(event), str(event["event_id"]))
+
+    def backfill(self):
+        """After a restart, fill the timeline with the last day of Wyze events. Timeline only: no alerts for old events."""
+        self.last_check, resp = self.api.get_events(self.enabled_cams(), history=86400)
+        streams = {s.camera.mac: s for s in self.streams.values() if not s.options.substream}
+        for event in resp:  # newest first, and older than anything already logged
+            mac, files, ring, tags = self.parse(event)
+            if len(EVENT_LOG) >= EVENT_LOG.maxlen:
+                break
+            if stream := streams.get(mac):
+                EVENT_LOG.append(self.log_entry(stream, int(event["event_ts"] / 1000), files, ring, tags))
+        if resp:
+            self.last_ts = int(resp[0]["event_ts"] / 1000)
+            logger.info(f"[MOTION] Loaded {len(resp)} Wyze events from the last day into the timeline")
 
     def check_motion(self):
+        if not self.last_check:
+            return self.backfill()
         if time.time() - self.last_check < MOTION_INT:
             return
         if time.time() - event_archive._last_poll >= event_archive.SENSOR_POLL:  # sensor history is a few calls; a thread keeps motion quick

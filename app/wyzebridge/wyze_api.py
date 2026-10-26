@@ -404,12 +404,13 @@ class WyzeApi:
         return {"status": "success", "response": resp.get("msg", "started")}
 
     @authenticated
-    def get_events(self, macs: Optional[list] = None, last_ts: int = 0):
+    def get_events(self, macs: Optional[list] = None, last_ts: int = 0, history: int = 0):
+        """New events since last_ts, oldest first; or with history, the newest 50 from that many seconds back."""
         current_ms = int(time() + 60) * 1000
         params = {
-            "count": 20,
-            "order_by": 1,
-            "begin_time": max((last_ts + 1) * 1_000, (current_ms - 1_000_000)),
+            "count": 50 if history else 20,
+            "order_by": 2 if history else 1,
+            "begin_time": current_ms - history * 1000 if history else max((last_ts + 1) * 1_000, (current_ms - 1_000_000)),
             "end_time": current_ms,
             "nonce": str(int(time() * 1000)),
             "device_id_list": list(set(macs or [])),
