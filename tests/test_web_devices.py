@@ -226,6 +226,7 @@ def test_guests_cannot_read_history_or_change_the_alert(client, lock_api):
         assert client.get(path, headers=auth("Vi", visitor)).status_code == 403
     assert client.post("/api/devices/lock-alert", json={"minutes": 5}, headers=auth("Vi", visitor)).status_code == 403
     assert client.post("/api/devices/lock-alert", json={"minutes": 5}, headers=auth("Gran", gran)).status_code == 403
+    assert client.get("/api/devices/lock-log?mac=YD.LO1.abc123", headers=auth("Gran", gran)).status_code == 403
 
 
 def test_lock_alert_setting_is_validated(client, monkeypatch, tmp_path):

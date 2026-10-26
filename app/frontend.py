@@ -606,7 +606,7 @@ def create_app():
         return {"status": done}
 
     @app.route("/api/devices/lock-log")
-    @auth_required
+    @owner_only  # who comes and goes, and code names/schedules: not for family
     def api_lock_log():
         """Recent activity and keypad code names for one lock. Never the code digits."""
         try:
