@@ -3,7 +3,7 @@ from collections import deque
 from threading import Thread
 from typing import Any
 
-from wyzebridge import event_archive, phrases, visitors
+from wyzebridge import automations, event_archive, phrases, visitors
 from wyzebridge.config import MOTION_INT, MOTION_START
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import update_preview
@@ -88,6 +88,8 @@ class WyzeEvents:
                     Thread(target=event_archive.save_event, args=(self.api, event_id, entry, img, entry["clip"]), daemon=True).start()
                 sound = entry.get("label") in SOUND_LABELS
                 send_webhook(entry["label"] if sound else "motion", stream.uri, msg, img, title=f"{URGENT[entry['label']]}: {name}" if entry.get("label") in URGENT else name)
+                if entry.get("label", "motion") in ("person", "motion"):  # Wyze calls block for seconds
+                    Thread(target=automations.on_motion, args=(self.api, mac, entry.get("label", "motion")), daemon=True).start()
                 if ALERTS.get("siren_away") and ALERTS.get("mode") == "away":
                     sound_siren(stream)
                 if MOTION_START:

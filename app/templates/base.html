@@ -107,6 +107,7 @@
                     <a href="cameras" class="menu-item"><i class="fas fa-eye w-4"></i>Choose cameras</a>
                     <a href="map" class="menu-item"><i class="fas fa-map-location-dot w-4"></i>Home map</a>
                     {% if not current_guest() %}<a href="rules" class="menu-item"><i class="fas fa-bolt w-4"></i>Wyze rules</a>{% endif %}
+                    <a href="devices" class="menu-item"><i class="fas fa-lightbulb w-4"></i>Plugs, lights, locks and sensors</a>
                     {% if not current_guest() %}<a href="search#setup" class="menu-item"><i class="fas fa-magnifying-glass w-4"></i>Footage search</a>
                     <a href="street-watch" class="menu-item"><i class="fas fa-house-flag w-4"></i>Street Watch</a>{% endif %}
                     {% if not current_guest() or current_guest().family %}<a href="glance" class="menu-item"><i class="fas fa-mobile-screen-button w-4"></i>Glance</a>{% endif %}

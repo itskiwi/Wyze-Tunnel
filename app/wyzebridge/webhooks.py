@@ -17,7 +17,7 @@ SOUND_EVENTS = ("glass", "gunshot", "crying", "barking", "meowing", "talking")
 ALERT_EVENTS = ("motion", "person", "offline", "summary", "cleared") + SOUND_EVENTS
 # Smoke and CO alarms ignore the checkboxes and quiet hours: nobody wants to miss them.
 URGENT = {"smoke": "Smoke alarm", "co": "Carbon monoxide alarm"}
-ALWAYS = ("test", "update", "street", "away", "tamper", *URGENT)
+ALWAYS = ("test", "update", "street", "away", "tamper", "bedtime", *URGENT)
 # Chat apps an alert can also go to, by webhook host. Only these, so a saved URL can't reach other servers.
 CHAT_HOSTS = {"discord.com": "discord", "discordapp.com": "discord", "hooks.slack.com": "slack", "api.telegram.org": "telegram"}
 # home: no motion alerts. away (holiday): motion alerts even in quiet hours. schedule: quiet hours apply.
@@ -122,7 +122,7 @@ def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None, t
     chat = ALERTS.get("chat_url") if not env_url and alert_on(event) else ""
     if not url and not chat:
         return False
-    title = title or ({"update": "Wyze Tunnel updated", "street": "Street Watch request", "away": "Away access needs you", "summary": "Last night at home"} | URGENT).get(event) or f"{event} event".title()
+    title = title or ({"update": "Wyze Tunnel updated", "street": "Street Watch request", "away": "Away access needs you", "summary": "Last night at home", "bedtime": "Bedtime check"} | URGENT).get(event) or f"{event} event".title()
     sent = bool(url) and _post(url, event, camera, msg, img, title)
     if chat:
         logger.debug(f"[WEBHOOKS] Sending {event.upper()} event for {camera} to {chat_service(chat)}")
