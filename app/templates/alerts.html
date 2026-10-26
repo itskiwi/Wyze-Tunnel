@@ -81,12 +81,20 @@
             <span><span class="block">A camera goes offline</span>
                 <span class="text-sm text-zinc-400">For example when it loses power or Wi-Fi.</span></span>
         </label>
+        {% if not current_guest() %}
+        {# Saved on its own as soon as it's ticked, so it has no name and isn't part of this form. #}
+        <label class="mt-3 flex items-start gap-3">
+            <input id="tamperOn" type="checkbox" class="mt-1 h-4 w-4 accent-emerald-500" {{ 'checked' if tamper_on }} />
+            <span><span class="block">A camera is covered, knocked or loses night vision</span>
+                <span id="tamperStatus" class="text-sm text-zinc-400" role="status">Checked every few minutes while a camera streams. If you move a camera on purpose, press "This is the new normal" on Camera health.</span></span>
+        </label>
+        {% endif %}
         <label class="mt-3 flex items-start gap-3">
             <input type="checkbox" name="summary" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.summary }} />
             <span><span class="block">A morning summary of last night</span>
                 <span class="text-sm text-zinc-400">One alert when the night ends (your quiet hours, or 22:00 to 07:00), saying what the cameras saw and whether the doorbell rang.</span></span>
         </label>
-        <label class="mt-3 flex items-start gap-3">
+        <label id="siren" class="mt-3 flex items-start gap-3">
             <input type="checkbox" name="siren_away" class="mt-1 h-4 w-4 accent-emerald-500" {{ 'checked' if settings.siren_away }} />
             <span><span class="block">Sound the siren on motion while Away</span>
                 <span class="text-sm text-zinc-400">Each camera sounds for 30 seconds, at most once every 2 minutes. Only cameras with a siren.</span></span>
@@ -111,6 +119,12 @@
 
 {% block javascript %}
 <script>
+    document.getElementById("tamperOn")?.addEventListener("change", async (e) => {
+        const r = await fetch("health/tamper", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: e.target.checked }) })
+            .then((x) => x.json()).catch((err) => ({ error: err.message }));
+        document.getElementById("tamperStatus").textContent = r.error || (r.on ? "On. Cameras are checked every few minutes while streaming." : "Off.");
+        if (r.error) e.target.checked = !e.target.checked;
+    });
     const form = document.getElementById("alerts");
     const status = document.getElementById("status");
 

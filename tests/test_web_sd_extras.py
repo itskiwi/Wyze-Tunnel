@@ -138,3 +138,19 @@ def test_owner_only(client):
         assert getattr(c, method)(url, headers=family).status_code == 403, url
     c.environ_base.pop("HTTP_AUTHORIZATION")
     assert c.get("/sd-copy/status").status_code == 401
+
+
+def test_new_features_have_one_home_each(client):
+    """Clips, events, search and SD card share the Recordings switch; automations live on one page."""
+    _, wb, c = client
+    wb.streams.streams = {}
+    wb.api.total_cams = 0
+    for url in ("/recordings", "/history", "/search", "/sd-sync"):
+        page = c.get(url).data.decode()
+        assert 'aria-label="Recordings"' in page and 'href="sd-sync"' in page and 'href="history"' in page, url
+        assert 'href="recordings" class="tab" aria-current=page' in page, url  # the Recordings tab stays lit
+    rules = c.get("/rules").data.decode()
+    assert "Made for your home" in rules and "Pause the heat when a door is open" in rules
+    devices = c.get("/devices").data.decode()
+    assert "Pause the heat" not in devices and 'href="rules"' in devices
+    assert 'id="tamperOn"' in c.get("/alerts").data.decode()

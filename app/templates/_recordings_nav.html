@@ -1,0 +1,6 @@
+{# Clips, events, search and the SD card are one place to look back, so they share a heading and this switch. #}
+<nav class="seg mb-5 max-w-full overflow-x-auto" aria-label="Recordings">
+    {% for endpoint, href, label in [("recordings_page", "recordings", "Clips"), ("history_page", "history", "Events"), ("search_page", "search", "Search"), ("sd_sync", "sd-sync", "SD card")] if endpoint != "sd_sync" or not current_guest() %}
+    <a href="{{ href }}" class="tab" {{ 'aria-current=page' if request.endpoint == endpoint }}>{{ label }}</a>
+    {% endfor %}
+</nav>

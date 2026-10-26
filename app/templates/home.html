@@ -25,6 +25,14 @@
     </div>
     {% endif %}
 </header>
+{# Filled from the Wyze account's devices; stays hidden when there are none. #}
+<section id="house" class="mb-6" aria-labelledby="house-h" hidden>
+    <div class="flex items-center pb-2">
+        <h2 id="house-h" class="menu-label px-0 pt-0">House</h2>
+        <a href="devices" class="ml-auto text-sm font-semibold text-accent hover:underline">All devices</a>
+    </div>
+    <ul id="houseTiles" class="grid grid-cols-2 gap-2.5 sm:grid-cols-4"></ul>
+</section>
 
 <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-10">
     {% if cameras %}
@@ -134,6 +142,40 @@
 {% endblock %}
 
 {% block javascript %}
+<script>
+    // House row: a few facts that matter at a glance, each opening Devices.
+    fetch("api/devices").then((r) => r.ok ? r.json() : Promise.reject()).then(({ devices }) => {
+        const tiles = [], of = (t) => devices.filter((d) => d.type === t);
+        const thermo = of("Thermostat")[0], locks = of("Lock"), doors = of("ContactSensor");
+        if (thermo?.state.temperature !== undefined) tiles.push([thermo.name, `${thermo.state.temperature}°`]);
+        if (locks.length) {
+            const open = locks.filter((d) => d.state.locked === false);
+            tiles.push(open.length === 1 ? [open[0].name, "Unlocked", true] : open.length ? ["Locks", `${open.length} unlocked`, true]
+                : [locks.length === 1 ? locks[0].name : "Locks", locks.length === 1 ? "Locked" : "All locked"]);
+        }
+        if (doors.length) {
+            const open = doors.filter((d) => d.state.open);
+            tiles.push(open.length === 1 ? [open[0].name, "Open", true] : open.length ? ["Doors and windows", `${open.length} open`, true] : ["Doors and windows", "All closed"]);
+        }
+        const low = devices.filter((d) => d.state.low_battery);
+        if (devices.some((d) => d.state.battery !== undefined || d.state.low_battery !== undefined))
+            tiles.push(["Batteries", low.length ? `${low.length} low` : "All fine", low.length > 0]);
+        if (!tiles.length) return;
+        document.getElementById("houseTiles").replaceChildren(...tiles.map(([label, value, warn]) => {
+            const li = document.createElement("li"), a = document.createElement("a"), p = document.createElement("p"), b = document.createElement("p");
+            a.href = "devices";
+            a.className = "surface block p-3 hover:bg-zinc-800/60";
+            p.className = "truncate text-xs text-zinc-500";
+            p.textContent = label; // device names come from the Wyze account, so text only
+            b.className = `mt-0.5 font-display text-lg font-extrabold ${warn ? "text-rose-300" : "text-zinc-50"}`;
+            b.textContent = value;
+            a.append(p, b);
+            li.append(a);
+            return li;
+        }));
+        document.getElementById("house").hidden = false;
+    }).catch(() => { });
+</script>
 <script>
     (() => {
         const events = {{ events|tojson }};  // newest first; ts is Unix seconds
