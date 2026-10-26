@@ -589,6 +589,9 @@ def create_app():
             if request.method == "GET":
                 return {"devices": device_call(devices.list_devices, bool(request.args.get("fresh")))}
             data = request.get_json(silent=True) or {}
+            # Door locks only for the owner's password: API-keyed stream links and family logins can't unlock a door.
+            if "lock" in data and not web_ui.owner_password():
+                return {"error": "Only the owner, signed in with the web password, can lock or unlock doors."}, 403
             if not (dev := device_call(devices.find, str(data.get("mac", "")))):
                 return {"error": "Unknown device."}, 404
             done = device_call(devices.control, dev, data)

@@ -55,6 +55,12 @@ def guest_login(username: str, password: str):
     return False
 
 
+def owner_password() -> bool:
+    """Signed in with the owner's own password: not the API key, Home Assistant, an app token, a guest or family."""
+    creds = request.authorization
+    return bool(WbAuth.enabled and creds and creds.username == WbAuth.username and check_password_hash(WbAuth.hashed_password(), creds.password or ""))
+
+
 def bearer_token() -> str:
     scheme, _, token = request.headers.get("Authorization", "").partition(" ")
     return token.strip() if scheme.lower() == "bearer" else ""

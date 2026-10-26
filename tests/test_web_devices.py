@@ -148,3 +148,21 @@ def test_unlock_is_a_logged_post(client, wyze):
     assert "owner" in log.warning.call_args[0][0] and "Back Door" in log.warning.call_args[0][0]
     assert client.post("/api/devices", json={"mac": "nope", "on": True}).status_code == 404
     assert client.post("/api/devices", json={"mac": "DOOR", "on": True}).status_code == 400
+
+
+def test_only_the_owners_password_unlocks(client, wyze, monkeypatch):
+    import frontend
+    from wyzebridge import web_ui
+
+    for cls in {web_ui.WbAuth, frontend.WbAuth}:
+        monkeypatch.setattr(cls, "api", "apikey")
+    gran = client.post("/guests", json={"name": "Gran", "hours": 0}).json["password"]
+    family = {"Authorization": "Basic " + b64encode(f"Gran:{gran}".encode()).decode()}
+    unlock = {"mac": "YD.LO1.abc123", "lock": False}
+    assert client.post("/api/devices", json=unlock, headers=family).status_code == 403
+    assert client.post("/api/devices?api=apikey", json=unlock, headers={"Authorization": ""}).status_code == 403
+    # The API key with the owner's name but a wrong password is still not the owner.
+    wrong = {"Authorization": "Basic " + b64encode(b"owner:guess").decode()}
+    assert client.post("/api/devices?api=apikey", json=unlock, headers=wrong).status_code == 403
+    assert not [c for c in wyze if "control" in c[1]]  # nothing reached Wyze
+    assert client.post("/api/devices", json={"mac": "YD.LO1.abc123", "lock": True}).json == {"status": "locked"}
