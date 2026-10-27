@@ -12,5 +12,7 @@ segno==1.6.*
 webauthn==2.8.*
 # Built-in people/car/animal spotting; there are no wheels for 32-bit ARM, so it is off there.
 opencv-python-headless==4.10.*; platform_machine != "armv7l"
+# Reads the sound model (YAMNet) that listens for smoke alarms and breaking glass.
+h5py==3.*; platform_machine != "armv7l"
 # Runs the AI models on the graphics chip or CPU. The Windows bundle swaps in onnxruntime-directml for any DirectX 12 GPU.
 onnxruntime==1.24.*; platform_machine != "armv7l"

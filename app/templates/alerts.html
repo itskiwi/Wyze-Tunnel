@@ -64,7 +64,19 @@
             <span><span class="block">A person is spotted</span>
                 <span class="text-sm text-zinc-400">Turn on spotting for a camera under <a class="underline underline-offset-2" href="search#setup">Search footage</a> first. Follows Home, Away and quiet hours like motion.</span></span>
         </label>
-        <p class="mt-3 text-sm text-zinc-400">Smoke and carbon monoxide alarms heard by a camera always alert you, even in quiet hours. They need Wyze Cam Plus, and a camera can mistake other loud beeps for an alarm.</p>
+        <p class="mt-3 text-sm text-zinc-400">Smoke and carbon monoxide alarms heard by a camera always alert you, even in quiet hours. Wyze sends them with Cam Plus, or this computer can listen for them itself, below. A camera can mistake other loud beeps for an alarm.</p>
+        {% if not current_guest() and listen_cams %}
+        {# Saved on its own as soon as it's ticked, so it has no name and isn't part of this form. #}
+        <fieldset id="listen" class="mt-3 rounded-lg border border-zinc-800 p-3" {{ 'disabled' if not can_listen }}>
+            <legend class="px-1">Listen for smoke alarms and breaking glass <span class="text-sm text-zinc-400">(no Cam Plus needed)</span></legend>
+            <p id="listenStatus" class="text-sm text-zinc-400" role="status">{{ "This device can't run the sound model." if not can_listen else "Picked cameras stay connected with sound on, and this computer listens. Nothing is recorded or sent anywhere. Not a replacement for a real smoke alarm." }}</p>
+            <div class="mt-2 grid gap-2 sm:grid-cols-2">
+                {% for uri, name in listen_cams %}
+                <label class="flex items-center gap-3"><input type="checkbox" value="{{ uri }}" class="h-4 w-4 accent-emerald-500" {{ 'checked' if uri in listening }} />{{ name }}</label>
+                {% endfor %}
+            </div>
+        </fieldset>
+        {% endif %}
         {% for name, text in [("glass", "Glass breaking"), ("gunshot", "A gunshot"), ("crying", "Crying"), ("barking", "Barking"), ("meowing", "Meowing"), ("talking", "Talking")] %}
         <label class="mt-3 flex items-start gap-3">
             <input type="checkbox" name="{{ name }}" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.get(name, name == 'glass') }} />
@@ -124,6 +136,13 @@
             .then((x) => x.json()).catch((err) => ({ error: err.message }));
         document.getElementById("tamperStatus").textContent = r.error || (r.on ? "On. Cameras are checked every few minutes while streaming." : "Off.");
         if (r.error) e.target.checked = !e.target.checked;
+    });
+    const listen = document.getElementById("listen");
+    listen?.addEventListener("change", async () => {
+        const cams = [...listen.querySelectorAll("input:checked")].map((box) => box.value);
+        const r = await fetch("alerts/listen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cams }) })
+            .then((x) => x.json()).catch((err) => ({ error: err.message }));
+        document.getElementById("listenStatus").textContent = r.error || (cams.length ? "Saved. Cameras restart to start listening; the sound model (15 MB) downloads once." : "Off.");
     });
     const form = document.getElementById("alerts");
     const status = document.getElementById("status");

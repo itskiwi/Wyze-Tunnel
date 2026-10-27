@@ -11,7 +11,7 @@ import yaml
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from wyzebridge import detect, masks, phrases, privacy, recording, timelapse, weather, webhooks, wyze_api, wyze_stream
+from wyzebridge import detect, hearing, masks, phrases, privacy, recording, timelapse, weather, webhooks, wyze_api, wyze_stream
 from wyzebridge.config import TOKEN_PATH, VERSION
 from wyzebridge.logging import logger
 
@@ -32,6 +32,7 @@ def _files() -> dict[str, str]:
         "privacy": privacy.PRIVACY_FILE,
         "battery_saver": privacy.BATTERY_FILE,
         "timelapse": timelapse.SETTINGS_FILE,
+        "listen": hearing.SETTINGS_FILE,
         "zones": detect.ZONES_FILE,
         "masks": masks.MASKS_FILE,
         "location": weather.LOCATION_FILE,
@@ -150,6 +151,7 @@ def import_settings(backup: dict) -> list[str]:
         "location": _location,
         "clip_backup": _clip_backup,
         "timelapse": lambda v: {"cams": _str_list(v.get("cams", []) if isinstance(v, dict) else None)},
+        "listen": lambda v: {"cams": _str_list(v.get("cams", []) if isinstance(v, dict) else None)},
     }
     try:
         clean = {name: checked[name](value) for name, value in settings.items()}
