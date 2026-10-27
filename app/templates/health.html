@@ -35,7 +35,7 @@
         {% for row in lockdown %}
         <li class="flex gap-2.5">
             <i class="fas {{ 'fa-check text-emerald-400' if row.ok else 'fa-triangle-exclamation text-amber-300' }} mt-0.5 w-4 flex-none text-center" aria-hidden="true"></i>
-            <div><p class="text-zinc-100">{{ row.title }}</p>{% if not row.ok %}<p class="text-zinc-400">{{ row.fix }}</p>{% endif %}</div>
+            <div><p class="text-zinc-100">{{ row.title }}</p>{% if not row.ok %}<p class="text-zinc-400">{{ row.fix }}</p>{% if row.action == "firewall" %}<button id="fixFirewall" class="btn mt-2" type="button"><i class="fas fa-shield-halved"></i>Fix it</button>{% endif %}{% endif %}</div>
         </li>
         {% endfor %}
     </ul>
@@ -50,6 +50,13 @@
     </details>
 </section>
 <script>
+    document.getElementById("fixFirewall")?.addEventListener("click", async (e) => {
+        e.target.disabled = true;
+        const r = await fetch("health/fix-firewall", { method: "POST" }).then((x) => x.json()).catch(() => ({}));
+        if (!r.asked) { e.target.disabled = false; return toast("Couldn't ask", "Use Fix phone and camera access in the Wyze Tunnel tray menu instead.", "warning"); }
+        toast("Check for a Windows prompt", "Click Yes on it. If none shows, look for a flashing shield in the taskbar. This page reloads in a minute.", "info");
+        setTimeout(() => location.reload(), 60000);
+    });
     document.getElementById("tailscaleOnly").addEventListener("change", async (e) => {
         e.target.disabled = true;
         const r = await fetch("health/tailscale-only", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: e.target.checked }) }).then((x) => x.json()).catch(() => ({}));
