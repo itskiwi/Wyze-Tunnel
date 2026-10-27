@@ -25,6 +25,7 @@ try:
 except (ImportError, RuntimeError):
     cv2 = None
 
+from wyzebridge import recording
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.config import IMG_PATH, TOKEN_PATH
 from wyzebridge.ffmpeg import parse_timedelta
@@ -116,6 +117,8 @@ def add(
             "INSERT OR IGNORE INTO detections (cam, label, score, ts, source, ext_id) VALUES (?, ?, ?, ?, ?, ?)",
             (cam, label, round(score, 2), ts, source, ext_id),
         )
+        if cur.rowcount:
+            recording.mark(cam, ts)
         for row in con.execute(
             "SELECT id FROM detections WHERE ts < ?",
             (time.time() - KEEP.total_seconds(),),

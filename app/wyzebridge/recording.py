@@ -4,13 +4,19 @@ import contextlib
 import json
 import os
 import shutil
+import sqlite3
+import subprocess
 import sys
 import time
-from datetime import date
+from bisect import bisect_left
+from datetime import date, timedelta
+from functools import cache
 from pathlib import Path
 from threading import Lock, Thread
 
+from wyzebridge.bridge_utils import env_cam
 from wyzebridge.config import IMG_PATH, TOKEN_PATH
+from wyzebridge.ffmpeg import parse_timedelta
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import RECORD_PATH
 
@@ -24,6 +30,14 @@ MIN_FREE = 5 * 1024**3  # always leave this much of the drive free, whatever the
 MIN_FREE_SHARE = 0.15  # or this share of the drive, if more: Windows slows down when nearly full
 MAX_FREE_FLOOR = 20 * 1024**3  # but never reserve more than this: 15% of a 2 TB drive would wipe every clip
 DEFAULT_KEEP_DAYS = 7  # a camera writes roughly 10-20 GB a day, so a fresh install can't quietly fill the disk
+# After keep_days, only clips near motion or a detection stay, up to this long (Frigate's "retain: motion" idea).
+EVENT_CHOICES = (0, 14, 30, 60, 90)  # 0 is off: everything goes at keep_days
+DEFAULT_EVENT_DAYS = 30  # most of a camera's day is an empty yard, so a month of moments takes about a week's space
+MOMENTS_FILE = TOKEN_PATH + "moments.db"
+PAD = 30  # seconds kept either side of a moment, so the walk up to the door stays too
+# MediaMTX cuts at the next keyframe after this, so a clip can run a few seconds longer; PAD covers that.
+SEGMENT_SECONDS = (parse_timedelta("RECORD_LENGTH") or timedelta(seconds=60)).total_seconds()
+_moments_lock = Lock()
 
 
 def load_settings() -> dict:
@@ -52,7 +66,14 @@ def save_settings(form: dict, uris: list[str]) -> dict:
         max_gb = -1
     if max_gb not in MAX_GB_CHOICES:
         raise ValueError("Pick a space limit from the list")
-    settings = {"all": bool(form.get("all")), "cams": [c for c in cams if c in uris], "keep_days": keep, "max_gb": max_gb}
+    try:
+        event_days = int(DEFAULT_EVENT_DAYS if form.get("event_days") is None else form["event_days"])
+    except (TypeError, ValueError):
+        event_days = -1
+    if event_days not in EVENT_CHOICES:
+        raise ValueError("Pick how long to keep moments from the list")
+    settings = {"all": bool(form.get("all")), "cams": [c for c in cams if c in uris], "keep_days": keep, "max_gb": max_gb,
+                "event_days": event_days, "shrink": bool(form.get("shrink")) and bool(shrink_encoder())}
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f)
     return settings
@@ -64,8 +85,138 @@ def wanted(uri: str) -> bool:
 
 
 def keep() -> str:
-    """For MediaMTX's recordDeleteAfter."""
-    return f"{(load_settings().get('keep_days') or DEFAULT_KEEP_DAYS) * 86400}s"
+    """For MediaMTX's recordDeleteAfter: never, because expire() deletes them, sparing moments and starred clips."""
+    return "0s"
+
+
+def keep_days(settings: dict | None = None) -> tuple[int, int]:
+    """(days every clip is kept, days clips with a moment are kept); the second is never shorter."""
+    settings = load_settings() if settings is None else settings
+    days = settings.get("keep_days") or DEFAULT_KEEP_DAYS
+    return days, max(days, settings.get("event_days", DEFAULT_EVENT_DAYS))
+
+
+def _moments_db() -> sqlite3.Connection:
+    db = sqlite3.connect(MOMENTS_FILE, timeout=10)
+    db.execute("CREATE TABLE IF NOT EXISTS moments (uri TEXT, ts REAL, star INTEGER DEFAULT 0)")
+    db.execute("CREATE INDEX IF NOT EXISTS moments_ts ON moments (ts)")
+    db.execute("CREATE TABLE IF NOT EXISTS shrunk (path TEXT PRIMARY KEY)")
+    return db
+
+
+def mark(uri: str, ts: float) -> None:
+    """Motion or a detection on this camera at ts: the clips around it outlive keep_days."""
+    with contextlib.suppress(sqlite3.Error), _moments_lock, _moments_db() as db:
+        db.execute("INSERT INTO moments (uri, ts) VALUES (?, ?)", (uri, ts))
+
+
+def star(uri: str, ts: float, on: bool = True) -> None:
+    """A starred event: the clips around it are never deleted on their own, by age or for space."""
+    with _moments_lock, _moments_db() as db:
+        db.execute("DELETE FROM moments WHERE uri = ? AND ts = ? AND star = 1", (uri, ts))
+        if on:
+            db.execute("INSERT INTO moments (uri, ts, star) VALUES (?, ?, 1)", (uri, ts))
+
+
+def _moments(since: float) -> dict[str, tuple[list[float], list[float]]]:
+    """{uri: (sorted moment times since `since`, sorted starred times)}, and drops moments too old to matter."""
+    out: dict[str, tuple[list[float], list[float]]] = {}
+    try:
+        with _moments_lock, _moments_db() as db:
+            db.execute("DELETE FROM moments WHERE star = 0 AND ts < ?", (since,))
+            rows = db.execute("SELECT uri, ts, star FROM moments WHERE ts >= ? OR star = 1 ORDER BY ts", (since,)).fetchall()
+    except sqlite3.Error as ex:
+        # Without the list every old clip would look empty, so expire() and trim() must not trust it.
+        raise OSError(f"can't read the moments list: {ex}") from ex
+    for uri, ts, starred in rows:
+        out.setdefault(uri, ([], []))[1 if starred else 0].append(ts)
+    return out
+
+
+def _near(times: list[float], mtime: float) -> bool:
+    """A time in the clip ending at mtime, or within PAD of it."""
+    i = bisect_left(times, mtime - SEGMENT_SECONDS - PAD)
+    return i < len(times) and times[i] <= mtime + PAD
+
+
+def _kind(clip: Path, root: Path, mtime: float, moments: dict) -> str:
+    """"star", "moment" or "" for a plain clip."""
+    rel = clip.relative_to(root)
+    # shortcut: takes the camera from the first folder under the record root, as the default RECORD_PATH has it.
+    times, stars = moments.get(rel.parts[0] if len(rel.parts) > 1 else "", ([], []))
+    return "star" if _near(stars, mtime) else "moment" if _near(times, mtime) else ""
+
+
+def expire(now: float | None = None, budget: float = 120) -> int:
+    """Delete clips past keep_days unless a moment is in them, and moments past event_days. Starred clips stay.
+    Kept moments are shrunk with the graphics chip if that's on. Returns clips deleted."""
+    now = time.time() if now is None else now
+    settings = load_settings()
+    days, event_days = keep_days(settings)
+    root, deleted, started = record_root(), 0, time.time()
+    moments = _moments(now - event_days * 86400 - 86400)
+    ours = set(settings.get("cams") or [])
+    for clip in root.rglob("*.mp4"):
+        mtime, rel = _mtime(clip), clip.relative_to(root)
+        if mtime > now - days * 86400 or len(rel.parts) < 2:
+            continue
+        # Cameras recording for the config (RECORD_KEEP) or only for Search footage keep MediaMTX's own keep time.
+        # shortcut: their starred clips aren't protected from that; move them here if people star those.
+        if not (settings.get("all") or rel.parts[0] in ours) or env_cam("record", rel.parts[0]):
+            continue
+        kind = _kind(clip, root, mtime, moments)
+        if kind == "star" or (kind == "moment" and mtime > now - event_days * 86400):
+            if settings.get("shrink") and time.time() - started < budget:
+                shrink(clip)
+            continue
+        try:
+            clip.unlink()
+            deleted += 1
+        except OSError:
+            continue
+    with _moments_lock, _moments_db() as db:  # forget clips that are gone
+        db.executemany("DELETE FROM shrunk WHERE path = ?", [r for r in db.execute("SELECT path FROM shrunk") if not Path(r[0]).exists()])
+    if deleted:
+        logger.info(f"[RECORD] Deleted {deleted} old clip{'s'[:deleted ^ 1]} with nothing happening in them")
+    return deleted
+
+
+@cache
+def shrink_encoder() -> str:
+    """The first hardware H.264 encoder this PC's ffmpeg can use, or "" if none. Software is too slow to run all day."""
+    for enc in ("h264_nvenc", "h264_qsv", "h264_amf", "h264_videotoolbox"):
+        cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=s=320x240:d=0.2", "-c:v", enc, "-f", "null", "-"]
+        try:
+            if subprocess.run(cmd, capture_output=True, timeout=20).returncode == 0:
+                return enc
+        except (OSError, subprocess.TimeoutExpired):
+            return ""  # no ffmpeg at all
+    return ""
+
+
+def shrink(clip: Path) -> bool:
+    """Re-encode a kept clip at a lower bit rate, once. The original stays unless the copy plays and is much smaller."""
+    with _moments_lock, _moments_db() as db:
+        if db.execute("INSERT OR IGNORE INTO shrunk VALUES (?)", (str(clip),)).rowcount == 0:
+            return False  # tried before, whatever came of it
+    if not (enc := shrink_encoder()):
+        return False
+    part = clip.with_name(clip.name + ".part")
+    # Fragmented like MediaMTX writes them, so the Recordings page can still play it; audio is copied as it is.
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(clip), "-map", "0", "-c:v", enc,
+           "-b:v", "700k", "-maxrate", "1000k", "-bufsize", "2000k", "-c:a", "copy",
+           "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", str(part)]
+    try:
+        stat = clip.stat()
+        ok = subprocess.run(cmd, capture_output=True, timeout=300).returncode == 0
+        if ok and 0 < part.stat().st_size < stat.st_size * 0.8:
+            os.utime(part, (stat.st_atime, stat.st_mtime))  # its age decides when it goes
+            part.replace(clip)
+            return True
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    part.unlink(missing_ok=True)
+    return False
 
 
 def record_root() -> Path:
@@ -96,9 +247,16 @@ def _size(path: Path) -> int:
 
 def trim() -> int:
     """Delete the oldest clips while recordings are over the space limit or the drive is nearly full. Returns bytes freed."""
-    root = record_root()
-    # Clips still being written (touched in the last 2 minutes) are left alone.
-    clips = sorted((f for f in root.rglob("*.mp4") if _mtime(f) < time.time() - 120), key=_mtime)
+    root, now = record_root(), time.time()
+    moments = _moments(now - keep_days()[1] * 86400 - 86400)
+
+    def order(clip: Path) -> tuple:
+        # Empty footage goes first, then moments, then the last day; oldest first within each.
+        mtime = _mtime(clip)
+        return 2 if mtime > now - 86400 else 1 if _kind(clip, root, mtime, moments) else 0, mtime
+
+    # Clips still being written (touched in the last 2 minutes) and starred ones are left alone.
+    clips = sorted((f for f in root.rglob("*.mp4") if _mtime(f) < now - 120 and _kind(f, root, _mtime(f), moments) != "star"), key=order)
     use = disk_use()
     limit = (load_settings().get("max_gb") or 0) * 1024**3
     floor = max(MIN_FREE, min(use.get("total", 0) * MIN_FREE_SHARE, MAX_FREE_FLOOR))
@@ -216,6 +374,7 @@ def start_trimming() -> None:
     def loop():
         while True:
             try:
+                expire()
                 trim()
             except OSError as ex:
                 logger.warning(f"[RECORD] Couldn't clean up old clips: {ex}")

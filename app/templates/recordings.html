@@ -51,6 +51,22 @@
             <span class="mt-1 block text-sm text-zinc-500">Older clips are deleted on their own.</span>
         </label>
         <label class="block max-w-xs">
+            <span class="text-sm text-zinc-400">Then keep only the moments for</span>
+            <select name="event_days" class="field mt-1">
+                {% for days in event_choices %}
+                <option value="{{ days }}" {{ 'selected' if days == settings.get('event_days', default_event) }}>{{ days ~ ' days' if days else 'Off' }}</option>
+                {% endfor %}
+            </select>
+            <span class="mt-1 block text-sm text-zinc-500">After that, only the minutes around motion, people, cars and animals stay. Starred events are never deleted.</span>
+        </label>
+        <label class="flex max-w-md items-start gap-3">
+            <input type="checkbox" name="shrink" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.get('shrink') and shrink_encoder }} {{ 'disabled' if not shrink_encoder }} />
+            <span>
+                <span class="block">Shrink the moments it keeps</span>
+                <span class="block text-sm text-zinc-500">{{ 'Uses this computer’s graphics chip to make them about half the size, a little softer.' if shrink_encoder else 'This computer has no graphics chip ffmpeg can use for this.' }}</span>
+            </span>
+        </label>
+        <label class="block max-w-xs">
             <span class="text-sm text-zinc-400">Use at most</span>
             <select name="max_gb" class="field mt-1">
                 {% for gb in max_gb_choices %}
@@ -209,6 +225,8 @@
             cams: [...setupForm.querySelectorAll("[name=cams]:not([data-locked])")].filter((c) => setupForm.all.checked ? c.defaultChecked : c.checked).map((c) => c.value),
             keep_days: Number(setupForm.keep_days.value),
             max_gb: Number(setupForm.max_gb.value),
+            event_days: Number(setupForm.event_days.value),
+            shrink: setupForm.shrink.checked,
         };
         out.textContent = "Saving…";
         fetch("recordings/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
