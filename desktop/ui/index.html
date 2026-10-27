@@ -9,129 +9,116 @@
   @font-face { font-family: "Nunito"; font-weight: 800; src: url(nunito-latin-800-normal.woff2) format("woff2"); }
   :root {
     color-scheme: dark;
-    --bg: #0e100e; --card: #171a17; --line: #2a2f2a; --fg: #eef0ec; --muted: #a0a69c; --faint: #787e74;
-    --accent: #3dcf8e; --accent-deep: #229a65; --on-accent: #052014; --warn: #fbbf24; --warn-bg: #fbbf241a;
-    --ring: inset 0 0 0 1px #ffffff0d;
+    --bg: #0e100e; --card: #171a17; --tile: #1f231f; --line: #2a2f2a; --fg: #eef0ec; --muted: #a0a69c;
+    --accent: #3dcf8e; --accent-deep: #229a65; --on-accent: #052014; --warn: #fbbf24;
+    --ring: inset 0 0 0 1px #ffffff12, 0 12px 40px #0008;
   }
   @media (prefers-color-scheme: light) {
     :root {
       color-scheme: light;
-      --bg: #f5f4f0; --card: #fff; --line: #dedcd3; --fg: #1a1c19; --muted: #5d6058; --faint: #7d8076;
-      --accent: #15895a; --accent-deep: #0e6b45; --on-accent: #fff; --warn: #b45309; --warn-bg: #b4530914;
-      --ring: 0 1px 2px #0000000f, 0 10px 26px #282c2414;
+      --bg: #f5f4f0; --card: #fff; --tile: #ecebe5; --line: #dedcd3; --fg: #1a1c19; --muted: #5d6058;
+      --accent: #15895a; --accent-deep: #0e6b45; --on-accent: #fff; --warn: #b45309;
+      --ring: 0 1px 2px #0000000f, 0 14px 40px #282c2429;
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--fg); }
-  main { max-width: 600px; margin: 0 auto; padding: 28px 20px; display: flex; flex-direction: column; gap: 14px; }
-  main > button { align-self: flex-start; }
-  header { display: flex; gap: 16px; align-items: center; margin-bottom: 6px; }
-  h1 { margin: 0; font: 800 23px/1.2 Nunito, system-ui, sans-serif; letter-spacing: -.01em; }
-  h2 { margin: 10px 0 10px; font: 800 14px/1 Nunito, system-ui, sans-serif; color: var(--muted); }
-  p { color: var(--muted); margin: 2px 0 0; }
-  .card { background: var(--card); border-radius: 22px; padding: 18px 20px; box-shadow: var(--ring); }
-  button { font: 800 15px Nunito, system-ui, sans-serif; padding: 10px 22px; border: 0; border-radius: 999px; background: var(--accent);
-    color: var(--on-accent); cursor: pointer; box-shadow: 0 4px 0 var(--accent-deep); }
+  html, body { height: 100%; }
+  body { margin: 0; overflow: hidden; font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--fg); }
+  h1 { margin: 0; font: 800 19px/1.2 Nunito, system-ui, sans-serif; }
+  p { color: var(--muted); margin: 1px 0 0; }
+  button { font: 800 15px Nunito, system-ui, sans-serif; padding: 9px 20px; border: 0; border-radius: 999px; background: var(--accent);
+    color: var(--on-accent); cursor: pointer; box-shadow: 0 4px 0 var(--accent-deep); white-space: nowrap; }
   button:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--accent-deep); }
   button:disabled { opacity: .5; cursor: default; }
   button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
   button.link { background: none; color: var(--accent); padding: 0 4px; box-shadow: none; font: inherit; font-weight: 600; }
-  pre, .mono { font: 12px/1.5 "Cascadia Mono", Consolas, ui-monospace, monospace; }
-  pre { background: var(--card); color: var(--muted); border-radius: 14px; padding: 12px; max-height: 40vh; overflow: auto; white-space: pre-wrap; margin: 0; }
-  dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
-  dt { color: var(--muted); } dd { margin: 0; }
-  code { font-size: 15px; user-select: all; }
+  code, pre, .mono { font: 12px/1.5 "Cascadia Mono", Consolas, ui-monospace, monospace; }
+  code { font-size: 14px; user-select: all; color: var(--fg); }
   [hidden] { display: none !important; }
 
-  /* Tunnel, the mascot: blinks, and looks around while it works. Asleep while stopped. */
-  .mascot { width: 60px; height: 60px; flex: none; }
+  /* The wall: every camera's picture from last time, asleep (grey, dim) until the bridge adds it. */
+  .wall { position: fixed; inset: 0; display: grid; grid-auto-rows: 1fr; gap: 3px; background: var(--bg); }
+  .wall.odd .tile:first-child { grid-row: span 2; }
+  .tile { position: relative; overflow: hidden; background: var(--tile); }
+  .tile img { width: 100%; height: 100%; object-fit: cover; display: block;
+    filter: grayscale(1) brightness(.55) contrast(.9); transform: scale(1.04); transition: filter 1.4s ease, transform 1.4s ease; }
+  .tile.awake img { filter: none; transform: none; }
+  .tile .tag { position: absolute; left: 10px; top: 10px; display: flex; gap: 7px; align-items: center; padding: 4px 11px 4px 9px;
+    border-radius: 999px; background: #0e100ecc; color: #eef0ec; font-weight: 600; font-size: 12.5px; }
+  .tile .tag::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #787e74; transition: background .6s; }
+  .tile.awake .tag::before { background: #3dcf8e; box-shadow: 0 0 0 3px #3dcf8e33; }
+  .tile .when { color: #a0a69c; font-weight: 400; }
+  .tile.awake .when { display: none; }
+  /* A camera found this run with no picture yet: its name holds the spot. */
+  .tile.blank { display: grid; place-items: center; }
+  /* Nothing to show yet (first start): Tunnel waits in the middle. */
+  .wall.empty { place-items: center; }
+  .wall.empty .big { width: 120px; height: 120px; margin-bottom: 120px; }
+
+  /* The bar: one sentence about where startup is, and the one thing to do if anything. */
+  .bar { position: fixed; left: 16px; right: 16px; bottom: 16px; background: var(--card); border-radius: 24px; padding: 14px 16px 14px 14px;
+    box-shadow: var(--ring); display: flex; gap: 14px; align-items: center; }
+  .bar.warn { box-shadow: inset 0 0 0 1.5px var(--warn), var(--ring); }
+  .bar.warn h1 { color: var(--warn); }
+  .bar .text { flex: 1; min-width: 0; }
+  .bar .mono { color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .meter { display: flex; gap: 4px; margin-top: 9px; }
+  .meter i { height: 4px; flex: 1; border-radius: 2px; background: var(--line); transition: background .6s; }
+  .meter i.on { background: var(--accent); }
+  .meter i.now { background: var(--accent); animation: pulse 1.2s ease-in-out infinite alternate; }
+  @keyframes pulse { from { opacity: .25; } to { opacity: 1; } }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 8px 0 0; }
+  dt { color: var(--muted); } dd { margin: 0; }
+  pre { position: fixed; inset: 16px 16px 120px; margin: 0; background: var(--card); color: var(--muted); border-radius: 18px; padding: 14px;
+    overflow: auto; white-space: pre-wrap; box-shadow: var(--ring); }
+
+  /* Tunnel, the mascot (app/static/icon.svg): blinks and looks around while it works, asleep while stopped. */
+  .mascot { width: 52px; height: 52px; flex: none; }
   .eye { transform-origin: 22px 20px; animation: blink 5s infinite; }
   .pupil { animation: look 6s ease-in-out infinite; }
   .asleep .eye { animation: none; transform: scaleY(.12); }
   .asleep .pupil { animation: none; }
   @keyframes blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
   @keyframes look { 0%, 30%, 100% { transform: translateX(0); } 40%, 55% { transform: translateX(-3.5px); } 65%, 80% { transform: translateX(1.5px); } }
-
-  /* Startup steps */
-  ol { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; gap: 12px; align-items: center; padding: 7px 0; color: var(--faint); }
-  li .dot { width: 20px; height: 20px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--line); display: grid; place-items: center; }
-  li.done { color: var(--fg); }
-  li.done .dot { background: var(--accent); box-shadow: none; }
-  li.done .dot::after { content: ""; width: 9px; height: 5px; border: solid var(--on-accent); border-width: 0 0 2px 2px; transform: translateY(-1px) rotate(-45deg); }
-  li.now { color: var(--fg); font-weight: 600; }
-  li.now .dot { box-shadow: inset 0 0 0 2px var(--line); border: 2px solid transparent; border-top-color: var(--accent); animation: spin .8s linear infinite; }
-  li .note { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 13px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* When it's slow: what to try */
-  .help { box-shadow: inset 0 0 0 1px var(--warn); background: var(--warn-bg); }
-  .help strong { color: var(--warn); }
-  .help button { margin-top: 14px; }
-  .help .mono { color: var(--muted); margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-  /* The cameras' pictures from last time */
-  .snaps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  figure { margin: 0; }
-  figure img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 14px; display: block; background: var(--card); box-shadow: var(--ring); }
-  figcaption { font-size: 12px; color: var(--muted); padding: 5px 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  figcaption b { color: var(--fg); font-weight: 600; }
-
-  @media (prefers-reduced-motion: reduce) { .eye, .pupil, li.now .dot { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .eye, .pupil, .meter i.now { animation: none; } .tile img { transition: none; } }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <svg class="mascot" id="mascot" viewBox="0 2 44 44" aria-hidden="true">
-      <path fill-rule="evenodd" d="M8 39.5V21a14 14 0 0 1 28 0v18.5a1.5 1.5 0 0 1-1.5 1.5h-25A1.5 1.5 0 0 1 8 39.5zM17.5 41v-3.2a4.5 4.5 0 0 1 9 0V41z" fill="var(--accent)"/>
-      <g class="eye"><circle cx="22" cy="20" r="8.2" fill="#fff"/><g class="pupil"><circle cx="23.3" cy="21.1" r="4.2" fill="#13241a"/><circle cx="24.9" cy="19.5" r="1.3" fill="#fff"/></g></g>
-    </svg>
-    <div>
-      <h1 id="title">Wyze Tunnel</h1>
-      <p id="msg" role="status" aria-live="polite">Checking…</p>
-    </div>
-  </header>
 
-  <div class="card help" id="help" hidden>
-    <strong id="help-title"></strong>
-    <p id="help-text"></p>
-    <div class="mono" id="help-log"></div>
-    <button id="restart">Restart Wyze Tunnel</button>
-  </div>
-  <button id="start" hidden>Start Wyze Tunnel</button>
+<div class="wall empty" id="wall"><svg class="big" id="big" viewBox="0 2 44 44" aria-hidden="true">
+  <path fill-rule="evenodd" d="M8 39.5V21a14 14 0 0 1 28 0v18.5a1.5 1.5 0 0 1-1.5 1.5h-25A1.5 1.5 0 0 1 8 39.5zM17.5 41v-3.2a4.5 4.5 0 0 1 9 0V41z" fill="var(--accent)"/>
+  <g class="eye"><circle cx="22" cy="20" r="8.2" fill="#fff"/><g class="pupil"><circle cx="23.3" cy="21.1" r="4.2" fill="#13241a"/><circle cx="24.9" cy="19.5" r="1.3" fill="#fff"/></g></g>
+</svg></div>
+<pre id="log" hidden></pre>
 
-  <div class="card" id="steps" hidden>
-    <ol>
-      <li><span class="dot"></span>Starting up</li>
-      <li><span class="dot"></span>Signing in to Wyze</li>
-      <li><span class="dot"></span>Adding your cameras<span class="note" id="cams"></span></li>
-      <li><span class="dot"></span>Opening Wyze Tunnel</li>
-    </ol>
-  </div>
-
-  <div class="card" id="login" hidden>
-    <dl>
+<div class="bar" id="bar">
+  <svg class="mascot" id="mascot" viewBox="0 2 44 44" aria-hidden="true">
+  <path fill-rule="evenodd" d="M8 39.5V21a14 14 0 0 1 28 0v18.5a1.5 1.5 0 0 1-1.5 1.5h-25A1.5 1.5 0 0 1 8 39.5zM17.5 41v-3.2a4.5 4.5 0 0 1 9 0V41z" fill="var(--accent)"/>
+  <g class="eye"><circle cx="22" cy="20" r="8.2" fill="#fff"/><g class="pupil"><circle cx="23.3" cy="21.1" r="4.2" fill="#13241a"/><circle cx="24.9" cy="19.5" r="1.3" fill="#fff"/></g></g>
+</svg>
+  <div class="text">
+    <h1 id="title">Wyze Tunnel</h1>
+    <p id="msg" role="status" aria-live="polite">Checking…</p>
+    <div class="meter" id="meter" hidden><i></i><i></i><i></i><i></i></div>
+    <div class="mono" id="help-log" hidden></div>
+    <dl id="login" hidden>
       <dt>Username</dt><dd><code id="user">wbadmin</code></dd>
       <dt>Password</dt><dd><code id="pw"></code> <button id="copy" class="link">Copy</button></dd>
     </dl>
   </div>
   <button id="go" hidden>Set up Wyze Tunnel</button>
-  <button id="open" hidden>Open Wyze Tunnel</button>
-  <pre id="log" hidden></pre>
-
-  <section id="last" hidden>
-    <h2>Last seen</h2>
-    <div class="snaps" id="snaps"></div>
-  </section>
-</main>
+  <button id="start" hidden>Start</button>
+  <button id="restart" hidden>Restart</button>
+  <button id="open" hidden>Open</button>
+</div>
 <script>
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const $ = (id) => document.getElementById(id);
-const say = (text) => ($("msg").textContent = text);
+const say = (title, text) => { $("title").textContent = title; $("msg").textContent = text; };
 const STALL = 120; // seconds before the screen offers a restart
 let since = Date.now(); // when this wait (or the last restart) began
+const BIG = $("big");
 
 function ago(s) {
   if (s < 90) return "just now";
@@ -139,93 +126,104 @@ function ago(s) {
   if (s < 86400 * 2) return `${Math.round(s / 3600)} h ago`;
   return `${Math.round(s / 86400)} days ago`;
 }
+// Same as the bridge's camera addresses, so a name from the log finds its picture.
+const uriOf = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const nameOf = (uri) => uri.replace(/[-_]/g, " ").replace(/^./, (c) => c.toUpperCase());
 
 // Which startup step the bridge's log has reached: 0 starting, 1 signing in, 2 adding cameras.
 function stepOf(log) {
   if (/\[\+\] Adding |Fetched \[\d+\] cameras|'cameras' from local cache/.test(log)) return 2;
   return log.trim() ? 1 : 0;
 }
+const STEP_TEXT = ["Starting up", "Signing in to Wyze", "Connecting to your cameras", "Opening Wyze Tunnel"];
 
 // Why it's slow and what to do, in plain words, from the end of the log.
-const RESTART = "Restarting it fixes this most of the time. If it keeps happening, restart your computer.";
+const RESTART = "Restarting fixes this most of the time. If it keeps happening, restart your computer.";
 function stallHelp(log) {
   const tail = log.trim().split("\n").slice(-15).join("\n");
-  if (!log.trim()) return ["Wyze Tunnel hasn't started yet.", RESTART];
-  if (/unreachable|ConnectionError|timed out/i.test(tail)) return ["Wyze Tunnel can't reach the internet yet.", "Check that this computer is online. Wyze Tunnel keeps trying on its own."];
-  if (/Traceback|Error|Exception/.test(tail)) return ["Wyze Tunnel ran into a problem while starting.", RESTART];
-  return ["This is taking longer than usual.", RESTART];
+  if (!log.trim()) return ["Wyze Tunnel hasn't started yet", RESTART];
+  if (/unreachable|ConnectionError|timed out/i.test(tail)) return ["Can't reach the internet yet", "Check that this computer is online. Wyze Tunnel keeps trying on its own."];
+  if (/Traceback|Error|Exception/.test(tail)) return ["Wyze Tunnel hit a problem starting", RESTART];
+  return ["This is taking longer than usual", RESTART];
 }
 
-let snapsShown = "";
-async function showSnaps(snaps, names) {
-  const key = snaps.map(([, n]) => n).join();
-  $("last").hidden = !snaps.length;
-  if (key === snapsShown) {
-    snaps.forEach(([age], i) => { const t = $("snaps").children[i]?.querySelector("span"); if (t) t.textContent = ago(age); });
-    return;
+// One tile per camera: last run's pictures, plus any camera the log has found that has none yet.
+let wallKey = "";
+async function drawWall(snaps, found) {
+  const pics = new Map(snaps.map(([age, uri]) => [uri, age]));
+  const uris = [...new Set([...pics.keys(), ...found.map(uriOf)])].slice(0, 6);
+  const key = uris.join();
+  if (key !== wallKey) {
+    wallKey = key;
+    const n = uris.length;
+    $("wall").classList.toggle("empty", !n);
+    $("wall").classList.toggle("odd", n === 3 || n === 5); // the first camera takes the spare cell
+    $("wall").style.gridTemplateColumns = `repeat(${n > 4 ? 3 : n > 1 ? 2 : 1}, 1fr)`;
+    $("wall").replaceChildren(...(n ? await Promise.all(uris.map(async (uri) => {
+      const tile = document.createElement("div");
+      tile.className = "tile";
+      tile.dataset.uri = uri;
+      if (pics.has(uri)) {
+        const img = document.createElement("img");
+        img.alt = "";
+        img.src = URL.createObjectURL(new Blob([await invoke("snapshot", { name: uri })], { type: "image/jpeg" }));
+        tile.append(img);
+      } else tile.classList.add("blank");
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.innerHTML = '<b></b><span class="when"></span>';
+      tile.append(tag);
+      return tile;
+    })) : [BIG]));
   }
-  snapsShown = key;
-  $("snaps").replaceChildren(...await Promise.all(snaps.map(async ([age, uri]) => {
-    const fig = document.createElement("figure");
-    const img = document.createElement("img");
-    img.alt = "";
-    img.src = URL.createObjectURL(new Blob([await invoke("snapshot", { name: uri })], { type: "image/jpeg" }));
-    const cap = document.createElement("figcaption");
-    const name = document.createElement("b");
-    name.textContent = names[uri] || uri.replace(/[-_]/g, " ").replace(/^./, (c) => c.toUpperCase());
-    const when = document.createElement("span");
-    when.textContent = ago(age);
-    cap.append(name, " · ", when);
-    fig.append(img, cap);
-    return fig;
-  })));
+  const names = Object.fromEntries(found.map((f) => [uriOf(f), f]));
+  for (const tile of $("wall").querySelectorAll(".tile")) {
+    const uri = tile.dataset.uri;
+    tile.classList.toggle("awake", uri in names);
+    tile.querySelector("b").textContent = names[uri] || nameOf(uri);
+    tile.querySelector(".when").textContent = pics.has(uri) ? ago(pics.get(uri)) : "";
+  }
+  return uris.length;
 }
 
-// Shows the startup steps from the bridge's log until its web UI answers, then the login and an Open button.
+// Wakes the wall camera by camera from the bridge's log until its web UI answers, then offers to open it.
 async function showWhenUp(openBrowser) {
   since = Date.now();
-  $("title").textContent = "Waking up your cameras";
   $("go").hidden = $("log").hidden = true;
-  say("This can take a minute after your computer starts.");
+  $("meter").hidden = false;
   for (;;) {
     const p = await invoke("progress");
+    const found = [...p.log.matchAll(/\[\+\] Adding (.+?) \[/g)].map((m) => m[1]);
+    const total = await drawWall(p.snaps, found);
     if (p.up) break;
-    const asleep = p.stopped;
-    $("mascot").classList.toggle("asleep", asleep);
-    $("start").hidden = !asleep;
-    $("steps").hidden = asleep;
-    if (asleep) {
-      $("title").textContent = "Wyze Tunnel is stopped";
-      say("Your cameras aren't being watched or recorded until you start it again.");
-      $("help").hidden = true;
+    const slow = !p.stopped && (Date.now() - since) / 1000 > STALL;
+    $("mascot").classList.toggle("asleep", p.stopped);
+    $("bar").classList.toggle("warn", slow);
+    $("start").hidden = !p.stopped;
+    $("restart").hidden = !slow;
+    $("meter").hidden = p.stopped || slow;
+    $("help-log").hidden = !slow;
+    if (p.stopped) {
+      say("Wyze Tunnel is stopped", "Your cameras aren't being watched or recorded.");
+    } else if (slow) {
+      say(...stallHelp(p.log));
+      $("help-log").textContent = p.log.trim().split("\n").pop() || "";
     } else {
-      $("title").textContent = "Waking up your cameras";
       const step = stepOf(p.log);
-      [...$("steps").querySelectorAll("li")].forEach((li, i) => {
-        li.className = i < step ? "done" : i === step ? "now" : "";
-      });
-      const cams = [...p.log.matchAll(/\[\+\] Adding (.+?) \[/g)].map((m) => m[1]);
-      $("cams").textContent = cams.length ? `${cams.length} found` : "";
-      const slow = (Date.now() - since) / 1000 > STALL;
-      $("help").hidden = !slow;
-      if (slow) {
-        [$("help-title").textContent, $("help-text").textContent] = stallHelp(p.log);
-        $("help-log").textContent = p.log.trim().split("\n").pop() || "";
-        say("Still working on it.");
-      }
+      [...$("meter").children].forEach((i, n) => (i.className = n < step ? "on" : n === step ? "now" : ""));
+      const count = Math.max(found.length, total);
+      say(step === 2 && count ? `Waking up ${found.length} of ${count} camera${count === 1 ? "" : "s"}` : "Waking up your cameras",
+        `${STEP_TEXT[step]}…`);
     }
-    const names = {};
-    for (const m of p.log.matchAll(/\[\+\] Adding (.+?) \[/g)) names[m[1].toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")] = m[1];
-    await showSnaps(p.snaps, names);
     await new Promise((r) => setTimeout(r, 2000));
   }
   $("mascot").classList.remove("asleep");
-  $("steps").hidden = $("help").hidden = $("start").hidden = $("last").hidden = true;
+  $("bar").classList.remove("warn");
+  $("start").hidden = $("restart").hidden = $("help-log").hidden = $("meter").hidden = true;
   const pw = await invoke("password");
   $("pw").textContent = pw || "(the one you set)";
   if (!pw) $("user").textContent = "(the one you set)";
-  $("title").textContent = "Wyze Tunnel is running";
-  say("To sign in from a phone or a browser, use:");
+  say("Your cameras are ready", "To sign in from a phone or a browser, use:");
   $("login").hidden = $("open").hidden = false;
   if (openBrowser) invoke("open_ui");
 }
@@ -234,15 +232,15 @@ async function setup(full = false) {
   $("go").disabled = true;
   $("log").hidden = false;
   $("log").textContent = "";
-  say("Setting up. The first time takes a few minutes, so keep this window open.");
+  say("Setting up", "The first time takes a few minutes, so keep this window open.");
   try {
     const code = await invoke("install", { full });
     if (code === 0) { $("log").hidden = true; return showWhenUp(true); }
-    if (code === 3) return say("Windows needs to restart to finish turning on WSL. Restart your PC, then open Wyze Tunnel again.");
-    if (code === 4) return say("Virtualization is turned off in your PC's BIOS. Restart, open the BIOS (usually Del or F2 while starting), turn on \"SVM Mode\" or \"Intel Virtualization Technology\", save, then open Wyze Tunnel again.");
-    say(`Setup didn't finish (error ${code}). Check your internet connection and try again.`);
+    if (code === 3) return say("Restart needed", "Windows needs to restart to finish turning on WSL. Restart your PC, then open Wyze Tunnel again.");
+    if (code === 4) return say("Virtualization is off", "It's turned off in your PC's BIOS. Restart, open the BIOS (usually Del or F2 while starting), turn on \"SVM Mode\" or \"Intel Virtualization Technology\", save, then open Wyze Tunnel again.");
+    say("Setup didn't finish", `Error ${code}. Check your internet connection and try again.`);
   } catch (e) {
-    say(`Setup didn't finish: ${e}`);
+    say("Setup didn't finish", String(e));
   }
   $("go").textContent = "Try again";
   $("go").disabled = false;
@@ -256,8 +254,7 @@ listen("log", ({ payload }) => {
 $("go").onclick = () => setup();
 // Tray item on Windows, shown while a camera needs the Wyze SDK: away from home (relay) or on old firmware.
 listen("full-setup", () => {
-  $("title").textContent = "Full camera support";
-  say("This sets up a small Linux system (WSL) for cameras away from home and older cameras. Windows asks for permission and may need a restart.");
+  say("Full camera support", "This sets up a small Linux system (WSL) for cameras away from home and older cameras. Windows asks for permission and may need a restart.");
   $("login").hidden = $("open").hidden = true;
   $("go").textContent = "Set up";
   $("go").hidden = $("go").disabled = false;
@@ -273,8 +270,7 @@ $("start").onclick = $("restart").onclick = (e) => {
 
 invoke("info").then((info) => {
   if (info.installed) return showWhenUp(false);
-  $("title").textContent = "Welcome to Wyze Tunnel";
-  say("Wyze Tunnel will download what it needs and set it up for you. You only do this once.");
+  say("Welcome to Wyze Tunnel", "It downloads what it needs and sets itself up. You only do this once.");
   $("go").hidden = false;
 });
 </script>
