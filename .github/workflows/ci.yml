@@ -23,7 +23,7 @@ jobs:
         run: shellcheck -S error native/*.sh mac/*.sh box/*.sh box/wyze-tunnel-box .github/check-leaks.sh
       - name: No personal data, secrets or stray images in the repo
         run: .github/check-leaks.sh
-      - run: pytest -q tests
+      - run: pytest -q -rs tests  # -rs lists skipped tests, so a model test that quietly skipped shows
 
   home-assistant:
     name: Home Assistant integration
