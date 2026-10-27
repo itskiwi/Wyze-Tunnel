@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-zinc-950 antialiased">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Sign in · Wyze Tunnel</title>
+    <link rel="icon" href="../static/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../static/tailwind.css" />
+    <link rel="stylesheet" href="../static/site.css" />
+    <link rel="stylesheet" href="../static/fontawesome/css/all.min.css" />
+    <script src="../static/passkey.js"></script>
+</head>
+
+<body class="grid min-h-full place-items-center p-4 font-sans text-[15px] text-zinc-100">
+    <main class="surface w-full max-w-sm p-6">
+        <h1 class="font-display text-xl font-extrabold text-zinc-50">Sign in to Wyze Tunnel</h1>
+        <p class="mt-2 text-sm text-zinc-400">Use the passkey on this device: your face, fingerprint or screen lock.</p>
+        <button id="go" type="button" class="btn btn-primary mt-5 w-full justify-center"><i class="fas fa-key"></i>Sign in with passkey</button>
+        <p id="status" class="mt-3 text-sm text-rose-300" role="alert"></p>
+        <a class="mt-4 block text-center text-sm text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
+            href="password?next={{ next|urlencode }}">Use your password instead</a>
+    </main>
+    <script>
+        const status = document.getElementById("status"), go = document.getElementById("go");
+        if (!passkey.supported) {
+            go.disabled = true;
+            status.textContent = "This browser can't use passkeys here. Use your password.";
+        }
+        go.addEventListener("click", () => {
+            go.disabled = true;
+            status.textContent = "";
+            passkey.signIn("sign-in")
+                .then(() => location.replace({{ next|tojson }}.replace(/^\//, "../")))
+                .catch((err) => { status.textContent = err.message; go.disabled = false; });
+        });
+    </script>
+</body>
+
+</html>

@@ -8,6 +8,8 @@ requests==2.32.*
 PyYAML==6.0.*
 xxtea==3.3.*
 segno==1.6.*
+# Passkey sign-in over the Tailscale https address.
+webauthn==2.8.*
 # Built-in people/car/animal spotting; there are no wheels for 32-bit ARM, so it is off there.
 opencv-python-headless==4.10.*; platform_machine != "armv7l"
 # Runs the AI models on the graphics chip or CPU. The Windows bundle swaps in onnxruntime-directml for any DirectX 12 GPU.

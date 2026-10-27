@@ -43,3 +43,23 @@ func TestPublicProxyMarksRequests(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestHTTPSProxyTellsTheBridge(t *testing.T) {
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(r.Host + " " + r.Header.Get("X-Forwarded-Proto")))
+	}))
+	defer app.Close()
+	front := httptest.NewServer(httpsProxy(strings.TrimPrefix(app.URL, "http://")))
+	defer front.Close()
+	req, _ := http.NewRequest("GET", front.URL, nil)
+	req.Host = "wyze-tunnel.tail1234.ts.net"
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := make([]byte, 100)
+	n, _ := resp.Body.Read(body)
+	if got := string(body[:n]); got != "wyze-tunnel.tail1234.ts.net https" {
+		t.Fatal(got)
+	}
+}
