@@ -93,6 +93,9 @@ mod vm {
         false // the VM's own updater waits for viewers
     }
     pub fn quit() {}
+    pub fn store_app() -> bool {
+        false
+    }
     pub fn open_url(url: &str) {
         let _ = cmd("open").arg(url).spawn();
     }
@@ -164,6 +167,8 @@ mod vm {
             fs::create_dir_all(d.join(sub)).ok()?;
         }
         fs::copy(n.join("mediamtx.yml"), d.join("mediamtx.yml")).ok()?; // fresh each start; the bridge edits it
+        // Kept for the diagnostics report: after a crash the supervisor restarts the bridge, and the cause was in this log.
+        let _ = fs::rename(d.join("bridge.log"), d.join("bridge.previous.log"));
         seal_password();
         pick_record_drive();
         let log = fs::File::create(d.join("bridge.log")).ok()?;
@@ -337,6 +342,18 @@ mod vm {
         let n = fs::read_to_string(data().join("viewers")).unwrap_or_default();
         !wsl() && n.trim().parse::<u32>().is_ok_and(|n| n > 0)
     }
+    /// Installed from the Microsoft Store (MSIX): the Store updates the app, and its startup task starts it at sign-in.
+    pub fn store_app() -> bool {
+        use windows_sys::Win32::Storage::Packaging::Appx::GetCurrentPackageFullName;
+        let mut len = 0u32;
+        unsafe { GetCurrentPackageFullName(&mut len, std::ptr::null_mut()) != 15700 } // APPMODEL_ERROR_NO_PACKAGE
+    }
+    /// The Store closes the app to update it; this has Windows start it again afterwards.
+    pub fn restart_after_update() {
+        use windows_sys::Win32::System::Recovery::RegisterApplicationRestart;
+        let args: Vec<u16> = "--hidden".encode_utf16().chain([0]).collect();
+        unsafe { RegisterApplicationRestart(args.as_ptr(), 0) };
+    }
     /// Opens the default browser. explorer.exe garbles links with a query string and opens Documents instead.
     pub fn open_url(url: &str) {
         use std::os::windows::ffi::OsStrExt;
@@ -351,7 +368,7 @@ mod vm {
         let n = fs::read_to_string(data().join("needs-sdk")).unwrap_or_default();
         n.trim().parse::<u32>().is_ok_and(|n| n > 0)
     }
-    fn firewall_script(res: &Path, arg: &str) -> Command {
+    fn native_script(res: &Path, arg: &str) -> Command {
         let mut c = cmd("powershell.exe");
         c.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]).arg(res.join("windows/install-native.ps1")).arg(arg);
         c
@@ -361,10 +378,22 @@ mod vm {
     pub fn firewall_blocked(res: &Path) -> bool {
         let blocked = !wsl()
             && native().join(r"python\python.exe").exists()
-            && firewall_script(res, "-CheckFirewall").status().is_ok_and(|s| s.code() == Some(2));
+            && native_script(res, "-CheckFirewall").status().is_ok_and(|s| s.code() == Some(2));
         let flag = data().join("firewall-blocked");
         let _ = if blocked { fs::write(flag, "1") } else { fs::remove_file(flag) };
         blocked
+    }
+    /// Puts back the version the last update replaced; true when it did. Native mode only: Linux undoes its own.
+    pub fn rollback(res: &Path) -> bool {
+        if wsl() {
+            return false;
+        }
+        stop();
+        native_script(res, "-Rollback").status().is_ok_and(|s| s.success())
+    }
+    /// Checking for updates by hand tries a version that failed before again.
+    pub fn forget_failed_update() {
+        let _ = fs::remove_file(dir().join("failed-version"));
     }
     /// Adds the firewall rules behind one Windows permission prompt.
     /// Asked from this process, right after a click: a prompt asked from a windowless child opens
@@ -406,12 +435,22 @@ fn check_firewall(app: AppHandle) {
     });
 }
 
+/// The Store version starts from its package's startup task, which can't be turned on from here.
+fn enable_autostart(app: &AppHandle) {
+    if !vm::store_app() {
+        let _ = app.autolaunch().enable();
+    }
+}
+
 fn bridge_up() -> bool {
     TcpStream::connect_timeout(&SocketAddr::from(([127, 0, 0, 1], PORT)), Duration::from_secs(1)).is_ok()
 }
 
 /// Tag of the newest desktop release, if it differs from this build.
 fn newer_release() -> Option<String> {
+    if vm::store_app() {
+        return None; // the Store updates it
+    }
     // shortcut: curl ships with macOS and Windows 10+, so no HTTP crate; treats any different tag as newer.
     // Bridge releases (v*) share the repo, so look for the newest desktop-v* tag.
     let out = cmd("curl").args(["-fsSL", "https://api.github.com/repos/itskiwi/Wyze-Tunnel/releases?per_page=30"]).output().ok()?;
@@ -572,7 +611,7 @@ fn run_installer(app: &AppHandle, res: &Path, full: bool) -> Result<i32, String>
             vm::stop(); // hand the ports over from the native bridge to the WSL one
         }
         STOPPED.store(false, Ordering::SeqCst);
-        let _ = app.autolaunch().enable();
+        enable_autostart(app);
         #[cfg(windows)]
         check_firewall(app.clone());
     }
@@ -669,6 +708,10 @@ fn main() {
                 })
                 .build(app)?;
 
+            #[cfg(windows)]
+            if vm::store_app() {
+                vm::restart_after_update();
+            }
             if !std::env::args().any(|a| a == "--hidden") {
                 open_window(app.handle());
             }
@@ -678,11 +721,19 @@ fn main() {
             // Update states, like the web UI's: available, updating, then a notification once the version changes.
             let (mut version, mut latest, mut desktop) = (String::new(), None::<String>, None::<String>);
             let mut updating: Option<Instant> = None;
+            // Set when an update changed the version: the new bridge must answer within 3 minutes or it is undone.
+            #[cfg(windows)]
+            let mut verify: Option<Instant> = None;
             let mut shown = String::new();
             let mut tick = 0u32;
             std::thread::spawn(move || loop {
                 let daily = last_update.elapsed() > Duration::from_secs(24 * 3600) && !vm::watching();
-                if (UPDATE_NOW.swap(false, Ordering::SeqCst) || vm::update_requested() || daily) && vm::installed() {
+                let manual = UPDATE_NOW.swap(false, Ordering::SeqCst) || vm::update_requested();
+                if (manual || daily) && vm::installed() {
+                    #[cfg(windows)]
+                    if manual {
+                        vm::forget_failed_update();
+                    }
                     last_update = Instant::now();
                     updating = Some(Instant::now());
                     let _ = update.set_text("Updating…");
@@ -697,6 +748,10 @@ fn main() {
                         if !version.is_empty() {
                             let n = handle.notification().builder().title("Wyze Tunnel updated").body(format!("Now running v{v}."));
                             let _ = n.show();
+                            #[cfg(windows)]
+                            {
+                                verify = Some(Instant::now());
+                            }
                         }
                         version = v;
                         updating = None;
@@ -710,7 +765,7 @@ fn main() {
                     (latest, desktop) = (latest_bridge(), newer_release()); // every 6 hours
                     if vm::installed() {
                         // No off switch in the app, so re-assert it in case a cleanup or update dropped it.
-                        let _ = handle.autolaunch().enable();
+                        enable_autostart(&handle);
                     }
                     #[cfg(windows)]
                     check_firewall(handle.clone());
@@ -724,6 +779,19 @@ fn main() {
                 if FIREWALL_BLOCKED.load(Ordering::SeqCst) != firewall_shown {
                     firewall_shown = !firewall_shown;
                     let _ = if firewall_shown { menu.insert(&firewall, 5) } else { menu.remove(&firewall) };
+                }
+                #[cfg(windows)]
+                if let Some(t) = verify {
+                    if bridge_up() || STOPPED.load(Ordering::SeqCst) {
+                        verify = None;
+                    } else if t.elapsed() > Duration::from_secs(180) && !BUSY.load(Ordering::SeqCst) {
+                        verify = None;
+                        if handle.path().resource_dir().is_ok_and(|res| vm::rollback(&res)) {
+                            version = vm::version(); // not announced as an update
+                            let body = "The new version didn't start, so Wyze Tunnel went back to the one before. It will skip that update.";
+                            let _ = handle.notification().builder().title("Update undone").body(body).show();
+                        }
+                    }
                 }
                 tick = tick.wrapping_add(1);
                 let text = match (&updating, &desktop, &latest) {

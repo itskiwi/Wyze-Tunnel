@@ -8,6 +8,7 @@ import sys
 from collections import deque
 from datetime import datetime
 from os import environ, getenv
+from pathlib import Path
 
 SECRET_ENVS = ("WYZE_EMAIL", "WYZE_PASSWORD", "API_ID", "API_KEY", "WB_USERNAME", "WB_PASSWORD", "WB_API",
                "STREAM_AUTH", "MQTT_AUTH", "MQTT_PASS", "MQTT_USER", "TOTP_KEY")
@@ -76,4 +77,11 @@ def build_report(version: str, build: str, cameras: dict, extra_secrets: tuple[s
             f"substream={cam.get('substream')} webrtc={cam.get('webrtc')} rtsp_fw={cam.get('rtsp_fw')}"
         )
     lines += ["", f"Recent log ({len(log_buffer.lines)} lines):", *log_buffer.lines]
+    # The Windows tray keeps the last run's console output here, so a crash's cause survives the restart.
+    previous = Path(getenv("LOG_PATH", "/logs/")).parent / "bridge.previous.log"
+    try:
+        with open(previous, errors="replace") as f:
+            lines += ["", "End of the previous run's log:", *(line.rstrip() for line in deque(f, 200))]
+    except OSError:
+        pass
     return redact("\n".join(lines), secrets) + "\n"

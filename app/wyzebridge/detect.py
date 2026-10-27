@@ -25,7 +25,7 @@ try:
 except (ImportError, RuntimeError):
     cv2 = None
 
-from wyzebridge import recording
+from wyzebridge import ai, recording
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.config import IMG_PATH, TOKEN_PATH
 from wyzebridge.ffmpeg import parse_timedelta
@@ -42,7 +42,7 @@ KEEP = parse_timedelta("DETECT_KEEP") or parse_timedelta("RECORD_KEEP") or timed
 AUTO_RECORD_KEEP = f"{int(KEEP.total_seconds())}s"
 DB_FILE = TOKEN_PATH + "detections.db"
 THUMB_DIR = Path(IMG_PATH, "detections")
-MODEL_DIR = Path(TOKEN_PATH, "models")
+MODEL_DIR = ai.MODEL_DIR
 # Each model: where its files download from, and their exact sizes (a short file is a broken download).
 MODELS = {
     "standard": (
@@ -80,7 +80,6 @@ COCO_LABELS = {
 WIDTH, HEIGHT = 640, 360
 
 _db_lock = Lock()
-_model_lock = Lock()
 _watchers: dict[str, "Watcher"] = {}
 # Motion heatmap: centers of everything spotted, counted on a coarse grid over the picture.
 HEAT_W, HEAT_H = 16, 9
@@ -201,25 +200,14 @@ def load_model(name: str = ""):
     if not cv2:
         logger.warning("[DETECT] OpenCV isn't installed on this system, so built-in detection is off.")
         return None
-    name = name if name in MODELS else load_settings().get("model", "standard")
-    url, files = MODELS.get(name, MODELS["standard"])
-    with _model_lock:
-        MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        for file, size in files.items():
-            path = MODEL_DIR / file
-            if path.exists() and path.stat().st_size == size:
-                continue
-            logger.info(f"[DETECT] Downloading the detection model: {file}")
-            try:
-                resp = requests.get(url + file, timeout=60)
-                resp.raise_for_status()
-            except requests.RequestException as ex:
-                logger.error(f"[DETECT] Couldn't download the detection model: {ex}")
-                return None
-            path.with_suffix(".part").write_bytes(resp.content)
-            path.with_suffix(".part").replace(path)
+    name = name if name in MODELS else load_settings().get("model") or default_model()
+    url, files = MODELS[name]
+    for file, size in files.items():
+        if not ai.fetch(url + file, file, size):
+            return None
     if "yolox_s.onnx" in files:
-        return Yolox(cv2.dnn.readNetFromONNX(str(MODEL_DIR / "yolox_s.onnx")))
+        path = MODEL_DIR / "yolox_s.onnx"
+        return Yolox(ai.load(path) or cv2.dnn.readNetFromONNX(str(path)))
     model = cv2.dnn_DetectionModel(
         str(MODEL_DIR / "deploy.prototxt"),
         str(MODEL_DIR / "mobilenet_iter_73000.caffemodel"),
@@ -228,8 +216,16 @@ def load_model(name: str = ""):
     return model
 
 
+def default_model() -> str:
+    """The stronger model costs little on a graphics chip, so it's the default there."""
+    return "strong" if ai.device() == "gpu" else "standard"
+
+
 class Yolox:
-    """YOLOX-S behind the same detect() as OpenCV's DetectionModel: class ids, scores and x, y, w, h boxes."""
+    """YOLOX-S behind the same detect() as OpenCV's DetectionModel: class ids, scores and x, y, w, h boxes.
+
+    Runs through ONNX Runtime (graphics chip or CPU) when it's installed, else OpenCV's own ONNX reader.
+    """
 
     labels = COCO_LABELS
     SIZE = 640
@@ -250,8 +246,12 @@ class Yolox:
         scale = min(self.SIZE / h, self.SIZE / w)
         padded = np.full((self.SIZE, self.SIZE, 3), 114, np.uint8)
         padded[: int(h * scale), : int(w * scale)] = cv2.resize(frame, (int(w * scale), int(h * scale)))
-        self.net.setInput(cv2.dnn.blobFromImage(padded))
-        out = self.net.forward()[0]
+        blob = cv2.dnn.blobFromImage(padded)
+        if isinstance(self.net, ai.Model):
+            out = self.net.run({self.net.input: blob})[0][0]
+        else:
+            self.net.setInput(blob)
+            out = self.net.forward()[0]
         centers = (out[:, :2] + self.grid) * self.stride
         sizes = np.exp(out[:, 2:4]) * self.stride
         class_ids = out[:, 5:].argmax(1)

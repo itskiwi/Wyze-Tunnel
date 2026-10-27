@@ -37,6 +37,11 @@
       d.open = false;
     }, true);
 
+    // Esc closes a sheet or menu, on any screen size.
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && openSheet()) { openSheet().open = false }
+    });
+
     // Drag a sheet down to close it.
     document.querySelectorAll("details.dropdown > .menu").forEach((sheet) => swipe(sheet, {
       start: () => sheet.scrollTop <= 0,
