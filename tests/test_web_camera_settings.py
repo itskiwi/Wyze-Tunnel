@@ -202,3 +202,17 @@ def test_guest_and_family_are_refused(web):
                            ("restore", {"id": "x", "cam": "a", "confirm": True})]:
             assert client.post(f"/camera-settings/{path}", json=body, headers=who).status_code == 403
     assert send.calls == []
+
+
+def test_sheet_reads_only_streaming_cameras(cs, monkeypatch):
+    monkeypatch.setattr(cs, "SHEET_CACHE", {})
+    pan = lambda name, connected: SimpleNamespace(connected=connected, camera=SimpleNamespace(nickname=name, is_pan_cam=False))
+    send = FakeCams({"a": {"quality": "hd", "night_vision": 3, "status_light": "2", "motion_sensitivity": 1},
+                     "idle": {"quality": "sd", "night_vision": 1}})
+    assert cs.current("a", pan("A", True), send, sleep=lambda s: None) == {"quality": "hd", "night_vision": "auto",
+                                                                          "status_light": "off", "motion_sensitivity": "1"}
+    assert cs.current("idle", pan("Idle", False), send) == {"quality": "sd"}  # never woken just to read
+    assert ("idle", "night_vision", "") not in send.calls
+    calls = len(send.calls)
+    cs.current("a", pan("A", True), send)  # cached
+    assert len(send.calls) == calls

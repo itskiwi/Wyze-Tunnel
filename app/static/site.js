@@ -354,7 +354,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Update status icon based on connection status
-  const STATUS_WORDS = { stopped: "idle", disabled: "off" };  // a waiting on-demand camera isn't broken
+  const STATUS_WORDS = { stopped: "idle", disabled: "off", error: "can't reach" };  // a waiting on-demand camera isn't broken
   const sse = new EventSource("api/sse_status");
   sse.addEventListener("open", () => {
     document.getElementById("connection-lost").style.display = "none";
@@ -437,6 +437,15 @@ document.addEventListener("DOMContentLoaded", () => {
       statusIcon.className = "fas";
       statusIcon.parentElement.title = "";
 
+      // An offline or unreachable camera says so: its old picture goes grey and the player stops spinning.
+      const down = ["offline", "error"].includes(messageData.status);
+      card.dataset.down = down;
+      if (down && preview?.nodeName === "VIDEO" && preview.readyState < 2 && (preview.hls || preview.getAttribute("src"))) {
+        preview.hls?.destroy();
+        preview.hls = null;
+        preview.removeAttribute("src");
+        preview.load();
+      }
       if (preview) {
         preview.classList.toggle("connected", messageData.status === "connected");
         preview.classList.toggle("enabled", messageData.status !== "disabled");
@@ -811,6 +820,27 @@ document.addEventListener("DOMContentLoaded", () => {
       video.requestPictureInPicture().catch((err) => sendNotification(name, `Picture-in-picture didn't work. ${err.message}`, "danger"));
     })
   })
+  // Settings the control sheet can show as chosen. Siren, power and moving are actions, so they never look chosen.
+  const SHOWN = new Set(["quality", "night_vision", "status_light", "osd_timestamp", "motion_tagging", "motion_detection",
+    "sound_detection", "notifications", "motion_tracking", "pan_cruise", "motion_sensitivity", "sound_sensitivity"]);
+  function markChosen(menu, cmd, value) {
+    const buttons = [...menu.querySelectorAll(`.button[data-cmd="${cmd}"]`)];
+    // Sensitivity is 1-100 on the camera (the Wyze app has a slider), so the nearest of Low/Med/High is shown.
+    const pick = cmd.endsWith("_sensitivity")
+      ? buttons.reduce((best, b) => Math.abs(b.dataset.payload - value) < Math.abs(best.dataset.payload - value) ? b : best, buttons[0])
+      : buttons.find((b) => b.dataset.payload === value);
+    buttons.forEach((b) => b.setAttribute("aria-pressed", b === pick));
+  }
+  document.querySelectorAll("details.dropdown").forEach((d) => {
+    const menu = d.querySelector(".cam-control");
+    if (!menu) { return }
+    d.addEventListener("toggle", () => {
+      if (!d.open) { return }
+      fetch(`camera-settings/${menu.dataset.cam}/current`).then((r) => r.ok ? r.json() : {}).then((values) => {
+        Object.entries(values).forEach(([cmd, value]) => SHOWN.has(cmd) && markChosen(menu, cmd, value));
+      }).catch(() => { });
+    });
+  });
   // cam control
   document.querySelectorAll(".cam-control").forEach((e) => {
     let { cam } = e.dataset;
@@ -822,7 +852,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const what = commandText(button.dataset.cmd, payload);
         fetch(`api/${cam}/${button.dataset.cmd}${payload ? `/${payload}` : ''}`)
           .then((resp) => resp.json())
-          .then((data) => { ["error", false].includes(data.status) ? sendNotification(name, `${what} didn't work. ${data.response || ""}`.trim(), "danger") : sendNotification(name, what, "primary") })
+          .then((data) => {
+            if (["error", false].includes(data.status)) { sendNotification(name, `${what} didn't work. ${data.response || ""}`.trim(), "danger"); return }
+            if (SHOWN.has(button.dataset.cmd)) { markChosen(e, button.dataset.cmd, payload) }
+            sendNotification(name, what, "primary");
+          })
           .catch((error) => { sendNotification(name, `${what} didn't work. ${error.message}`, "danger") })
           .finally(() => { button.classList.remove("is-loading"); });
       })

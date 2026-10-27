@@ -57,7 +57,7 @@ def create_app():
     @app.context_processor
     def page_version():
         # Every page's footer, update check and cache-busting asset links need it.
-        return {"version": config.VERSION}
+        return {"version": config.VERSION, "drive_full": recording.DRIVE_FULL}
 
     def auth_required(view):
         @wraps(view)
@@ -245,6 +245,7 @@ def create_app():
                 video_format=video_format.lower(),
                 autoplay=autoplay,
                 weather_on=weather.enabled(),
+                mode=webhooks.ALERTS.get("mode") or "schedule",
             )
         )
 
@@ -356,6 +357,8 @@ def create_app():
 
         if web_ui.owner_cmd_denied(cam_cmd.lower(), payload):
             return {"error": "Only the owner can do this."}, 403
+        if payload:
+            camera_settings.SHEET_CACHE.clear()  # the control sheet re-reads what was just changed
         return wb.streams.send_cmd(cam_name, cam_cmd.lower(), payload)
 
     CHIME_TYPES = {"none": 1, "mechanical": 2, "digital": 3}
@@ -619,6 +622,13 @@ def create_app():
 
     def settings_send(uri: str, cmd: str, payload: str = "") -> dict:
         return wb.streams.send_cmd(uri, cmd, payload)
+
+    @app.route("/camera-settings/<string:cam_name>/current")
+    @auth_required
+    def camera_settings_current(cam_name: str):
+        if not (stream := wb.streams.get(cam_name)):
+            return {"error": "Unknown camera"}, 404
+        return camera_settings.current(cam_name, stream, settings_send)
 
     @app.route("/camera-settings/data")
     @owner_only
@@ -1293,6 +1303,12 @@ def create_app():
             return int(a[key]) if a.get(key, "").isdigit() else 0
 
         return event_archive.search(a.get("device", "")[:100], a.get("type", "")[:30], num("since"), num("until"), a.get("q", "")[:100], num("before"), num("limit") or 60)
+
+    @app.route("/history/counts")
+    @auth_required
+    def history_counts():
+        since = request.args.get("since", "")
+        return event_archive.counts(int(since) if since.isdigit() else 0)
 
     @app.route("/history/media/<string:eid>/<string:kind>")
     @auth_required

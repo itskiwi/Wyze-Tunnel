@@ -221,7 +221,7 @@ class WyzeStream:
         wifi = ((self.camera.camera_info or {}).get("basicInfo") or {}).get("wifidb")
         api = getattr(self, "api", None)
         return status_reason(
-            self.state, self.failures, self.connected, wifi,
+            StreamStatus.OFFLINE if self.status() == "offline" else self.state, self.failures, self.connected, wifi,
             bool(api and api.login_error), not self.connected or internet_up(),
         )
 
@@ -312,6 +312,9 @@ class WyzeStream:
             logger.warning(f"{self.camera.nickname}: {old} failed {self.failures}x, trying {self.source}")
             delay = 0
         self.start_time = time() + delay
+        # Ask Wyze whether it's offline, so the page says so instead of "idle" (refetches at most every 2 min).
+        if (api := getattr(self, "api", None)) and (cam := api.get_camera(self.camera.name_uri)):
+            self.camera = cam
         logger.info(f"{self.camera.nickname} failed {self.failures}x, retrying in {delay}s.")
         if self.failures == CHRONIC_FAILURES:
             auto_restart(self)
@@ -356,6 +359,12 @@ class WyzeStream:
         return True
 
     def status(self) -> str:
+        # Between retries a failing camera sits in STOPPED; "idle" would hide that it can't be reached.
+        if self.failures and self.enabled and not self.connected:
+            if self.state == StreamStatus.OFFLINE or getattr(self.camera, "online", None) is False:  # older pickles lack it
+                return "offline"
+            if self.failures >= FALLBACK_AFTER and self.state != StreamStatus.CONNECTING:
+                return "error"
         try:
             return StreamStatus(self._state.value).name.lower()
         except ValueError:
@@ -366,7 +375,7 @@ class WyzeStream:
             return self.boa_info()
         data = {
             "name_uri": self.uri,
-            "status": self.state,
+            "status": StreamStatus.OFFLINE if self.status() == "offline" else self.state,
             "net_mode": self.net_mode,
             "connected": self.connected,
             "enabled": self.enabled,
@@ -666,6 +675,7 @@ def backoff(failures: int) -> int:
 REASON_AUTH = "Wyze password changed or session expired"
 REASON_OFFLINE = "Camera unplugged or lost power"
 REASON_WIFI = "Wi-Fi signal too weak"
+REASON_UNREACHABLE = "Can't reach the camera. Retrying on its own"
 REASON_INTERNET = "Internet offline — local recording active"
 AUTH_ERRORS = {-19, -68}  # ENR/auth errors, see health_check
 
@@ -682,6 +692,8 @@ def status_reason(status: int, failures: int, connected: bool, wifi, auth_error:
         wifi = -1
     if failures > 0 and not connected and 0 <= wifi < 40:
         return REASON_WIFI
+    if failures >= FALLBACK_AFTER and not connected:
+        return REASON_UNREACHABLE
     if connected and not internet:
         return REASON_INTERNET
     return None

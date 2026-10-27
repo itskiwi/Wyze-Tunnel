@@ -227,3 +227,28 @@ def test_keep_route_is_owner_only(setup, archive):
     assert client.post(f"/history/{eid}/keep", json={"kept": True}, headers=basic("owner", "ownerpass")).json == {"kept": True}
     assert archive.search()["events"][0]["kept"]
     assert client.post("/history/nothex/keep", headers=basic("owner", "ownerpass")).status_code == 404
+def test_counts_since(setup, archive):
+    client, guests = setup
+    api = FakeApi()
+    for i, (ts, label) in enumerate([(100, "person"), (200, "person"), (300, "package"), (50, "person")]):
+        archive.save_event(api, f"c{i}", ENTRY | {"ts": ts, "label": label}, None, None)
+    assert archive.counts(100) == {"person": 2, "package": 1}
+    owner = basic("owner", "ownerpass")
+    assert client.get("/history/counts?since=100", headers=owner).json == {"person": 2, "package": 1}
+    assert client.get("/history/counts?since=x", headers=owner).json == {"person": 3, "package": 1}
+    watcher = basic("Sam", guests.add_guest("Sam", 24, "owner"))
+    assert client.get("/history/counts", headers=watcher).status_code == 403
+
+
+def test_live_monitoring_view_by_role(setup, monkeypatch):
+    from wyzebridge import web_ui
+
+    client, guests = setup
+    cams = {"front": {"nickname": "Front", "enabled": True, "connected": True, "on_demand": False}}
+    monkeypatch.setattr(web_ui, "all_cams", lambda *_: {"enabled": 1, "available": 1, "total": 1, "cameras": cams})
+    owner = client.get("/live", headers=basic("owner", "ownerpass")).text
+    assert 'id="rewind"' in owner and 'id="watchMode"' in owner and "static/watch.js" in owner
+    family = client.get("/live", headers=basic("Fay", guests.add_guest("Fay", 0, "owner"))).text
+    assert 'id="rewind"' in family and 'id="watchMode"' not in family  # family sees the mode but can't change it
+    watcher = client.get("/live", headers=basic("Sam", guests.add_guest("Sam", 24, "owner"))).text
+    assert 'id="rewind"' not in watcher and "static/watch.js" not in watcher

@@ -137,6 +137,7 @@ class WyzeCamera(BaseModel):
     parent_enr: Optional[str]
     parent_mac: Optional[str]
     thumbnail: Optional[str]
+    online: Optional[bool] = None  # Wyze's own view (conn_state); None when unknown
 
     def set_camera_info(self, info: dict[str, Any]) -> None:
         # Called internally as part of WyzeIOTC.connect_and_auth()
