@@ -188,6 +188,19 @@ ol:has(> .num-step) { counter-reset: step; }
 .step-view:not(.hidden) { animation: fade .3s ease both; }
 .dropdown > .menu { animation: rise .18s ease both; }
 
+/* Page changes: the new page slides in like an app screen while the top bar and tab bar hold still.
+   Only where the browser supports it (Chrome, Edge, Safari 18.2+) and motion is welcome; elsewhere pages just load. */
+@media (prefers-reduced-motion: no-preference) { @view-transition { navigation: auto; } }
+#topbar { view-transition-name: topbar; }
+.tabbar { view-transition-name: tabbar; }
+::view-transition-old(root) { animation: .16s ease both vt-out; }
+::view-transition-new(root) { animation: .32s cubic-bezier(.2, .9, .3, 1) both fade; }
+:root:active-view-transition-type(forward)::view-transition-new(root) { animation-name: vt-from-right; }
+:root:active-view-transition-type(back)::view-transition-new(root) { animation-name: vt-from-left; }
+@keyframes vt-out { to { opacity: 0; } }
+@keyframes vt-from-right { from { opacity: 0; transform: translateX(28px); } }
+@keyframes vt-from-left { from { opacity: 0; transform: translateX(-28px); } }
+
 @keyframes pop { from { transform: scale(.96); opacity: .3; } }
 @keyframes fade { from { opacity: .2; transform: translateY(4px); } }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
