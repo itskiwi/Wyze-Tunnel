@@ -122,6 +122,13 @@
                 </form>
             </details>
         </div>
+        <div id="phoneCode" class="surface hidden items-center gap-4 p-5 text-sm">
+            <div class="w-fit flex-none overflow-hidden rounded-lg"></div>
+            <div>
+                <p class="font-medium text-zinc-50">Watch on your phone</p>
+                <p class="text-zinc-400">Point your phone's camera at this code. It opens Wyze Tunnel already signed in. The code works once, for 10 minutes.</p>
+            </div>
+        </div>
         <a href="."
             class="btn btn-primary h-[52px] w-full">Open
             my cameras</a>
@@ -158,7 +165,7 @@
             $("#stepText").textContent = step === "done" ? "All done" : `Step ${n + 1} of ${order.length}`;
             $("#stepBar").style.width = `${(n + 1) / order.length * 100}%`;
             $("#advanced").classList.toggle("hidden", step === "done");
-            if (step === "done") listCams();
+            if (step === "done") { listCams(); showPhoneCode(); }
         }
         function fail(msg) {
             errorBox.textContent = msg;
@@ -216,6 +223,15 @@
             showLogin({ username: data.username.trim(), password: data.password });
             $("#ownStatus").textContent = "Saved. Use this login from now on.";
         });
+
+        // A pairing code (as on Account) so the phone joins without typing the login. Anywhere first: it also works at home.
+        async function showPhoneCode() {
+            const codes = await fetch("pair", { method: "POST", headers: apiHeaders }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+            const code = codes.anywhere || codes.home;
+            if (!code) return;
+            $("#phoneCode div").innerHTML = code.qr;
+            $("#phoneCode").classList.replace("hidden", "flex");
+        }
 
         async function listCams() {
             $("#here").textContent = new URL(".", location).href;

@@ -103,25 +103,30 @@
                 <summary class="round-btn cursor-pointer list-none" aria-label="Settings"><i class="fas fa-gear"></i></summary>
                 <div class="menu right-0 w-64">
                     {% block settings_menu %}{% endblock %}
+                    {# Simple (the default) keeps what a household uses; "Show advanced" brings back the rest, per device. #}
+                    {% set advanced = request.cookies.get("advanced") == "1" %}
                     <p class="menu-label">Cameras</p>
                     <a href="health" class="menu-item md:hidden"><i class="fas fa-heart-pulse w-4"></i>Camera health</a>
                     <a href="cameras" class="menu-item"><i class="fas fa-eye w-4"></i>Choose cameras</a>
                     {% if not current_guest() %}<a href="camera-settings" class="menu-item"><i class="fas fa-sliders w-4"></i>Camera settings</a>{% endif %}
-                    <a href="map" class="menu-item"><i class="fas fa-map-location-dot w-4"></i>Home map</a>
+                    {% if advanced %}<a href="map" class="menu-item"><i class="fas fa-map-location-dot w-4"></i>Home map</a>
                     {% if not current_guest() %}<a href="street-watch" class="menu-item"><i class="fas fa-house-flag w-4"></i>Street Watch</a>{% endif %}
-                    {% if not current_guest() or current_guest().family %}<a href="glance" class="menu-item"><i class="fas fa-mobile-screen-button w-4"></i>Glance</a>{% endif %}
+                    {% if not current_guest() or current_guest().family %}<a href="glance" class="menu-item"><i class="fas fa-mobile-screen-button w-4"></i>Glance</a>{% endif %}{% endif %}
                     <p class="menu-label">Alerts and automations</p>
                     <a href="alerts" class="menu-item"><i class="fas fa-bell w-4"></i>Phone alerts</a>
-                    {% if not current_guest() %}<a href="rules" class="menu-item"><i class="fas fa-bolt w-4"></i>Automations</a>{% endif %}
+                    {% if advanced and not current_guest() %}<a href="rules" class="menu-item"><i class="fas fa-bolt w-4"></i>Automations</a>{% endif %}
                     <p class="menu-label">Sharing</p>
                     <a href="account" class="menu-item"><i class="fas fa-user w-4"></i>Account and sharing</a>
                     {% if not current_guest() %}<a href="account#phone" class="menu-item"><i class="fas fa-mobile-screen w-4"></i>Pair a phone</a>
-                    <a href="apps" class="menu-item"><i class="fas fa-plug w-4"></i>Connect apps</a>
-                    <a href="phone-cams" class="menu-item"><i class="fas fa-camera w-4"></i>Use a phone as a camera</a>{% endif %}
+                    {% if advanced %}<a href="apps" class="menu-item"><i class="fas fa-plug w-4"></i>Connect apps</a>
+                    <a href="phone-cams" class="menu-item"><i class="fas fa-camera w-4"></i>Use a phone as a camera</a>{% endif %}{% endif %}
                     <p class="menu-label">This app</p>
                     <button type="button" class="theme-toggle menu-item w-full md:hidden"><i class="fas fa-circle-half-stroke w-4"></i>Theme<span class="ml-auto text-xs text-zinc-500" data-theme-name></span></button>
-                    {% if not current_guest() %}<a href="network" class="menu-item"><i class="fas fa-network-wired w-4"></i>Network</a>{% endif %}
-                    <a href="diagnostics" class="menu-item" title="A report with secrets removed, for bug reports"><i class="fas fa-file-medical w-4"></i>Download diagnostics</a>
+                    {% if advanced %}{% if not current_guest() %}<a href="network" class="menu-item"><i class="fas fa-network-wired w-4"></i>Network</a>{% endif %}
+                    <a href="diagnostics" class="menu-item" title="A report with secrets removed, for bug reports"><i class="fas fa-file-medical w-4"></i>Download diagnostics</a>{% endif %}
+                    <button type="button" class="menu-item w-full" aria-pressed="{{ 'true' if advanced else 'false' }}"
+                        onclick="document.cookie = 'advanced={{ '' if advanced else '1' }}; max-age=315360000; path=/; SameSite=Lax'; location.reload()">
+                        <i class="fas {{ 'fa-toggle-on' if advanced else 'fa-toggle-off' }} w-4"></i>{{ "Show fewer options" if advanced else "Show advanced" }}</button>
                 </div>
             </details>
         </div>
@@ -164,6 +169,9 @@
                 <button class="btn is-hidden mt-4" data-reload>Reload page</button>
             </div>
         </div>
+        {% if drive_full %}
+        <p class="surface mb-4 flex items-start gap-3 p-4 text-sm text-amber-200" role="status"><i class="fas fa-hard-drive mt-0.5"></i>The drive is nearly full. Recordings from the last day are kept, but new clips may stop saving. Free up space on this computer, or lower how long recordings are kept.</p>
+        {% endif %}
         {% endif %}
         {% if not hide_nav and page == 'index' %}
         <section id="installTip" class="surface is-hidden mb-4 p-4 md:hidden" role="status">

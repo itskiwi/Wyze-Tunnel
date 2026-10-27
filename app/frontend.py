@@ -57,7 +57,7 @@ def create_app():
     @app.context_processor
     def page_version():
         # Every page's footer, update check and cache-busting asset links need it.
-        return {"version": config.VERSION}
+        return {"version": config.VERSION, "drive_full": recording.DRIVE_FULL}
 
     def auth_required(view):
         @wraps(view)
