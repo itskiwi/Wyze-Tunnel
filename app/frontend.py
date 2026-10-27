@@ -356,6 +356,8 @@ def create_app():
 
         if web_ui.owner_cmd_denied(cam_cmd.lower(), payload):
             return {"error": "Only the owner can do this."}, 403
+        if payload:
+            camera_settings.SHEET_CACHE.clear()  # the control sheet re-reads what was just changed
         return wb.streams.send_cmd(cam_name, cam_cmd.lower(), payload)
 
     CHIME_TYPES = {"none": 1, "mechanical": 2, "digital": 3}
@@ -619,6 +621,13 @@ def create_app():
 
     def settings_send(uri: str, cmd: str, payload: str = "") -> dict:
         return wb.streams.send_cmd(uri, cmd, payload)
+
+    @app.route("/camera-settings/<string:cam_name>/current")
+    @auth_required
+    def camera_settings_current(cam_name: str):
+        if not (stream := wb.streams.get(cam_name)):
+            return {"error": "Unknown camera"}, 404
+        return camera_settings.current(cam_name, stream, settings_send)
 
     @app.route("/camera-settings/data")
     @owner_only

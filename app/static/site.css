@@ -115,6 +115,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .card-header-title .status .fas { font-size: 11px; }
 .cam-menu { position: absolute; right: 0; bottom: calc(100% + 8px); width: 18rem; max-height: min(70vh, 32rem); overflow: auto; }
 .cam-menu .btn { border-radius: 14px; }
+/* The setting a camera is on right now: filled with the accent, like a segmented control. Unknown means none is filled. */
+.cam-control .btn[aria-pressed="true"] { background: rgb(var(--accent)); color: rgb(var(--on-accent)); box-shadow: none; font-weight: 600; }
 /* Phones: camera menus and the settings menu open as sheets above the tab bar, with a grab handle to swipe them closed */
 @media (max-width: 767px) {
   .cam-menu, #settings > .menu { position: fixed; left: 8px; right: 8px; top: auto; width: auto; margin: 0; z-index: 45;
