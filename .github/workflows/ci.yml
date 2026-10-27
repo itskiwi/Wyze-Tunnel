@@ -250,6 +250,22 @@ jobs:
           print("transcripts ok")
           '@ | & "$n\python\python.exe" -
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      # Doorbell on the TV: Piper speaks in the bundle (the voice downloads), and the secret link serves the sound.
+      - name: The doorbell announcement speaks in the Windows bundle
+        shell: pwsh
+        run: |
+          $n = "$PWD\bundle\wyze-tunnel"; $d = "$PWD\cast-data"
+          New-Item -ItemType Directory -Force $d | Out-Null; 'paths: {}' | Set-Content "$d\mediamtx.yml"
+          $env:PATH = "$n\bin;$env:PATH"; $env:TOKEN_PATH = "$d\"; $env:IMG_DIR = "$d\img\"; $env:MEDIAMTX_CONFIG = "$d\mediamtx.yml"
+          @'
+          from wyzebridge import cast
+          assert cast.available(), "pychromecast or piper isn't in the bundle"
+          wav = cast.speak("Someone rang the doorbell")
+          assert wav[:4] == b"RIFF" and len(wav) > 20000, "Piper didn't speak"
+          print("found on the runner's network:", cast.discover())
+          print("announcement ok", len(wav), "bytes")
+          '@ | & "$n\python\python.exe" -
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       # Saved sign-ins are sealed with the real DPAPI, and plain ones from older versions still open and get sealed.
       - name: Secrets are encrypted on Windows
         shell: pwsh

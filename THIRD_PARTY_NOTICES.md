@@ -28,6 +28,12 @@ Wyze Tunnel builds on other people's work. Thank you to these projects.
   https://github.com/tensorflow/models/tree/master/research/audioset/yamnet
 - **h5py** (BSD-3-Clause). Reads the YAMNet weights. https://www.h5py.org
 - **ONNX Runtime** and its **DirectML** build (MIT, Microsoft). Runs the AI models on the graphics chip or CPU. https://github.com/microsoft/onnxruntime
+- **PyChromecast** by the Home Assistant project (MIT). Shows the doorbell on Chromecasts, Google TVs and Nest Hubs.
+  https://github.com/home-assistant-libs/pychromecast
+- **Piper** by the Open Home Foundation (GPL-3.0-or-later), with ONNX Runtime (MIT) and eSpeak NG (GPL-3.0).
+  Says who's at the door on those devices. https://github.com/OHF-Voice/piper1-gpl
+- **LibriTTS-R voice for Piper** (`en_US-libritts_r-medium`, CC BY 4.0, from LibriTTS-R by Koizumi et al.).
+  Downloads on first use. https://huggingface.co/rhasspy/piper-voices
 - **whisper.cpp** by Georgi Gerganov and contributors (MIT), through **pywhispercpp** by Abdeladim Sadiki (MIT).
   Turns doorbell sound into text when doorbell transcripts are on; its `base.en` model (OpenAI Whisper, MIT)
   downloads on first use. https://github.com/ggml-org/whisper.cpp https://github.com/absadiki/pywhispercpp

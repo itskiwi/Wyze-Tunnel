@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, automations, backup, camera_settings, config, detect, devices, event_archive, floorplan, go2rtc, guests, hearing, homekit, integrations, lockdown, masks, network, passkeys, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, transcripts, visitors, weather, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, automations, backup, camera_settings, cast, config, detect, devices, event_archive, floorplan, go2rtc, guests, hearing, homekit, integrations, lockdown, masks, network, passkeys, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, transcripts, visitors, weather, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.diagnostics import build_report
@@ -83,7 +83,7 @@ def create_app():
     @app.before_request
     def block_cross_site():
         # Images and links to the UI stay embeddable; everything else (commands, restarts, login) is same-site only.
-        if request.path.startswith(("/static/", "/img/", "/snapshot/", "/thumb/", "/photo/", "/share/")):
+        if request.path.startswith(("/static/", "/img/", "/snapshot/", "/thumb/", "/photo/", "/share/", "/cast/")):
             return
         # A neighbor opens their Street Watch link from a chat app; sending the form is still same-site only.
         # A pairing link arrives from the phone's QR scanner; its one-time code is the protection.
@@ -1035,6 +1035,8 @@ def create_app():
             can_listen=hearing.np is not None,
             transcripts_on=transcripts.enabled(),
             can_transcribe=transcripts.available(),
+            can_cast=cast.available(),
+            cast_devices=cast.load_settings().get("devices", []),
             api=WbAuth.api,
             version=config.VERSION,
         )
@@ -1051,6 +1053,27 @@ def create_app():
             return {"error": str(ex)}, 400
         Thread(target=wb.restart, daemon=True).start()
         return {"status": "saved", "cams": cams}
+
+    @app.route("/alerts/cast", methods=["GET", "POST"])
+    @auth_required
+    def alerts_cast():
+        """GET looks for TVs and Nest Hubs (5 s); POST {"devices": [name, ...]} picks the ones told about rings."""
+        if request.method == "GET":
+            return {"found": cast.discover(), "devices": cast.load_settings().get("devices", [])}
+        if web_ui.current_guest():
+            return {"error": "Only the owner can change this."}, 403
+        try:
+            return {"status": "saved", "devices": cast.save_settings((request.get_json(silent=True) or {}).get("devices"))}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
+    @app.route("/cast/<string:token>.<string:ext>")
+    def cast_media(token: str, ext: str):
+        """The ring's sound and picture for a TV or Nest Hub. No login: the link is secret and expires in 2 minutes."""
+        if ext not in ("wav", "jpg") or not (hit := cast.media(token, ext)):
+            return "", 404
+        return Response(hit[0], mimetype=hit[1])
+
     @app.route("/alerts/transcripts", methods=["POST"])
     @auth_required
     def alerts_transcripts():

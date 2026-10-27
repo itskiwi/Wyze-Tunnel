@@ -30,3 +30,15 @@ def test_turning_on_needs_the_consent_box(client):
     assert not transcripts.enabled()
     assert c.post("/alerts/transcripts", json={"on": True, "agreed": True}).json == {"status": "saved", "on": True}
     assert transcripts.enabled() and thread.return_value.start.called
+
+
+def test_cast_links_need_no_login_but_a_live_token(client):
+    from wyzebridge import cast
+
+    _, _, c = client
+    c.environ_base.pop("HTTP_AUTHORIZATION")
+    assert c.get("/cast/nope.wav").status_code == 404
+    with mock.patch.object(cast, "media", return_value=(b"RIFF", "audio/wav")):
+        resp = c.get("/cast/tok.wav", headers={"Sec-Fetch-Site": "cross-site"})
+    assert resp.status_code == 200 and resp.data == b"RIFF" and resp.mimetype == "audio/wav"
+    assert c.get("/alerts/cast").status_code == 401
