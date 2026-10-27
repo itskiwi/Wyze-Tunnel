@@ -94,7 +94,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Add-AppxPackage -AllowUnsigned (Get-Item wyze-tunnel-*-test.msix)
+          # The same Developer Mode route as docs/microsoft-store.md: Windows won't install an unsigned full-trust .msix itself.
+          Copy-Item (Get-Item wyze-tunnel-*-test.msix) test.zip
+          Expand-Archive test.zip test
+          Add-AppxPackage -Register test/AppxManifest.xml
           $p = Get-AppxPackage WyzeTunnel.Test
           $p | Format-List Name, Version, InstallLocation, SignatureKind
           if (-not (Test-Path "$($p.InstallLocation)/windows/install-native.ps1")) { throw 'install-native.ps1 is missing' }

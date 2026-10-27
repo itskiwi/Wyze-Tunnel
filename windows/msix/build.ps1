@@ -1,12 +1,11 @@
 # Packs the built tray app into an MSIX for the Microsoft Store, which signs it for free on submission.
-# The default identity is a test one: Windows 11 installs it unsigned with Add-AppxPackage -AllowUnsigned.
+# The default identity is a test one, unsigned: install it with Developer Mode on (docs/microsoft-store.md).
 # For the Store, pass the Name and Publisher from Partner Center (Product identity).
 param(
     [Parameter(Mandatory)] [string]$Version,  # like 0.1.7
     [string]$Out = 'wyze-tunnel.msix',
     [string]$Name = 'WyzeTunnel.Test',
-    # This OID marks a package as unsigned on purpose, which Windows 11 allows to install for testing.
-    [string]$Publisher = 'CN=Wyze Tunnel Test, OID.2.25.311729368913984317654407730594956997722=1',
+    [string]$Publisher = 'CN=Wyze Tunnel Test',
     [string]$PublisherName = 'Wyze Tunnel'
 )
 $ErrorActionPreference = 'Stop'
