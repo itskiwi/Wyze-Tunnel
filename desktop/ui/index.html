@@ -61,6 +61,12 @@
   .meter i.now { background: var(--accent); animation: pulse 1.2s ease-in-out infinite alternate; }
   @keyframes pulse { from { opacity: .25; } to { opacity: 1; } }
 
+  /* A Wyze fact to read while it starts, changing every few seconds. */
+  .fact { margin-top: 18px; max-width: 360px; min-height: 66px; transition: opacity .5s; }
+  .fact b { display: block; font: 800 12px/1 Nunito, system-ui, sans-serif; color: var(--accent); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 6px; }
+  .fact span { color: var(--fg); }
+  .fact.out { opacity: 0; }
+
   .card { background: var(--card); border-radius: 20px; padding: 14px 20px; box-shadow: var(--ring); margin-top: 4px; }
   dl { display: grid; grid-template-columns: max-content auto; gap: 4px 14px; margin: 0; text-align: left; }
   dt { color: var(--muted); } dd { margin: 0; }
@@ -81,6 +87,7 @@
   <p id="msg" role="status" aria-live="polite">Checking…</p>
   <div class="meter" id="meter" hidden><i></i><i></i><i></i><i></i></div>
   <div class="mono" id="help-log" hidden></div>
+  <div class="fact" id="fact" hidden><b>Wyze fact</b><span id="fact-text"></span></div>
   <div class="card" id="login" hidden>
     <dl>
       <dt>Username</dt><dd><code id="user">wbadmin</code></dd>
@@ -112,6 +119,26 @@ function stepOf(log) {
   if (/\[\+\] Adding |Fetched \[\d+\] cameras|'cameras' from local cache/.test(log)) return 2;
   return log.trim() ? 1 : 0;
 }
+const FACTS = [
+  "Wyze started in Seattle in 2017, founded by a small team that had worked at Amazon.",
+  "The first Wyze Cam sold for $19.99, when a Nest Cam cost $199.",
+  "Wyze Cam v3 sees in color at night with a starlight sensor, and still launched at about $20.",
+  "Wyze Cam v3 is rated IP65, so it handles rain and dust outdoors.",
+  "Wyze Cam Pan can spin a full 360 degrees and tilt up and down.",
+  "Most Wyze cameras can record to a microSD card, so they keep video without a cloud plan.",
+  "Wyze makes more than cameras: plugs, bulbs, locks, vacuums, scales and a thermostat.",
+];
+let fact = Math.floor(Math.random() * FACTS.length);
+$("fact-text").textContent = FACTS[fact];
+setInterval(() => {
+  if ($("fact").hidden) return;
+  $("fact").classList.add("out");
+  setTimeout(() => {
+    fact = (fact + 1) % FACTS.length;
+    $("fact-text").textContent = FACTS[fact];
+    $("fact").classList.remove("out");
+  }, 500);
+}, 9000);
 const STEP_TEXT = ["Starting up", "Signing in to Wyze", "Connecting cameras", "Opening Wyze Tunnel"];
 
 // Why it's slow and what to do, in plain words, from the end of the log.
@@ -137,7 +164,7 @@ async function showWhenUp(openBrowser) {
     $("title").classList.toggle("warn", slow);
     $("start").hidden = !p.stopped;
     $("restart").hidden = !slow;
-    $("meter").hidden = p.stopped || slow;
+    $("meter").hidden = $("fact").hidden = p.stopped || slow;
     $("help-log").hidden = !slow;
     if (p.stopped) {
       say("Wyze Tunnel is stopped", "Your cameras aren't being watched or recorded.");
@@ -154,7 +181,7 @@ async function showWhenUp(openBrowser) {
   $("stage").classList.remove("asleep");
   $("stage").classList.add("ready");
   $("title").classList.remove("warn");
-  $("start").hidden = $("restart").hidden = $("help-log").hidden = $("meter").hidden = true;
+  $("start").hidden = $("restart").hidden = $("help-log").hidden = $("meter").hidden = $("fact").hidden = true;
   const pw = await invoke("password");
   $("pw").textContent = pw || "(the one you set)";
   if (!pw) $("user").textContent = "(the one you set)";
