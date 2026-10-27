@@ -179,12 +179,14 @@ def delete(eid: str) -> bool:
     return bool(found)
 
 
-def keep(eid: str, kept: bool) -> bool:
-    """Star an event so the size limit never deletes it."""
+def keep(eid: str, kept: bool) -> dict | None:
+    """Star an event so the size limit never deletes it. Returns its camera uri and time, or None if there's no such event."""
     if not ID_RE.fullmatch(eid):
-        return False
+        return None
     with _lock, _db() as db:
-        return db.execute("UPDATE events SET kept=? WHERE id=?", (int(kept), eid)).rowcount > 0
+        if not db.execute("UPDATE events SET kept=? WHERE id=?", (int(kept), eid)).rowcount:
+            return None
+        return dict(db.execute("SELECT uri, ts FROM events WHERE id=?", (eid,)).fetchone())
 
 
 def clear() -> None:

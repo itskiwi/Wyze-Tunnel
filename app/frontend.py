@@ -1399,7 +1399,11 @@ def create_app():
     @owner_only
     def history_keep(eid: str):
         kept = bool((request.get_json(silent=True) or {}).get("kept", True))
-        return ({"kept": kept}, 200) if event_archive.keep(eid, kept) else ({"error": "Not found"}, 404)
+        if not (ev := event_archive.keep(eid, kept)):
+            return {"error": "Not found"}, 404
+        if ev["uri"]:  # the camera's own recordings around it are kept too
+            recording.star(ev["uri"], ev["ts"], on=kept)
+        return {"kept": kept}
 
     @app.route("/history/clear", methods=["POST"])
     @owner_only

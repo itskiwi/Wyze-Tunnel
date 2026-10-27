@@ -224,7 +224,11 @@ def test_keep_route_is_owner_only(setup, archive):
     eid = archive.search()["events"][0]["id"]
     family = basic("Fay", guests.add_guest("Fay", 0, "owner"))
     assert client.post(f"/history/{eid}/keep", json={"kept": True}, headers=family).status_code == 403
-    assert client.post(f"/history/{eid}/keep", json={"kept": True}, headers=basic("owner", "ownerpass")).json == {"kept": True}
+    from wyzebridge import recording
+
+    with mock.patch.object(recording, "star") as star:
+        assert client.post(f"/history/{eid}/keep", json={"kept": True}, headers=basic("owner", "ownerpass")).json == {"kept": True}
+    star.assert_called_once_with("front", ENTRY["ts"], on=True)
     assert archive.search()["events"][0]["kept"]
     assert client.post("/history/nothex/keep", headers=basic("owner", "ownerpass")).status_code == 404
 def test_counts_since(setup, archive):
