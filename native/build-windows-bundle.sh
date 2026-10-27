@@ -27,9 +27,12 @@ unzip -q "$TMP/dl.zip" -d "$STAGE/python"
 # The embeddable Python only searches what its ._pth lists.
 printf 'python312.zip\r\n.\r\nLib\\site-packages\r\n..\\app\r\nimport site\r\n' > "$STAGE/python/python312._pth"
 # pip reads requirement markers for this (Linux) machine, so swap in ONNX Runtime's DirectML build by hand.
-sed 's/^onnxruntime==/onnxruntime-directml==/' "$STAGE/app/requirements.txt" > "$TMP/requirements.txt"
+sed -e 's/^onnxruntime==/onnxruntime-directml==/' -e '/^piper-tts==/d' "$STAGE/app/requirements.txt" > "$TMP/requirements.txt"
 pip install --quiet --target "$STAGE/python/Lib/site-packages" --platform win_amd64 --python-version 3.12 \
     --implementation cp --only-binary=:all: -r "$TMP/requirements.txt"
+# Piper asks for plain onnxruntime, which would overwrite the DirectML build; that build already provides it.
+pip install --quiet --target "$STAGE/python/Lib/site-packages" --platform win_amd64 --python-version 3.12 \
+    --implementation cp --only-binary=:all: --no-deps "$(grep '^piper-tts==' "$STAGE/app/requirements.txt" | cut -d';' -f1)" "pathvalidate>=3,<4"
 
 get "https://github.com/bluenviron/mediamtx/releases/download/v${MTX_TAG}/mediamtx_v${MTX_TAG}_windows_amd64.zip"
 unzip -q "$TMP/dl.zip" mediamtx.exe mediamtx.yml -d "$STAGE"

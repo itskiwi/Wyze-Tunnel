@@ -3,7 +3,7 @@ from collections import deque
 from threading import Thread
 from typing import Any
 
-from wyzebridge import automations, event_archive, phrases, recording, visitors
+from wyzebridge import automations, cast, event_archive, phrases, recording, transcripts, visitors
 from wyzebridge.config import MOTION_INT, MOTION_START
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import update_preview
@@ -100,6 +100,18 @@ class WyzeEvents:
                     update_preview(stream.camera.name_uri)
                 if ring:
                     visitors.add(stream.uri, name, self.last_ts)
+                    Thread(target=cast.announce, args=(stream.uri, msg), daemon=True).start()
+                    Thread(target=transcripts.after_ring, args=(stream.uri, self.transcribed(entry)), daemon=True).start()
+
+    @staticmethod
+    def transcribed(entry: dict):
+        """What to do with the text of what was said after a ring."""
+        def done(text: str) -> None:
+            entry["transcript"] = text
+            visitors.set_transcript(entry["uri"], entry["ts"], text)
+            send_webhook("motion", entry["uri"], f"At the door: \u201c{text}\u201d", title=entry["name"])
+
+        return done
 
     @staticmethod
     def parse(event: dict) -> tuple:
