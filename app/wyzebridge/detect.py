@@ -7,6 +7,7 @@ own models, including packages with Frigate+). Cameras and the Frigate address a
 """
 
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -36,6 +37,8 @@ SETTINGS_FILE = TOKEN_PATH + "detect.json"
 MIN_SCORE = float(env_bool("DETECT_SCORE") or 0.6)
 COOLDOWN = 60  # one row per camera and label a minute, not one per keyframe
 CLEAR_AFTER = 120  # a person not seen for this long has gone
+# Skip things that never move, like a bush that looks like a person (DETECT_FILTER=false counts every sighting).
+FILTER = os.getenv("DETECT_FILTER", "").lower() not in {"false", "no", "off", "0"}
 VEHICLES = {"car", "truck", "bus", "motorcycle"}
 KEEP = parse_timedelta("DETECT_KEEP") or parse_timedelta("RECORD_KEEP") or timedelta(days=7)
 # Cameras switched on in the web UI record too, so every hit has a clip; keep those clips as long as the hits.
@@ -261,11 +264,13 @@ class Yolox:
         return [class_ids[i] for i in picked], [scores[i] for i in picked], [boxes[i] for i in picked]
 
 
-def find_objects(model, frame, heat: list[int] | None = None, ignore=frozenset(), best: dict | None = None) -> dict[str, float]:
+def find_objects(
+    model, frame, heat: list[int] | None = None, ignore=frozenset(), best: dict | None = None, every: list | None = None
+) -> dict[str, float]:
     """Best score per label in one frame, skipping objects centered in ignored cells.
 
     Adds every object's center to the heat grid if given, ignored or not, so the heatmap still shows the busy spots.
-    Fills `best` with each label's best x, y, w, h if given.
+    Fills `best` with each label's best x, y, w, h if given, and `every` with each (label, score, box) not ignored.
     """
     found: dict[str, float] = {}
     class_ids, scores, boxes = model.detect(frame, MIN_SCORE)
@@ -276,11 +281,76 @@ def find_objects(model, frame, heat: list[int] | None = None, ignore=frozenset()
             row = min(max(int((y + h / 2) / HEIGHT * HEAT_H), 0), HEAT_H - 1)
             if heat is not None:
                 heat[row * HEAT_W + col] += 1
-            if row * HEAT_W + col not in ignore and score > found.get(label, 0):
+            if row * HEAT_W + col in ignore:
+                continue
+            if every is not None:
+                every.append((label, float(score), (int(x), int(y), int(w), int(h))))
+            if score > found.get(label, 0):
                 found[label] = float(score)
                 if best is not None:
                     best[label] = (int(x), int(y), int(w), int(h))
     return found
+
+
+class Tracker:
+    """Follow objects from keyframe to keyframe, so a bush that looks like a person or a swaying branch doesn't count.
+
+    An object counts once it has been seen twice and has moved (or grown, walking toward the camera), or right away
+    when the model is sure. Something that sits in one spot from the start, like a parked car, never counts until it
+    moves. Our own code; the idea of matching boxes by overlap and counting only moving objects is from Frigate (MIT)
+    and ByteTrack (MIT).
+    """
+
+    SURE = 0.85
+    LOST_AFTER = 30  # seconds without a sighting
+
+    def __init__(self):
+        self.tracks: list[dict] = []
+
+    @staticmethod
+    def _center(box) -> tuple[float, float]:
+        return box[0] + box[2] / 2, box[1] + box[3] / 2
+
+    @classmethod
+    def _near(cls, a, b) -> float:
+        """How close two boxes are: 0 far apart, 1 the same spot. Keyframes are seconds apart, so overlap alone misses
+        a quick walker: anything within three body lengths is the same object."""
+        (ax, ay), (bx, by) = cls._center(a), cls._center(b)
+        reach = 3 * max(a[2], a[3], b[2], b[3], 1)
+        return max(0.0, 1 - ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5 / reach)
+
+    @classmethod
+    def _moved(cls, first, box) -> bool:
+        (fx, fy), (x, y) = cls._center(first), cls._center(box)
+        size = max(first[2], first[3], 1)
+        grew = (box[2] * box[3] + 1) / (first[2] * first[3] + 1)
+        return ((fx - x) ** 2 + (fy - y) ** 2) ** 0.5 >= size / 2 or not 2 / 3 < grew < 3 / 2
+
+    def update(self, objects: list[tuple[str, float, tuple]], now: float) -> list[tuple[str, float, tuple]]:
+        """Match this frame's (label, score, box) objects to tracks; returns the ones that count."""
+        self.tracks = [t for t in self.tracks if now - t["ts"] <= self.LOST_AFTER]
+        # Closest pairs first, so a passer-by doesn't take over the track of something standing nearby.
+        pairs = sorted(
+            ((self._near(t["box"], o[2]), i, t) for i, o in enumerate(objects) for t in self.tracks if t["label"] == o[0]),
+            key=lambda p: -p[0],
+        )
+        matched: dict[int, dict] = {}
+        taken: set[int] = set()
+        for near, i, track in pairs:
+            if near > 0 and i not in matched and id(track) not in taken:
+                matched[i] = track
+                taken.add(id(track))
+        out = []
+        for i, (label, score, box) in enumerate(objects):
+            if track := matched.get(i):
+                track.update(box=box, ts=now, seen=track["seen"] + 1)
+            else:
+                track = {"label": label, "first": box, "box": box, "ts": now, "seen": 1, "real": False}
+                self.tracks.append(track)
+            track["real"] = track["real"] or score >= self.SURE or (track["seen"] > 1 and self._moved(track["first"], box))
+            if track["real"]:
+                out.append((label, score, box))
+        return out
 
 
 def soft_glow(frame, box: tuple):
@@ -379,6 +449,7 @@ class Watcher(Thread):
         self.proc: subprocess.Popen | None = None
         self.last_seen: dict[str, float] = {}
         self.first_seen: dict[str, float] = {}  # start of the current visit, per label
+        self.tracker = Tracker()
 
     def run(self):
         if not (model := load_model()):
@@ -420,7 +491,13 @@ class Watcher(Thread):
         global _heat_saved
         now = time.time()
         boxes: dict[str, tuple] = {}
-        found = find_objects(model, frame, heat_grid(self.uri), frozenset(load_zones().get(self.uri, ())), boxes)
+        every: list = []
+        found = find_objects(model, frame, heat_grid(self.uri), frozenset(load_zones().get(self.uri, ())), boxes, every)
+        if FILTER:
+            found, boxes = {}, {}
+            for label, score, box in self.tracker.update(every, now):
+                if score > found.get(label, 0):
+                    found[label], boxes[label] = score, box
         if now - _heat_saved > 300:
             _heat_saved = now
             save_heat()
