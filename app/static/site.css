@@ -62,8 +62,10 @@ video ~ i::before {
   color: white; font-size: 3.5rem; position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%); text-shadow: 0 2px 12px rgb(0 0 0 / .6); pointer-events: none;
 }
-video.lost ~ i::before { content: "\e560"; }
+video.lost ~ i::before, [data-down=true] video ~ i::before { content: "\e560"; }
 video.lost, video.lost ~ i { cursor: default; }
+/* An offline camera's last picture is old: grey it out so it never passes for live */
+[data-down=true] video, [data-down=true] img.refresh_img { filter: grayscale(1) brightness(.45); }
 
 /* Preview overlay: refresh button on hover, age otherwise */
 .cam-overlay button, .card:hover .age, button:not(.offline):disabled + .age { display: none; }
