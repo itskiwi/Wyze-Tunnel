@@ -35,3 +35,10 @@ def test_report_lists_models_not_names(monkeypatch):
     report = build_report("1.0", "AMD64", cams)
     assert "HL_CAM4" in report and "Front Door" not in report
     assert "s3cretpw" not in report
+
+
+def test_report_includes_the_previous_runs_log(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOG_PATH", str(tmp_path / "logs"))
+    (tmp_path / "bridge.previous.log").write_text("Traceback: boom from 192.168.1.20\n")
+    report = build_report("1.0", "AMD64", {})
+    assert "Traceback: boom from <ip>" in report

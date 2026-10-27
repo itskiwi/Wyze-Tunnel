@@ -64,6 +64,24 @@
         Anywhere code.</p>
     {% endif %}
 </section>
+
+<section id="passkeys" class="surface mx-auto mt-6 max-w-xl p-5">
+    <h2 class="font-semibold">Passkeys</h2>
+    <p class="mt-1 text-sm text-zinc-400">Sign in with your face, fingerprint or screen lock instead of typing the password.
+        The password keeps working, and the desktop app still signs in by itself.</p>
+    <form id="passkeyForm" class="mt-3 hidden flex-wrap items-end gap-2">
+        <label class="block min-w-0 flex-1 text-sm">
+            <span class="text-zinc-400">Device name</span>
+            <input class="field mt-1" name="name" maxlength="40" placeholder="My phone" autocomplete="off" />
+        </label>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-key"></i>Add a passkey</button>
+    </form>
+    <p id="passkeyHttps" class="mt-3 hidden text-sm text-zinc-400">Passkeys only work on a secure address. Open Wyze Tunnel at
+        {% if away.host %}<a class="underline underline-offset-2 hover:text-zinc-200" href="https://{{ away.host }}/account#passkeys">https://{{ away.host }}</a>{% else %}its Tailscale https address{% endif %}
+        and add one there. The first time, turn on HTTPS certificates in Tailscale's DNS settings.</p>
+    <p id="passkeyStatus" class="mt-2 text-sm" role="status"></p>
+    <ul id="passkeyList" class="mt-3 divide-y divide-zinc-800 text-sm"></ul>
+</section>
 {% endif %}
 
 {% if enabled %}
@@ -401,5 +419,45 @@
             })
             .catch((err) => show(false, err.message));
     });
+</script>
+<script src="static/passkey.js?v={{ version }}"></script>
+<script>
+    (() => {
+        const box = document.getElementById("passkeys");
+        if (!box) return;
+        const pkForm = document.getElementById("passkeyForm"), list = document.getElementById("passkeyList"), out = document.getElementById("passkeyStatus");
+        const say = (ok, text) => { out.className = `mt-2 text-sm ${ok ? "text-emerald-300" : "text-rose-300"}`; out.textContent = text; };
+        const day = (ts) => new Date(ts * 1000).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+        const here = location.hostname;
+        const render = (keys) => list.replaceChildren(...keys.map((k) => {
+            const li = document.createElement("li");
+            li.className = "flex items-center gap-3 py-2";
+            const name = Object.assign(document.createElement("span"), { className: "font-medium", textContent: k.name });
+            const info = Object.assign(document.createElement("span"), {
+                className: "min-w-0 truncate text-zinc-400",
+                textContent: `${k.used ? "used " + day(k.used) : "added " + day(k.added)}${k.host === here ? "" : " · on " + k.host}`,
+            });
+            const rm = Object.assign(document.createElement("button"), { type: "button", className: "btn ml-auto py-1", textContent: "Remove" });
+            rm.addEventListener("click", () => fetch(`passkeys/${encodeURIComponent(k.id)}`, { method: "DELETE" })
+                .then((resp) => resp.json().then((b) => resp.ok ? load() : Promise.reject(new Error(b.error))))
+                .catch((err) => say(false, err.message)));
+            li.append(name, info, rm);
+            return li;
+        }));
+        const load = () => fetch("passkeys").then((r) => r.json()).then((b) => {
+            render(b.keys);
+            const ready = b.secure && passkey.supported;
+            pkForm.classList.toggle("hidden", !ready);
+            pkForm.classList.toggle("flex", ready);
+            document.getElementById("passkeyHttps").classList.toggle("hidden", ready);
+        });
+        pkForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            passkey.add("passkeys", pkForm.name.value)
+                .then((k) => { pkForm.name.value = ""; say(true, `Added ${k.name}. Next time, sign in with it.`); load(); })
+                .catch((err) => say(false, err.message));
+        });
+        load().catch(() => { });
+    })();
 </script>
 {% endblock %}

@@ -188,6 +188,10 @@ jobs:
           print("found", detect.find_objects(model, frame))
           strong = detect.load_model("strong")
           assert isinstance(strong, detect.Yolox), "the stronger model didn't load"
+          from wyzebridge import ai
+          assert ai.GPU in ai.ort.get_available_providers(), "the bundle lacks ONNX Runtime's DirectML build"
+          assert isinstance(strong.net, ai.Model), "the stronger model didn't load in ONNX Runtime"
+          print("stronger model runs on the", strong.net.device)
           print("found (stronger)", detect.find_objects(strong, frame))
           class Fake:
               def detect(self, frame, score):
