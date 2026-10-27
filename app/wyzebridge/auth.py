@@ -8,6 +8,7 @@ from typing import Optional
 from werkzeug.security import generate_password_hash
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.config import TOKEN_PATH
+from wyzebridge import vault
 from wyzebridge.logging import logger
 
 
@@ -27,16 +28,13 @@ def get_credential(file_name: str) -> str:
 
     file_path = f"{TOKEN_PATH}{file_name}"
     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-        with open(file_path, "r") as file:
-            logger.info(f"[AUTH] Using {file_name} from {file_path}")
-            return file.read().strip()
+        logger.info(f"[AUTH] Using {file_name} from {file_path}")
+        return vault.read_text(file_path).strip()
     return ""
 
 
 def save_credential(file_name: str, value: str) -> None:
-    file_path = Path(TOKEN_PATH, file_name)
-    file_path.touch(mode=0o600)
-    file_path.write_text(value)
+    vault.write_text(Path(TOKEN_PATH, file_name), value)
 
 
 # A login chosen in the web UI, as "username\npassword hash". Wins over WB_USERNAME/WB_PASSWORD.
@@ -61,7 +59,7 @@ class WbAuth:
     @classmethod
     def load_login(cls) -> None:
         if LOGIN_FILE.exists():
-            cls.username, _, cls._hashed_pass = LOGIN_FILE.read_text().partition("\n")
+            cls.username, _, cls._hashed_pass = vault.read_text(LOGIN_FILE).partition("\n")
             cls._pass = ""
 
     @classmethod

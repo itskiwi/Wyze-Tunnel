@@ -21,6 +21,7 @@ func TestStatusOf(t *testing.T) {
 
 func TestPublicProxyMarksRequests(t *testing.T) {
 	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Server", "Werkzeug/0.0")
 		w.Write([]byte(r.Host + " " + r.Header.Get(PublicHeader)))
 	}))
 	defer app.Close()
@@ -32,6 +33,9 @@ func TestPublicProxyMarksRequests(t *testing.T) {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if resp.Header.Get("Server") != "" {
+		t.Fatal("Server header leaked")
 	}
 	body := make([]byte, 100)
 	n, _ := resp.Body.Read(body)

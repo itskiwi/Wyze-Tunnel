@@ -68,3 +68,25 @@ def test_sse_status_adds_reason():
         "porch": {"status": "offline", "reason": REASON_OFFLINE},
         "yard": {"status": "connected", "reason": None},
     }
+
+
+def test_failing_camera_never_reads_idle():
+    from wyzebridge.go2rtc import FALLBACK_AFTER
+    from wyzebridge.wyze_stream import REASON_UNREACHABLE, StreamStatus, WyzeStream
+
+    def stream(state, failures, online=None):
+        s = WyzeStream.__new__(WyzeStream)  # skip setup(): no go2rtc in tests
+        s._state = SimpleNamespace(value=state)
+        s.failures, s.camera = failures, SimpleNamespace(online=online, camera_info=None)
+        return s
+
+    assert stream(StreamStatus.STOPPED, 0).status() == "stopped"
+    assert stream(StreamStatus.STOPPED, 1).status() == "stopped"  # one hiccup isn't news
+    assert stream(StreamStatus.STOPPED, 1, online=False).status() == "offline"
+    assert stream(StreamStatus.CONNECTING, 3, online=False).status() == "offline"  # no flicker on each retry
+    assert stream(StreamStatus.STOPPED, FALLBACK_AFTER).status() == "error"
+    assert stream(StreamStatus.CONNECTING, FALLBACK_AFTER).status() == "connecting"
+    assert stream(StreamStatus.CONNECTED, 9, online=False).status() == "connected"
+    assert stream(StreamStatus.DISABLED, 9, online=False).status() == "disabled"
+    assert reason(failures=FALLBACK_AFTER) == REASON_UNREACHABLE
+    assert reason(failures=FALLBACK_AFTER, connected=True) is None

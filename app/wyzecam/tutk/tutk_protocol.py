@@ -733,6 +733,82 @@ class K10206SetMotionAlarm(TutkWyzeProtocolMessage):
         return encode(self.code, bytes([self.value, 0]))
 
 
+class K10204GetMotionAlarmParam(TutkWyzeProtocolMessage):
+    """Motion alarm sensitivity, 1-100 like the Wyze app (the camera replies with its switch and a 0-255 value)."""
+
+    def __init__(self, code: int = 10204):
+        super().__init__(code)
+
+    def parse_response(self, resp_data):
+        return round(resp_data[1] * 100 / 255)
+
+
+class K10206SetMotionSensitivity(TutkWyzeProtocolMessage):
+    """Set the motion alarm sensitivity (1-100) and leave its on/off switch alone (0), as the Wyze app does."""
+
+    def __init__(self, value: int, code: int = 10206):
+        super().__init__(code)
+        self.value: int = min(max(int(value), 1), 100)
+
+    def encode(self) -> bytes:
+        return encode(self.code, bytes([0, max(1, int(self.value * 2.55))]))
+
+
+class K10254GetSoundAlarmParam(K10204GetMotionAlarmParam):
+    def __init__(self):
+        super().__init__(10254)
+
+
+class K10256SetSoundSensitivity(K10206SetMotionSensitivity):
+    def __init__(self, value: int):
+        super().__init__(value, 10256)
+
+
+class K12080SetDb2DdqParameter(TutkWyzeProtocolMessage):
+    """Doorbell v2 wired chime (the app calls it ddq): type 1 none, 2 mechanical, 3 digital; ring length 1-9 s.
+
+    A 0 leaves that field as it is, like the Wyze app (ConnectControl.func_setDb2DdqParameter sends one at a time).
+    The middle byte is the app's on/off switch; its meaning differs between two app screens, so it is always 0 here.
+    """
+
+    def __init__(self, chime_type: int = 0, switch: int = 0, seconds: int = 0):
+        super().__init__(12080)
+        assert chime_type in {0, 1, 2, 3} and switch == 0 and 0 <= seconds <= 9, "invalid chime setting"
+        self.values = bytes([chime_type, switch, seconds])
+
+    def encode(self) -> bytes:
+        return encode(self.code, self.values)
+
+
+class K12082GetDb2DdqParameter(TutkWyzeProtocolMessage):
+    def __init__(self):
+        super().__init__(12082)
+
+    def parse_response(self, resp_data):
+        chime_type, _switch, seconds = resp_data[:3]
+        return {"type": {1: "none", 2: "mechanical", 3: "digital"}.get(chime_type), "seconds": seconds}
+
+
+class K12086SetDb2RingSound(TutkWyzeProtocolMessage):
+    """The doorbell's own ring sound: 1 on, 2 off."""
+
+    def __init__(self, value: int):
+        super().__init__(12086)
+        assert value in {1, 2}, "value must be 1 or 2"
+        self.value: int = value
+
+    def encode(self) -> bytes:
+        return encode(self.code, bytes([self.value]))
+
+
+class K12088GetDb2RingSound(TutkWyzeProtocolMessage):
+    def __init__(self):
+        super().__init__(12088)
+
+    def parse_response(self, resp_data):
+        return "on" if resp_data[0] == 1 else "off"
+
+
 class K10292SetMotionTagging(TutkWyzeProtocolMessage):
     """
     A message used to enable/disable motion tagging (green box around motion).
@@ -872,6 +948,63 @@ class K10148StartBoa(TutkWyzeProtocolMessage):
 
     def encode(self) -> bytes:
         return encode(self.code, bytes([0, 1, 0, 0, 0]))
+
+
+class K10150Replay(TutkWyzeProtocolMessage):
+    """
+    Start, seek or stop SD card playback on this session's AV channel.
+
+    Playback frames carry `ts` as their n_play_token; send start again with a new ts to seek.
+
+    Parameters:
+    - ts (int): epoch seconds to play from.
+    - start (bool): False stops playback and the camera goes back to live.
+    """
+
+    def __init__(self, ts: int, start: bool = True):
+        super().__init__(10150)
+        self.ts, self.start = int(ts), start
+
+    def encode(self) -> bytes:
+        return encode(self.code, pack("<BBI", 1 if self.start else 2, 1, self.ts))
+
+    def parse_response(self, resp_data: bytes) -> bool:
+        return bool(resp_data) and resp_data[0] == 1
+
+
+class K10350GetRecordInfo(TutkWyzeProtocolMessage):
+    """
+    Which minutes of a 12-hour window are on the SD card.
+
+    Ask twice for a day: local midnight, then midnight + 43200.
+
+    Parameters:
+    - start (int): epoch seconds the window starts at.
+    - minutes (int): window length; the app always asks for 720.
+    """
+
+    def __init__(self, start: int = 0, minutes: int = 720):  # a default, so a bare GET can't crash the control thread
+        super().__init__(10350)
+        self.start, self.minutes = int(start), int(minutes)
+
+    def encode(self) -> bytes:
+        return encode(self.code, pack("<BBIH", 1, 1, self.start, self.minutes))
+
+    def parse_response(self, resp_data: bytes) -> dict:
+        if len(resp_data) < 11 or resp_data[1] != 1:
+            raise TutkWyzeProtocolError(f"Unexpected record info: {resp_data[:11].hex()}")
+        start, nbytes = unpack("<I", resp_data[3:7])[0], unpack("<H", resp_data[9:11])[0]
+        bits = int.from_bytes(resp_data[11 : 11 + nbytes], "little")  # one bit per minute, LSB first
+        segments: list[list[int]] = []
+        for minute in range(nbytes * 8):
+            if not bits >> minute & 1:
+                continue
+            ts = start + minute * 60
+            if segments and segments[-1][1] == ts:
+                segments[-1][1] = ts + 60
+            else:
+                segments.append([ts, ts + 60])
+        return {"sd_card": resp_data[2] == 1, "start": start, "segments": segments}
 
 
 class K10242FormatSDCard(TutkWyzeProtocolMessage):
@@ -1245,11 +1378,75 @@ class K10720GetAccessoriesInfo(TutkWyzeProtocolMessage):
 
 class K10788GetIntegratedFloodlightInfo(TutkWyzeProtocolMessage):
     """
-    A message used to get the integrated floodlight info.
+    A message used to get the integrated floodlight info (Floodlight v2).
+
+    Returns the "floodlightInfo" dict (brightness, motion, motionSwitch...).
     """
 
     def __init__(self):
         super().__init__(10788)
+
+    def parse_response(self, resp_data):
+        return json.loads(resp_data)["floodlightInfo"]
+
+
+class K10790SetIntegratedFloodlightInfo(TutkWyzeProtocolMessage):
+    """
+    A message used to change integrated floodlight (Floodlight v2) settings.
+
+    Args:
+    - info (dict): only the keys to change, like {"brightness": "50"}. Values are strings.
+    """
+
+    def __init__(self, info: dict):
+        super().__init__(10790)
+        self.info = info
+
+    def encode(self) -> bytes:
+        info = {"floodlightInfo": {**self.info, "protocolVersion": "1"}}
+        return encode(self.code, json.dumps(info).encode())
+
+
+class K12084GetDb2BatteryLevel(TutkWyzeProtocolMessage):
+    """
+    A message used to get the Doorbell v2 battery level (first byte of the reply).
+    """
+
+    def __init__(self):
+        super().__init__(12084)
+
+    def parse_response(self, resp_data):
+        return resp_data[0]
+
+
+class K12090GetDb2WDRStatus(TutkWyzeProtocolMessage):
+    """
+    A message used to get the Doorbell v2 WDR status: 1 for on; 2 for off.
+    """
+
+    def __init__(self):
+        super().__init__(12090)
+
+    def parse_response(self, resp_data):
+        return resp_data[0]
+
+
+class K12092SetDb2WDRStatus(TutkWyzeProtocolMessage):
+    """
+    A message used to set the Doorbell v2 WDR status.
+
+    Args:
+    - value (int): 1 for on; 2 for off.
+    """
+
+    def __init__(self, value):
+        super().__init__(12092)
+
+        assert 1 <= value <= 2, "value must be 1 or 2"
+        self.value: int = value
+
+    def encode(self) -> bytes:
+        return encode(self.code, bytes([self.value]))
 
 
 class K10820GetWhiteLightInfo(TutkWyzeProtocolMessage):

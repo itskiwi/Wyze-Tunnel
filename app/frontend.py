@@ -3,7 +3,7 @@ import secrets
 import subprocess
 import time
 from datetime import datetime, timezone
-from threading import Thread
+from threading import Thread, Timer
 from functools import wraps
 from pathlib import Path
 from urllib.parse import quote_plus, urlencode
@@ -22,17 +22,17 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, backup, config, detect, floorplan, go2rtc, guests, homekit, integrations, masks, network, phone_cams, phrases, pocket, privacy, recording, shares, street_watch, timelapse, visitors, weather, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, automations, backup, camera_settings, config, detect, devices, event_archive, floorplan, go2rtc, guests, homekit, integrations, lockdown, masks, network, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, visitors, weather, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.diagnostics import build_report
 from wyzebridge.ffmpeg import probe_stream, stream_warnings
 from wyzebridge.logging import logger
-from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED, path_bytes
+from wyzebridge.mtx_server import PLAYBACK_ADDR, PLAYBACK_ENABLED, MtxInterface, path_bytes
 from wyzebridge.web_ui import url_for
 from wyzebridge.wyze_events import EVENT_LOG
 from wyzebridge.wyze_stream import WyzeStream
-from wyzecam.api import API_STATS
+from wyzecam.api import API_STATS, AccessTokenError, RateLimitError, WyzeAPIError
 
 
 # Links with any of these open the live grid, so wall displays and old bookmarks keep working.
@@ -43,6 +43,7 @@ def create_app():
     app = Flask(__name__)
     app.jinja_env.globals["can_update"] = bool(os.getenv("WT_UPDATE_FILE"))
     app.jinja_env.globals["current_guest"] = web_ui.current_guest
+    app.jinja_env.filters["wifi_tier"] = web_ui.wifi_tier
     wb = WyzeBridge()
     Thread(target=webhooks.announce_update, daemon=True).start()
     pocket.Away.health_check()
@@ -85,16 +86,34 @@ def create_app():
         if request.path.startswith(("/static/", "/img/", "/snapshot/", "/thumb/", "/photo/", "/share/")):
             return
         # A neighbor opens their Street Watch link from a chat app; sending the form is still same-site only.
-        if request.method == "GET" and (request.path in ("/", "/live", "/login", "/cams.m3u8") or request.path.startswith(("/street/", "/phone-cam/"))):
+        # A pairing link arrives from the phone's QR scanner; its one-time code is the protection.
+        if request.method == "GET" and (request.path in ("/", "/live", "/login", "/cams.m3u8") or request.path.startswith(("/street/", "/phone-cam/", "/pair/"))):
             return
         if web_ui.cross_site_request():
             return {"error": "Cross-site request blocked"}, 403
 
     @app.before_request
+    def tailscale_only():
+        # Belt and braces: the Windows tray also binds the web page to this PC only after a restart.
+        if lockdown.tailscale_only() and not lockdown.allowed(request.remote_addr):
+            return "Wyze Tunnel is set to Tailscale only. Open it through Tailscale, or on this computer.", 403
+
+    @app.before_request
     def public_link_paired_only():
         # Pages without a login (Wyze sign-in, setup, shares...) stay home-only too: the public link only pairs.
-        if pocket.public_request() and not request.path.startswith(("/static/", "/pair/")) and not web_ui.verify_password("", ""):
+        # No styles or scripts either, so a stranger can't tell what the link leads to.
+        if pocket.public_request() and not request.path.startswith(("/pair/", "/robots.txt")) and not web_ui.verify_password("", ""):
             return render_template("pair.html", public_only=True), 403
+
+    @app.after_request
+    def no_indexing(resp):
+        # Private cameras: no search engine or AI crawler may index, cache or train on any of it.
+        resp.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet, noimageindex, noai, noimageai"
+        return resp
+
+    @app.route("/robots.txt")
+    def robots_txt():
+        return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
 
     @app.route("/login", methods=["GET", "POST"])
     def wyze_login():
@@ -292,6 +311,32 @@ def create_app():
         probe = probe_stream(cam_name)
         return probe | {"warnings": stream_warnings(probe, wb.streams.get_info(cam_name) or info)}
 
+    @app.route("/api/<string:cam_name>/firmware")
+    @owner_only
+    def api_firmware(cam_name: str):
+        """Whether Wyze offers this camera a newer firmware (read-only)."""
+        if not (cam := wb.api.get_camera(cam_name)):
+            return {"error": f"Could not find camera [{cam_name}]"}, 404
+        return wb.api.check_firmware(cam) or {"status": "error", "response": "Not signed in to Wyze."}
+
+    @app.route("/api/<string:cam_name>/firmware/install", methods=["POST"])
+    @owner_only
+    def api_firmware_install(cam_name: str):
+        """Start the firmware upgrade Wyze offers this camera. Needs the owner's own password, not the API key."""
+        if not web_ui.owner_password():
+            return {"error": "Sign in with the owner password to update firmware."}, 403
+        if not (cam := wb.api.get_camera(cam_name)):
+            return {"error": f"Could not find camera [{cam_name}]"}, 404
+        body = request.get_json(silent=True)
+        version = body.get("version") if isinstance(body, dict) else None
+        if not isinstance(version, str) or not version:
+            return {"error": "Say which firmware version to install."}, 400
+        offer = wb.api.check_firmware(cam) or {}
+        if offer.get("status") != "success" or not offer.get("update") or offer["latest"] != version:
+            return {"error": "Wyze isn't offering that update for this camera."}, 409
+        logger.warning(f"[FIRMWARE] {request.authorization.username} started {cam.name_uri} {cam.firmware_ver} -> {version}")
+        return wb.api.begin_firmware_upgrade(cam, offer) or {"status": "error", "response": "Not signed in to Wyze."}
+
     @app.route("/api/<cam_name>/<cam_cmd>", methods=["GET", "PUT", "POST"])
     @app.route("/api/<cam_name>/<cam_cmd>/<path:payload>")
     @auth_required
@@ -309,7 +354,87 @@ def create_app():
         elif not payload and request.data:
             payload = request.data.decode()
 
+        if web_ui.owner_cmd_denied(cam_cmd.lower(), payload):
+            return {"error": "Only the owner can do this."}, 403
         return wb.streams.send_cmd(cam_name, cam_cmd.lower(), payload)
+
+    CHIME_TYPES = {"none": 1, "mechanical": 2, "digital": 3}
+
+    def chime_input(data: dict) -> tuple[dict, str]:
+        """Check a chime change from the page: ring sound, wired chime type and length, Wyze Chime sound and volume."""
+        keys = {"ring_sound", "chime_type", "chime_seconds", "chime_sound", "chime_volume"}
+        if not isinstance(data, dict) or not data or not keys.issuperset(data):
+            return {}, "Nothing to change."
+
+        def num(key: str, low: int, high: int) -> bool:
+            return type(data[key]) is int and low <= data[key] <= high
+
+        if data.get("ring_sound", "on") not in ("on", "off") or data.get("chime_type", "none") not in tuple(CHIME_TYPES):
+            return {}, "Invalid ring sound or chime type."
+        if ("chime_seconds" in data and not num("chime_seconds", 1, 9)) or ("chime_sound" in data and not num("chime_sound", 1, 19)):
+            return {}, "Invalid chime length or sound."
+        if "chime_volume" in data and not num("chime_volume", 0, 8):  # the app's slider (plugin_ddq_fragment_setting_voice.xml)
+            return {}, "Invalid chime volume."
+        if ("chime_sound" in data) != ("chime_volume" in data):
+            return {}, "The Wyze Chime needs its sound and volume together."
+        return data, ""
+
+    def doorbell_stream(cam_name: str):
+        stream = wb.streams.get(cam_name)
+        return stream if stream and stream.camera.is_doorbell else None
+
+    @app.route("/api/<string:cam_name>/chime")
+    @auth_required
+    def api_chime(cam_name: str):
+        """What the doorbell v2 reports for its ring sound and wired chime."""
+        if not doorbell_stream(cam_name):
+            return {"error": "Not a doorbell."}, 404
+        return {
+            "ring_sound": wb.streams.send_cmd(cam_name, "ring_sound").get("value"),
+            "doorbell_chime": wb.streams.send_cmd(cam_name, "doorbell_chime").get("value"),
+        }
+
+    @app.route("/api/<string:cam_name>/chime", methods=["POST"])
+    @owner_only
+    def api_chime_set(cam_name: str):
+        if not (stream := doorbell_stream(cam_name)):
+            return {"error": "Not a doorbell."}, 404
+        data, error = chime_input(request.get_json(silent=True))
+        if error:
+            return {"error": error}, 400
+        results = {}
+        if "ring_sound" in data:
+            results["ring_sound"] = wb.streams.send_cmd(cam_name, "ring_sound", data["ring_sound"])
+        if "chime_type" in data:
+            results["chime_type"] = wb.streams.send_cmd(cam_name, "doorbell_chime", f"{CHIME_TYPES[data['chime_type']]},0,0")
+        if "chime_seconds" in data:
+            results["chime_seconds"] = wb.streams.send_cmd(cam_name, "doorbell_chime", f"0,0,{data['chime_seconds']}")
+        if "chime_sound" in data:
+            results["wyze_chime"] = wb.api.set_chime(stream.camera, data["chime_sound"], data["chime_volume"]) or {"status": "error", "response": "Wyze isn't signed in"}
+        return {"results": results}, 200 if all(r.get("status") == "success" for r in results.values()) else 502
+
+    @app.route("/rules")
+    @auth_required
+    def rules():
+        return render_template("rules.html", version=config.VERSION)
+
+    @app.route("/api/rules")
+    @auth_required
+    def api_rules():
+        """The Wyze account's rules and shortcuts (names only)."""
+        return wb.api.get_rules() or {"status": "error", "response": "Wyze isn't signed in"}
+
+    @app.route("/api/rules/<string:auto_id>/run", methods=["POST"])
+    @owner_only
+    def api_run_shortcut(auto_id: str):
+        """Run a Wyze shortcut. A shortcut can unlock doors or switch plugs, so the API key and apps can't."""
+        if not web_ui.owner_password():
+            return {"error": "Sign in with the owner's own password to run shortcuts."}, 403
+        found = wb.api.get_rules() or {}
+        if not any(r["id"] == auto_id and r["shortcut"] for r in found.get("rules", [])):
+            return {"error": "No such shortcut."}, 404
+        result = wb.api.run_shortcut(auto_id) or {"status": "error", "response": "Wyze isn't signed in"}
+        return result, 200 if result["status"] == "success" else 502
 
     def shared(name: str) -> bool:
         """Whether viewers can share the tunnel's own camera connection instead of opening one each.
@@ -321,8 +446,12 @@ def create_app():
     @app.route("/signaling/<string:name>")
     @auth_required
     def webrtc_signaling(name):
-        # "relay" is go2rtc fetching the one connection the tunnel holds.
-        if "kvs" in request.args and ("relay" in request.args or not shared(name)):
+        # "relay" is go2rtc fetching the one connection the tunnel holds; "talk" is the owner's push-to-talk,
+        # a second Kinesis session that sends the browser's mic (MediaMTX's shared stream can't carry it back).
+        # A relay session is a direct Wyze cloud session too, which could carry a mic, so it's not for guests either.
+        if ("talk" in request.args or "relay" in request.args) and (guest := web_ui.current_guest()) and not guest["family"]:
+            return {"result": "Guests can watch but not talk through cameras.", "cam": name}, 403
+        if "kvs" in request.args and ("relay" in request.args or "talk" in request.args or not shared(name)):
             return wb.api.get_kvs_signal(name)
         if web_ui.current_guest():
             return web_ui.get_webrtc_signal(name, guests.stream_key(), guests.STREAM_USER)
@@ -442,10 +571,99 @@ def create_app():
             cameras=cams,
             disk=None if web_ui.current_guest() else recording.disk_use(),
             issues=web_ui.bridge_issues(cams),
+            tamper_on=tamper.enabled(),
+            tamper_state=tamper.STATE,
             now=time.time(),
             api=WbAuth.api,
             version=config.VERSION,
+            lockdown=None if web_ui.current_guest() else lockdown_checks(),
+            tailscale_only=lockdown.tailscale_only(),
+            away_on=pocket.Away.on(),
         )
+
+    def lockdown_checks() -> list[dict]:
+        with MtxInterface() as mtx:
+            users = mtx.get("authInternalUsers")
+        return lockdown.checks(pocket.Away.status()["public"], WbAuth.enabled, users)
+
+    @app.route("/health/tailscale-only", methods=["POST"])
+    @owner_only
+    def set_tailscale_only():
+        on = bool((request.get_json(silent=True) or {}).get("on"))
+        lockdown.set_tailscale_only(on)
+        logger.warning(f"[LOCKDOWN] Tailscale only turned {'on' if on else 'off'}")
+        # The tray (or systemd) starts it again with the web page bound to match; elsewhere only video and Apple Home move.
+        Timer(1, wb.clean_up if os.getenv("WT_UPDATE_FILE") else lambda: (wb.mtx.set_reach(), wb.restart())).start()
+        return {"on": on}
+
+    @app.route("/health/tamper", methods=["POST"])
+    @owner_only
+    def tamper_setting():
+        try:
+            return {"status": "saved", "on": tamper.set_enabled((request.get_json(silent=True) or {}).get("on"))}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
+    @app.route("/health/tamper/<string:cam_name>/reset", methods=["POST"])
+    @owner_only
+    def tamper_reset(cam_name: str):
+        if cam_name not in wb.streams.streams:
+            return {"error": "Unknown camera"}, 404
+        tamper.reset(cam_name)
+        return {"status": "saved"}
+
+    @app.route("/camera-settings")
+    @owner_only
+    def camera_settings_page():
+        return render_template("camera_settings.html")
+
+    def settings_send(uri: str, cmd: str, payload: str = "") -> dict:
+        return wb.streams.send_cmd(uri, cmd, payload)
+
+    @app.route("/camera-settings/data")
+    @owner_only
+    def camera_settings_data():
+        return camera_settings.table(wb.streams.streams) | {"snapshots": camera_settings.list_snapshots()}
+
+    @app.route("/camera-settings/refresh", methods=["POST"])
+    @owner_only
+    def camera_settings_refresh():
+        # One command at a time takes a while, so the reads run in the background.
+        if camera_settings.LOCK.locked():
+            return {"error": "Already busy with the cameras."}, 409
+        Thread(target=camera_settings.refresh, args=(wb.streams.streams, settings_send), daemon=True).start()
+        return {"status": "started"}
+
+    @app.route("/camera-settings/apply", methods=["POST"])
+    @owner_only
+    def camera_settings_apply():
+        body = request.get_json(silent=True) or {}
+        try:
+            results = camera_settings.apply(wb.streams.streams, settings_send, str(body.get("setting")), str(body.get("value")), body.get("cams"))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        except RuntimeError:
+            return {"error": "Busy with the cameras. Try again in a minute."}, 409
+        return {"results": results}
+
+    @app.route("/camera-settings/snapshots", methods=["POST"])
+    @owner_only
+    def camera_settings_snapshot():
+        try:
+            return camera_settings.save_snapshot(wb.streams.streams)
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
+    @app.route("/camera-settings/restore", methods=["POST"])
+    @owner_only
+    def camera_settings_restore():
+        body = request.get_json(silent=True) or {}
+        try:
+            return camera_settings.restore(wb.streams.streams, settings_send, str(body.get("id")), str(body.get("cam")), body.get("confirm") is True)
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        except RuntimeError:
+            return {"error": "Busy with the cameras. Try again in a minute."}, 409
 
     @app.route("/network")
     @auth_required
@@ -507,15 +725,12 @@ def create_app():
     @app.route("/wyze-clip")
     @auth_required
     def wyze_clip():
-        """Play Wyze's cloud clip of a motion event. Only Wyze's own hosts are fetched."""
+        """Play Wyze's cloud clip, or show the picture, of a motion event. Only Wyze's own hosts are fetched."""
         url = request.args.get("u", "")
         if not wyze_api.wyze_media_url(url):
             return {"error": "Not a Wyze clip"}, 400
         try:
-            resp = requests.get(url, stream=True, timeout=15, allow_redirects=False)
-            if resp.status_code == 401 and wb.api.auth:
-                headers = {"Authorization": wb.api.auth.access_token}
-                resp = requests.get(url, stream=True, timeout=15, allow_redirects=False, headers=headers)
+            resp = wb.api.get_media(url, stream=True, timeout=15, allow_redirects=False)
         except requests.RequestException as ex:
             return {"error": str(ex)}, 502
         if not resp.ok:
@@ -568,6 +783,165 @@ def create_app():
             return {"error": str(ex)}, 400
         return {"status": "saved"}
 
+    def device_call(fn, *args):
+        """Retries once with a fresh token if it expired since login."""
+        try:
+            return fn(wb.api.auth, *args)
+        except AccessTokenError:
+            wb.api.refresh_token()
+            return fn(wb.api.auth, *args)
+
+    @app.route("/devices")
+    @auth_required
+    def devices_page():
+        return render_template("devices.html")
+
+    @app.route("/api/devices", methods=["GET", "POST"])
+    @auth_required
+    def api_devices():
+        """Plugs, bulbs, sensors, thermostat, locks and chimes. POST {"mac": ..., "on" | "lock" | ...: ...} changes one."""
+        try:
+            if request.method == "GET":
+                return {"devices": device_call(devices.list_devices, bool(request.args.get("fresh"))), "lock_minutes": webhooks.ALERTS.get("lock_minutes") or 0}
+            data = request.get_json(silent=True) or {}
+            # Door locks only for the owner's password: API-keyed stream links and family logins can't unlock a door.
+            if "lock" in data and not web_ui.owner_password():
+                return {"error": "Only the owner, signed in with the web password, can lock or unlock doors."}, 403
+            if not (dev := device_call(devices.find, str(data.get("mac", "")))):
+                return {"error": "Unknown device."}, 404
+            done = device_call(devices.control, dev, data)
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException) as ex:
+            return {"error": f"Wyze didn't accept that: {ex}"}, 502
+        who = (web_ui.current_guest() or {}).get("guest", "owner")
+        logger.warning(f"[DEVICES] {who} ({request.remote_addr}) {done}: {dev['name']} ({dev['model']}) at {datetime.now().isoformat(timespec='seconds')}")
+        return {"status": done}
+
+    def camera_choices() -> list[dict]:
+        return [{"mac": cam.mac, "name": wyze_api.display_name(cam)} for cam in wb.api.get_cameras() or []]
+
+    @app.route("/api/automations")
+    @auth_required
+    def api_automations():
+        return {"settings": automations.load(), "cameras": camera_choices()}
+
+    @app.route("/api/automations", methods=["POST"])
+    @owner_only
+    def save_automations():
+        try:
+            known = {d["mac"]: d["type"] for d in device_call(devices.list_devices)}
+            return {"settings": automations.save(request.get_json(silent=True), {c["mac"] for c in camera_choices()}, known)}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException) as ex:
+            return {"error": f"Couldn't read your devices from Wyze: {ex}"}, 502
+
+    @app.route("/api/devices/lock-log")
+    @owner_only  # who comes and goes, and code names/schedules: not for family
+    def api_lock_log():
+        """Recent activity and keypad code names for one lock. Never the code digits."""
+        try:
+            dev = device_call(devices.find, request.args.get("mac", ""))
+            if not dev or dev["type"] != "Lock":
+                return {"error": "Unknown lock."}, 404
+            return device_call(devices.lock_log, dev["mac"], bool(request.args.get("fresh")))
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException) as ex:
+            return {"error": f"Wyze didn't answer: {ex}"}, 502
+
+    @app.route("/api/devices/history")
+    @auth_required
+    def api_device_history():
+        """Readings the bridge has kept for the last 24 hours or 7 days; a thermostat's run time comes from Wyze when it answers."""
+        hours = request.args.get("hours", "24")
+        if hours not in ("24", "168"):
+            return {"error": "hours must be 24 or 168."}, 400
+        mac = request.args.get("mac", "")
+        out = devices.history(mac, int(hours))
+        try:
+            if (dev := device_call(devices.find, mac)) and dev["model"] == "CO_EA1":
+                out |= device_call(devices.wyze_run_minutes, mac, int(hours))
+        except (WyzeAPIError, RateLimitError, AccessTokenError, requests.RequestException, KeyError, TypeError, ValueError) as ex:
+            logger.warning(f"[DEVICES] Wyze thermostat run time failed, showing the bridge's own: {ex}")
+        return out
+
+    @app.route("/api/devices/usage")
+    @auth_required
+    def api_plug_usage():
+        """Hours each day a plug was on, from Wyze's usage record (plugs only: no lock or camera data)."""
+        try:
+            dev = device_call(devices.find, request.args.get("mac", ""))
+            if not dev or dev["type"] not in ("OutdoorPlug", "Plug"):
+                return {"error": "Unknown plug."}, 404
+            return {"days": device_call(devices.plug_usage, dev, bool(request.args.get("fresh")))}
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException) as ex:
+            return {"error": f"Wyze didn't answer: {ex}"}, 502
+
+    @app.route("/api/devices/filters")
+    @auth_required
+    def api_thermostat_filters():
+        """The thermostat's air filters: name, size, life and how used each one is."""
+        try:
+            dev = device_call(devices.find, request.args.get("mac", ""))
+            if not dev or dev["model"] != "CO_EA1":
+                return {"error": "Unknown thermostat."}, 404
+            return {"filters": device_call(devices.filters, dev["mac"])}
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException, KeyError, ValueError) as ex:
+            return {"error": f"Wyze didn't answer: {ex}"}, 502
+
+    @app.route("/api/devices/groups")
+    @auth_required
+    def api_device_groups():
+        """The account's device groups (name and member macs), read-only."""
+        try:
+            return {"groups": device_call(devices.groups, bool(request.args.get("fresh")))}
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException) as ex:
+            return {"error": f"Wyze didn't answer: {ex}"}, 502
+
+    @app.route("/api/devices/schedules")
+    @auth_required
+    def api_device_schedules():
+        """Saved plug and light schedules with each one's next run."""
+        return devices.schedules()
+
+    @app.route("/api/devices/schedules", methods=["POST"])
+    @owner_only
+    def api_device_schedules_save():
+        """{"mac": ..., "schedules": [{"time": "07:30", "on": true, "days": [1, 2, 3]}]}. An empty list clears it."""
+        data = request.get_json(silent=True) or {}
+        try:
+            if not (dev := device_call(devices.find, str(data.get("mac", "")))):
+                return {"error": "Unknown device."}, 404
+            devices.save_schedules(dev, data.get("schedules"))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        except RateLimitError:
+            return {"error": "Wyze is rate limiting this account. Try again in a minute."}, 429
+        except (WyzeAPIError, requests.RequestException) as ex:
+            return {"error": f"Wyze didn't answer: {ex}"}, 502
+        logger.warning(f"[DEVICES] owner ({request.remote_addr}) saved the schedule for {dev['name']}")
+        return devices.schedules().get(dev["mac"], [])
+
+    @app.route("/api/devices/lock-alert", methods=["POST"])
+    @owner_only
+    def api_lock_alert():
+        try:
+            return {"lock_minutes": webhooks.set_lock_alert((request.get_json(silent=True) or {}).get("minutes"))}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
     @app.route("/privacy", methods=["GET", "POST"])
     @app.route("/battery-saver", methods=["GET", "POST"], endpoint="battery_saver")
     @auth_required
@@ -599,6 +973,8 @@ def create_app():
     @auth_required
     def alerts():
         if request.method == "POST":
+            if web_ui.current_guest():  # reading stays open to guests; changing alerts is the owner's
+                return {"error": "Only the owner can do this."}, 403
             try:
                 webhooks.save_alerts(request.get_json(silent=True) or request.form.to_dict())
             except ValueError as ex:
@@ -610,6 +986,7 @@ def create_app():
             settings=settings,
             # Anyone who knows an ntfy.sh topic can read it, so suggest one nobody can guess.
             suggested_topic=f"wyze-tunnel-{secrets.token_hex(6)}",
+            tamper_on=tamper.enabled(),
             api=WbAuth.api,
             version=config.VERSION,
         )
@@ -709,10 +1086,14 @@ def create_app():
             pocket.Away.turn(bool((request.get_json(silent=True) or {}).get("on")))
         return pocket.Away.status()
 
-    @app.route("/pair/<string:code>")
+    @app.route("/pair/<string:code>", methods=["GET", "POST"])
     def pair_phone(code: str):
         if not WbAuth.enabled:
             return redirect(url_for("index"))
+        # Scanners and link previews fetch the link too, so only the button press (a POST) uses up the code.
+        if request.method == "GET":
+            valid = pocket.code_valid(code)
+            return render_template("pair.html", ready=valid), 200 if valid else 410
         if not (cookie := pocket.claim(code, request.user_agent.string, WbAuth.username)):
             return render_template("pair.html", version=config.VERSION), 410
         resp = redirect(url_for("index", pocket=1))
@@ -898,6 +1279,39 @@ def create_app():
             version=config.VERSION,
         )
 
+    @app.route("/history")
+    @auth_required
+    def history_page():
+        return render_template("history.html", api=WbAuth.api, version=config.VERSION)
+
+    @app.route("/history/events")
+    @auth_required
+    def history_events():
+        a = request.args
+
+        def num(key: str) -> int:
+            return int(a[key]) if a.get(key, "").isdigit() else 0
+
+        return event_archive.search(a.get("device", "")[:100], a.get("type", "")[:30], num("since"), num("until"), a.get("q", "")[:100], num("before"), num("limit") or 60)
+
+    @app.route("/history/media/<string:eid>/<string:kind>")
+    @auth_required
+    def history_media(eid: str, kind: str):
+        if not (path := event_archive.media_file(eid, kind)):
+            return {"error": "Not found"}, 404
+        return send_file(path, mimetype="image/jpeg" if kind == "img" else "video/mp4", conditional=True)
+
+    @app.route("/history/<string:eid>/delete", methods=["POST"])
+    @owner_only
+    def history_delete(eid: str):
+        return ({"status": "deleted"}, 200) if event_archive.delete(eid) else ({"error": "Not found"}, 404)
+
+    @app.route("/history/clear", methods=["POST"])
+    @owner_only
+    def history_clear():
+        event_archive.clear()
+        return {"status": "cleared"}
+
     @app.route("/recordings/settings", methods=["POST"])
     @auth_required
     def recordings_settings():
@@ -939,6 +1353,92 @@ def create_app():
         if not (path := timelapse.video_path(cam_name, day)):
             return {"error": "No timelapse for that day"}, 404
         return send_file(path, mimetype="video/mp4", conditional=True)
+
+    @app.route("/sd/<string:cam_name>")
+    @owner_only
+    def sd_day(cam_name: str):
+        """A day on the camera's SD card as [start, end] epoch pairs. ?start= is the viewer's local midnight."""
+        if not (start := request.args.get("start", "")).isdigit():
+            return {"error": "start must be epoch seconds"}, 400
+        sd_card, segments = False, []
+        # shortcut: two 12-hour windows miss the last hour of a 25-hour DST day; ask for a third window if anyone notices.
+        for half in (int(start), int(start) + 43200):
+            resp = wb.streams.send_cmd(cam_name, "sd_minutes", half)
+            if not isinstance(value := resp.get("value"), dict):
+                return {"error": str(resp.get("response") or "The camera didn't answer.")}, 502
+            sd_card |= value["sd_card"]
+            for seg in value["segments"]:
+                if segments and segments[-1][1] == seg[0]:  # a recording that runs across noon
+                    segments[-1][1] = seg[1]
+                else:
+                    segments.append(seg)
+        return {"sd_card": sd_card, "segments": segments}
+
+    def start_sd(cam_name: str, ts) -> tuple[dict, int]:
+        stream = wb.streams.get(cam_name)
+        if not isinstance(stream, WyzeStream) or stream.source != "tutk":
+            return {"error": "SD card playback needs the camera connected through the Wyze SDK."}, 400
+        if not isinstance(ts, int) or not 0 < ts < time.time():
+            return {"error": "ts must be epoch seconds in the past"}, 400
+        if sd_copy.busy(cam_name):
+            return {"error": "The overnight SD copy is using this camera right now."}, 409
+        path = f"{cam_name}-sd"
+        if path not in sd_playback.players:
+            wb.mtx.add_path(path, False)
+        sd_playback.start(cam_name, stream.user, stream.camera, stream.options, ts)
+        return {"path": path, "hls": f"hls/{path}/index.m3u8"}, 200
+
+    @app.route("/sd/<string:cam_name>/play", methods=["POST"])
+    @owner_only
+    def sd_play(cam_name: str):
+        """Play the SD card from {"ts": epoch} at /<cam>-sd, or seek there if it's already playing."""
+        return start_sd(cam_name, (request.get_json(silent=True) or {}).get("ts"))
+
+    @app.route("/sd/<string:cam_name>/stop", methods=["POST"])
+    @owner_only
+    def sd_stop(cam_name: str):
+        sd_playback.stop(f"{cam_name}-sd")
+        return {"status": "stopped"}
+
+    @app.route("/sd-copy/settings", methods=["POST"])
+    @owner_only
+    def sd_copy_settings():
+        try:
+            return {"status": "saved", "settings": sd_copy.save_settings(request.get_json(silent=True) or {}, list(wb.streams.streams))}
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
+    @app.route("/sd-copy/status")
+    @owner_only
+    def sd_copy_status():
+        return {**sd_copy.status, "files": len(sd_copy.copied_files())}
+
+    @app.route("/sd-sync")
+    @owner_only
+    def sd_sync():
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        return render_template(
+            "sd_sync.html", cams={uri: cam["nickname"] for uri, cam in cams.items()}, sd_copy=sd_copy.load_settings(), api=WbAuth.api, version=config.VERSION
+        )
+
+    @app.route("/sd-sync/play", methods=["POST"])
+    @owner_only
+    def sd_sync_play():
+        """Start 2-4 cameras' SD replay at the same {"ts": epoch}; each shows at /<cam>-sd."""
+        data = request.get_json(silent=True) or {}
+        cams = data.get("cams")
+        if not isinstance(cams, list) or not 2 <= len(set(cams)) <= 4 or not all(isinstance(c, str) for c in cams):
+            return {"error": "Pick 2 to 4 cameras."}, 400
+        results = {cam: start_sd(cam, data.get("ts")) for cam in dict.fromkeys(cams)}
+        return {"cams": {cam: r[0] for cam, r in results.items()}}, 200 if all(r[1] == 200 for r in results.values()) else 400
+
+    @app.route("/sd-sync/stop", methods=["POST"])
+    @owner_only
+    def sd_sync_stop():
+        for cam in (request.get_json(silent=True) or {}).get("cams") or []:
+            if isinstance(cam, str):
+                sd_playback.stop(f"{cam}-sd")
+        return {"status": "stopped"}
 
     @app.route("/recordings/<string:cam_name>")
     @app.route("/api/v1/cameras/<string:cam_name>/recordings")  # for apps, like Home Assistant's media browser
@@ -990,16 +1490,21 @@ def create_app():
         if not wb.streams.get(cam_name) and cam_name not in phone_cams.uris():
             return {"error": "Camera not found"}, 404
         data = request.get_json(silent=True) or {}
+        password, extra = "", {}
+        if data.get("password"):
+            password, extra["pw_hash"] = shares.new_password()
         try:
-            token = shares.create_share(cam_name, data.get("start"), data.get("duration"))
+            token = shares.create_share(cam_name, data.get("start"), data.get("duration"), **extra)
         except ValueError as ex:
             return {"error": str(ex)}, 400
-        return {"url": f"share/{token}", "hours": shares.SHARE_HOURS}
+        return {"url": f"share/{token}", "hours": shares.SHARE_HOURS, "password": password}
 
     @app.route("/share/<string:token>")
     def shared_recording(token: str):
         if not (share := shares.get_share(token)):
             return "This link has ended or doesn't exist.", 404
+        if not shares.unlocks(share, request.args.get("p", "")):
+            return render_template("share_password.html", wrong="p" in request.args), 401
         if request.headers.get("Range", "bytes=0-").startswith("bytes=0-"):  # players fetch more ranges of one view
             shares.count_view(token)
         args = {"start": share["start"], "duration": share["duration"]}

@@ -52,6 +52,8 @@ BOA_COOLDOWN: int = env_bool("boa_cooldown", "20", style="int")
 MOTION: bool = env_bool("motion_api", style="bool")
 MOTION_INT: int = max(env_bool("motion_int", "1.5", style="float"), 1.1)
 MOTION_START: bool = env_bool("motion_start", style="bool")
+# GB of event pictures and clips to keep (Wyze deletes its own after 14 days); the oldest go first. 0 is no limit.
+EVENT_ARCHIVE_GB: float = env_bool("event_archive_gb", "5", style="float")
 
 WB_AUTH: bool = bool(env_bool("WB_AUTH") if getenv("WB_AUTH") else True)
 STREAM_AUTH: str = env_bool("STREAM_AUTH", style="original")

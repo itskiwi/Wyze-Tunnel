@@ -22,6 +22,7 @@ def client(monkeypatch):
 def test_health_gives_plain_english_fixes(client):
     page = client.get("/health").get_data(as_text=True)
     assert "Weak Wi-Fi (30%)" in page and "50%" in page
+    assert '<span class="chip chip-bad">Weak</span>' in page  # the Good / Fair / Weak badge
     assert "isn&#39;t reachable" in page or "isn't reachable" in page
     assert "SD card is almost full" not in page
 
@@ -67,3 +68,13 @@ def test_menu_is_simple_until_advanced_is_on(client):
     client.set_cookie("advanced", "1")
     page = client.get("/health").get_data(as_text=True)
     assert 'href="network"' in page and 'href="apps"' in page and "Show fewer options" in page
+
+
+def test_wifi_tiers():
+    from wyzebridge.web_ui import wifi_tier
+
+    assert [wifi_tier(v) for v in ("75", 60, 59, 40, 39, 0, None, "?")] == ["Good", "Good", "Fair", "Fair", "Weak", "Weak", "", ""]
+
+
+def test_live_shows_wifi_tier(client):
+    assert 'aria-label="Wi-Fi: Weak"' in client.get("/live").get_data(as_text=True)

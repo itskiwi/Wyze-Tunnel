@@ -9,11 +9,11 @@
   <a href="https://github.com/itskiwi/Wyze-Tunnel/actions/workflows/ci.yml"><img src="https://github.com/itskiwi/Wyze-Tunnel/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
-![Home: today's motion as a timeline, with every camera on the side](docs/img/home-desktop-light.png)
+![Home's motion timeline, then the Live view and camera health](docs/img/demo.gif)
 
-<p align="center"><img src="docs/img/home-phone-dark.png" width="260" alt="Home on a phone, in dark mode">&nbsp;&nbsp;<img src="docs/img/live-desktop-dark.png" width="540" alt="Live view of every camera, in dark mode"></p>
+<p align="center"><img src="docs/img/home-phone-dark.jpg" width="260" alt="Home on a phone, in dark mode">&nbsp;&nbsp;<img src="docs/img/live-desktop-dark.jpg" width="540" alt="Live view of every camera, in dark mode"></p>
 
-<sub>Screenshots use made-up demo cameras.</sub>
+<sub>Screenshots use made-up demo cameras. The pictures are Unsplash stock photos by Eli Chamoun, Lerone Pieters, Tile Merchant Ireland, Brian Wangenheim, Katja Rooke and Francesca Tosolini.</sub>
 
 ## What you get
 
@@ -29,7 +29,7 @@
 
 Light and dark mode follow your system, or pick one with the button at the top.
 
-![Camera health with a plain-words problem on each card](docs/img/health-desktop-light.png)
+![Camera health with a plain-words problem on each card](docs/img/health-desktop-light.jpg)
 
 ## Install
 
@@ -90,7 +90,7 @@ The Mac app and Terminal installer still exist, but they're on hold while Window
 
 ## Away from home
 
-Nothing to open on your router. In the Windows app, open the gear menu, **Pair a phone**, click **Turn on away access** and sign in to Tailscale (free, built in). Click **Allow the phone link** once, then scan the **Anywhere** code: it's an https link that works on the phone with no app, and only phones paired with that code can open it. To keep everything private instead, install the [Tailscale app](https://tailscale.com/download) on the phone and sign in with the same account. On other installs, put Tailscale on the computer and the phone.
+Nothing to open on your router. In the Windows app, open the gear menu, **Pair a phone**, click **Turn on away access** and sign in to Tailscale (free, built in). Install the [Tailscale app](https://tailscale.com/download) on the phone, sign in with the same account, and scan the **Anywhere** code. Nothing is ever public: there's no internet link, and Wyze Tunnel never asks your router to open a port. The **Lockdown** card on the Health page checks all of this, and its **Tailscale only** switch closes your home network too. On other installs, put Tailscale on the computer and the phone.
 
 Please don't forward ports or put Wyze Tunnel in your router's DMZ.
 

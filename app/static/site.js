@@ -354,7 +354,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Update status icon based on connection status
-  const STATUS_WORDS = { stopped: "idle", disabled: "off" };  // a waiting on-demand camera isn't broken
+  const STATUS_WORDS = { stopped: "idle", disabled: "off", error: "can't reach" };  // a waiting on-demand camera isn't broken
   const sse = new EventSource("api/sse_status");
   sse.addEventListener("open", () => {
     document.getElementById("connection-lost").style.display = "none";
@@ -437,6 +437,15 @@ document.addEventListener("DOMContentLoaded", () => {
       statusIcon.className = "fas";
       statusIcon.parentElement.title = "";
 
+      // An offline or unreachable camera says so: its old picture goes grey and the player stops spinning.
+      const down = ["offline", "error"].includes(messageData.status);
+      card.dataset.down = down;
+      if (down && preview?.nodeName === "VIDEO" && preview.readyState < 2 && (preview.hls || preview.getAttribute("src"))) {
+        preview.hls?.destroy();
+        preview.hls = null;
+        preview.removeAttribute("src");
+        preview.load();
+      }
       if (preview) {
         preview.classList.toggle("connected", messageData.status === "connected");
         preview.classList.toggle("enabled", messageData.status !== "disabled");
@@ -785,7 +794,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // "night_vision" + "auto" reads as "Night vision auto" in the toast; a few commands need their own words.
   const COMMAND_WORDS = { rotary_degree: "Moved", reset_rotation: "Back to center", cruise_point: "Went to position", alarm: "Siren",
-    state: "Stream", net_mode: "Connection", quick_response: "Played reply", power: "Power" };
+    state: "Stream", net_mode: "Connection", quick_response: "Played reply", power: "Power",
+    fl_motion: "Motion light", fl_brightness: "Brightness", fl_duration: "Stays on for", wdr: "WDR" };
   const PAYLOAD_WORDS = { hd: "HD", sd: "SD", no_relay: "no relay", enable: "turned on", disable: "turned off", start: "started", stop: "stopped", 3: "" };
   function commandText(cmd, payload = "") {
     const label = COMMAND_WORDS[cmd] || cmd[0].toUpperCase() + cmd.slice(1).replaceAll("_", " ");

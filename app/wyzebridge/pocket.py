@@ -12,7 +12,7 @@ from typing import Optional
 
 import segno
 from flask import request
-from wyzebridge import config, guests
+from wyzebridge import config, guests, webhooks
 from wyzebridge.go2rtc import GO2RTC_BIN
 from wyzebridge.logging import logger
 
@@ -39,6 +39,10 @@ def new_code() -> str:
     code = secrets.token_urlsafe(18)
     _codes[code] = now + PAIR_SECONDS
     return code
+
+
+def code_valid(code: str) -> bool:
+    return _codes.get(code, 0) >= time.time()
 
 
 def claim(code: str, user_agent: str, owner: str) -> Optional[str]:
@@ -103,14 +107,27 @@ class Away:
     @classmethod
     def health_check(cls) -> None:
         """Starts the helper when away access is on, and again if it ever exits."""
+        if cls.running():
+            cls.check_sign_in()
         if not cls.on() or not cls.available() or cls.running():
             return
         if cls.proc:
             logger.error(f"[AWAY] wyze-away exited with code {cls.proc.returncode}, restarting")
         (AWAY_DIR / "status.json").unlink(missing_ok=True)
         # It exits when our end of its stdin closes, so it never outlives the bridge.
-        args = [AWAY_BIN, "-dir", str(AWAY_DIR), "-port", str(AWAY_PORT), "-status", str(AWAY_DIR / "status.json"), "-funnel"]
-        cls.proc = Popen(args, stdin=PIPE, stdout=DEVNULL)
+        # No -funnel: phones use the Tailscale app, never a public link. No UPnP/NAT-PMP asks to the router either.
+        args = [AWAY_BIN, "-dir", str(AWAY_DIR), "-port", str(AWAY_PORT), "-status", str(AWAY_DIR / "status.json")]
+        cls.proc = Popen(args, stdin=PIPE, stdout=DEVNULL, env=os.environ | {"TS_DISABLE_PORTMAPPER": "1"})
+
+    @classmethod
+    def check_sign_in(cls) -> None:
+        """One alert when Tailscale signs this computer out (its key expires every 180 days by default)."""
+        state, flag = cls.status()["state"], AWAY_DIR / "signed-in"
+        if state == "Running":
+            flag.touch()
+        elif state == "NeedsLogin" and flag.exists():
+            flag.unlink()
+            webhooks.send_webhook("away", "Wyze Tunnel", "Phones can't reach your cameras away from home until you sign in to Tailscale again. Open Login, then Pair a phone.")
 
     @classmethod
     def status(cls) -> dict:

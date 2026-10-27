@@ -4758,7 +4758,7 @@ dependencies = [
 
 [[package]]
 name = "wyze-tunnel"
-version = "0.1.5"
+version = "0.1.7"
 dependencies = [
  "serde_json",
  "tauri",
@@ -4766,6 +4766,9 @@ dependencies = [
  "tauri-plugin-autostart",
  "tauri-plugin-notification",
  "tauri-plugin-single-instance",
+ "webview2-com",
+ "windows",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

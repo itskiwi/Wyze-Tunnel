@@ -6,19 +6,19 @@ import re
 import secrets
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 from threading import Lock, Thread
 from typing import Optional
 from urllib.parse import urlparse
 
 import requests
 from wyzebridge.config import TOKEN_PATH, VERSION
+from wyzebridge import vault
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import MtxInterface
 
 APPS_FILE = TOKEN_PATH + "apps.json"
 SCOPES = ("view", "control")
-HOOK_EVENTS = ("motion", "person", "offline", "street", "update")
+HOOK_EVENTS = ("motion", "person", "offline", "street", "update", "smoke", "co", "glass")
 MAX_TOKENS, MAX_HOOKS = 20, 10
 # The stream server's read-only login for apps. A new key each time a token is removed.
 STREAM_USER = "apps"
@@ -28,17 +28,14 @@ _lock = Lock()
 
 def _load() -> dict:
     try:
-        with open(APPS_FILE) as f:
-            return json.load(f)
+        return json.loads(vault.read_text(APPS_FILE))
     except (FileNotFoundError, ValueError):
         return {"tokens": [], "hooks": []}
 
 
 def _save(data: dict) -> None:
     # Holds webhook signing secrets, so only the bridge's user can read it.
-    path = Path(APPS_FILE)
-    path.touch(mode=0o600)
-    path.write_text(json.dumps(data))
+    vault.write_text(APPS_FILE, json.dumps(data))
 
 
 def _hash(token: str) -> str:

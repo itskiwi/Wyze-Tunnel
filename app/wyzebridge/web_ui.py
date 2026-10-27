@@ -12,11 +12,12 @@ from flask import url_for as _url_for
 from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import check_password_hash
 from wyzebridge import config
-from wyzebridge import guests, integrations, phrases, pocket
+from wyzebridge import guests, integrations, phrases, pocket, tamper
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
 from wyzebridge.stream import Stream, StreamManager
+from wyzebridge.wyze_commands import OWNER_CMDS
 
 auth = HTTPBasicAuth()
 
@@ -55,6 +56,12 @@ def guest_login(username: str, password: str):
     return False
 
 
+def owner_password() -> bool:
+    """Signed in with the owner's own password: not the API key, Home Assistant, an app token, a guest or family."""
+    creds = request.authorization
+    return bool(WbAuth.enabled and creds and creds.username == WbAuth.username and check_password_hash(WbAuth.hashed_password(), creds.password or ""))
+
+
 def bearer_token() -> str:
     scheme, _, token = request.headers.get("Authorization", "").partition(" ")
     return token.strip() if scheme.lower() == "bearer" else ""
@@ -83,6 +90,11 @@ def current_guest() -> Optional[dict]:
     """The guest or family member viewing this page, or None for the owner."""
     user = auth.current_user()
     return user if isinstance(user, dict) else None
+
+
+def owner_cmd_denied(cmd: str, value) -> bool:
+    """True for a guest or family member trying to change a camera setting (reads are fine)."""
+    return cmd in OWNER_CMDS and value not in ("", None) and current_guest() is not None
 
 
 def cross_site_request() -> bool:
@@ -246,8 +258,8 @@ def setup_steps(cams: dict[str, dict]) -> list[dict]:
         {"title": "Back up your settings every day", "href": "account#backup", "done": bool(backup.load_auto().get("folder"))},
     ]
 
-# Kept by "Start over": the web login, the downloaded detection models, and finished timelapse videos.
-KEEP_ON_START_OVER = {"wb_login", "wb_password", "wb_api", "models", "timelapse"}
+# Kept by "Start over": the web login, the downloaded detection models, finished timelapse videos and the event archive.
+KEEP_ON_START_OVER = {"wb_login", "wb_password", "wb_api", "models", "timelapse", "event_archive"}
 
 
 def start_over(token_path: str, img_path: str, record_root: Path) -> str:
@@ -273,6 +285,12 @@ def start_over(token_path: str, img_path: str, record_root: Path) -> str:
     return str(saved)
 
 
+def wifi_tier(percent) -> str:
+    """Good, Fair or Weak from a camera's Wi-Fi percent (the Weak cut matches the weak_wifi issue). Empty if unknown."""
+    pct = _int(percent)
+    return "" if pct < 0 else "Weak" if pct < 40 else "Fair" if pct < 60 else "Good"
+
+
 def bridge_issues(cams: dict[str, dict]) -> list[dict]:
     """Problems worth fixing, by camera. Feeds /api/health and the Health page."""
     issues = []
@@ -287,6 +305,9 @@ def bridge_issues(cams: dict[str, dict]) -> list[dict]:
             "sd_card_full": sd.get("status") == "1" and _int(sd.get("capacity")) > 0
             and _int(sd.get("free")) / _int(sd.get("capacity")) < 0.1,
             "using_relay": cam.get("net_mode") == "relay",
+            "lens_covered": tamper.STATE.get(uri) == "covered",
+            "camera_moved": tamper.STATE.get(uri) == "moved",
+            "night_vision_broken": tamper.STATE.get(uri) == "night_vision",
         }
         issues += [{"camera": uri, "issue": issue} for issue, hit in checks.items() if hit]
     return issues

@@ -139,6 +139,10 @@
                     <span class="icon text-zinc-400" title="Sub-stream of {{ camera.nickname }}"><i class="fas fa-object-ungroup"></i></span>
                     {% endif %}
                     {% if camera.camera_info %}
+                    {% set tier = (camera.camera_info.basicInfo or {}).get("wifidb")|wifi_tier %}
+                    {% if tier %}
+                    <span class="icon {{ {'Good': 'text-zinc-400', 'Fair': 'text-amber-300', 'Weak': 'text-rose-400'}[tier] }}" title="Wi-Fi: {{ tier }}" role="img" aria-label="Wi-Fi: {{ tier }}"><i class="fas fa-wifi"></i></span>
+                    {% endif %}
                     {% if camera.camera_info.sdParm and camera.camera_info.sdParm.status == "1"%}
                     <span class="icon text-zinc-400" title="{{ (camera.camera_info.sdParm.free|int/1024)|round(2) }} of {{ (camera.camera_info.sdParm.capacity|int/1024)|round(2) }} GB free on SD card">
                         <i class="fas fa-sd-card"></i></span>
@@ -155,6 +159,9 @@
                 <span class="drag_handle fs-display-none hidden h-8 w-8 flex-none cursor-move place-items-center rounded-full text-zinc-400 md:group-hover:grid" draggable="true" title="Drag to reorder"><i class="fas fa-grip pointer-events-none"></i></span>
             <div class="cam-acts fs-display-none flex flex-none items-center gap-1.5">
                 <span class="vp-slot"></span>
+                {% if camera.webrtc and not watch_only %}
+                <button type="button" class="talk cam-action" data-cam="{{cam_uri}}" title="Hold to talk through {{ camera.nickname }}" aria-label="Hold to talk through {{ camera.nickname }}"><i class="fas fa-microphone" aria-hidden="true"></i></button>
+                {% endif %}
                 {% if not watch_only %}
                 <details class="dropdown">
                     <summary class="cam-action" title="More" aria-label="More for {{ camera.nickname }}"><i class="fas fa-ellipsis"></i></summary>
@@ -224,6 +231,32 @@
                             <button class="button btn" data-cmd="floodlight" data-payload="off">Off</button>
                         </div>
                         {% endif %}
+                        {% if camera.product_model == "HL_CFL2" %}
+                        <p class="menu-label"><i class="fas fa-person-running"></i> Motion light</p>
+                        <div class="grid grid-cols-2 gap-1 p-1">
+                            <button class="button btn" data-cmd="fl_motion" data-payload="on">On</button>
+                            <button class="button btn" data-cmd="fl_motion" data-payload="off">Off</button>
+                        </div>
+                        <p class="menu-label" title="How bright the floodlight is, in percent">Brightness</p>
+                        <div class="grid grid-cols-3 gap-1 p-1">
+                            <button class="button btn" data-cmd="fl_brightness" data-payload="25">25%</button>
+                            <button class="button btn" data-cmd="fl_brightness" data-payload="50">50%</button>
+                            <button class="button btn" data-cmd="fl_brightness" data-payload="100">100%</button>
+                        </div>
+                        <p class="menu-label" title="How long the light stays on after motion">Stay on for</p>
+                        <div class="grid grid-cols-3 gap-1 p-1">
+                            <button class="button btn" data-cmd="fl_duration" data-payload="30">30 s</button>
+                            <button class="button btn" data-cmd="fl_duration" data-payload="60">1 min</button>
+                            <button class="button btn" data-cmd="fl_duration" data-payload="300">5 min</button>
+                        </div>
+                        {% endif %}
+                        {% if camera.product_model == "HL_DB2" %}
+                        <p class="menu-label" title="Wide dynamic range evens out bright and dark parts of the picture"><i class="fas fa-circle-half-stroke"></i> WDR</p>
+                        <div class="grid grid-cols-2 gap-1 p-1">
+                            <button class="button btn" data-cmd="wdr" data-payload="on">On</button>
+                            <button class="button btn" data-cmd="wdr" data-payload="off">Off</button>
+                        </div>
+                        {% endif %}
                         {% if camera.is_doorbell %}
                         <p class="menu-label"><i class="fas fa-comment"></i> Quick reply</p>
                         <div class="grid gap-1 p-1">
@@ -231,6 +264,40 @@
                             <button class="button btn justify-start" data-cmd="quick_response" data-payload="2">"Be there shortly"</button>
                             <button class="button btn justify-start" data-cmd="quick_response" data-payload="3">"Leave the package at the door"</button>
                         </div>
+                        {% endif %}
+                        {% if camera.is_doorbell and not current_guest() %}
+                        {# Chime controls change real hardware, so the server only lets the owner use them. The Wyze Chime part needs one paired with this doorbell. #}
+                        <details class="chime-box mt-1" data-cam="{{ cam_uri }}">
+                            <summary class="menu-label cursor-pointer list-none"><i class="fas fa-bell-concierge"></i> Chime <i class="fas fa-angle-down ml-auto"></i></summary>
+                            <div class="grid grid-cols-[1fr_auto_auto] items-center gap-1 px-1 py-0.5">
+                                <span class="truncate pl-1 text-zinc-300">Doorbell ring sound</span>
+                                <button class="button btn px-2.5 py-1" data-chime-key="ring_sound" data-chime-value="on">On</button>
+                                <button class="button btn px-2.5 py-1" data-chime-key="ring_sound" data-chime-value="off">Off</button>
+                            </div>
+                            <div class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-1 px-1 py-0.5">
+                                <span class="truncate pl-1 text-zinc-300">Chime in the door</span>
+                                <button class="button btn px-2.5 py-1" data-chime-key="chime_type" data-chime-value="none">None</button>
+                                <button class="button btn px-2.5 py-1" data-chime-key="chime_type" data-chime-value="mechanical">Mechanical</button>
+                                <button class="button btn px-2.5 py-1" data-chime-key="chime_type" data-chime-value="digital">Digital</button>
+                            </div>
+                            <label class="grid grid-cols-[1fr_auto] items-center gap-1 px-1 py-0.5"><span class="pl-1 text-zinc-300">Ring length</span>
+                                <select class="button btn px-2 py-1" data-chime-key="chime_seconds" aria-label="Ring length in seconds">
+                                    <option value="" selected disabled>Seconds</option>{% for n in range(1, 10) %}<option value="{{ n }}">{{ n }} s</option>{% endfor %}
+                                </select></label>
+                            {% set chime_sounds = ["Space Wave", "Wind Chime", "Curiosity", "Surprise", "Cheerful", "Doorbell 1", "Doorbell 2", "Doorbell 3", "Doorbell 4", "Bird Chirp", "Dog Bark 1", "Dog Bark 2", "Door Close", "Door Open", "Simple 1", "Simple 2", "Simple 3", "Simple 4", "Intruder Alarm"] %}
+                            <div class="grid grid-cols-[1fr_auto] items-center gap-1 px-1 py-0.5">
+                                <span class="pl-1 text-zinc-300">Wyze Chime sound</span>
+                                <select class="chime-sound button btn px-2 py-1" aria-label="Wyze Chime sound">
+                                    {% for name in chime_sounds %}<option value="{{ loop.index }}">{{ name }}</option>{% endfor %}
+                                </select>
+                                <span class="pl-1 text-zinc-300">Volume</span>
+                                <input class="chime-volume" type="range" min="0" max="8" value="4" aria-label="Wyze Chime volume" />
+                            </div>
+                            <div class="grid grid-cols-1 gap-1 p-1">
+                                <button class="button btn" data-chime-save title="The chime rings once so you can hear it">Save Wyze Chime</button>
+                            </div>
+                            <p class="chime-status px-2 pb-1 text-xs text-zinc-400" role="status"></p>
+                        </details>
                         {% endif %}
                         {% if camera.is_spotlight %}
                         <p class="menu-label"><i class="fas fa-sun"></i> Spotlight</p>
@@ -247,7 +314,7 @@
                         <details class="mt-1">
                             <summary class="menu-label cursor-pointer list-none"><i class="fas fa-gear"></i> Camera settings <i class="fas fa-angle-down ml-auto"></i></summary>
                             {% set settings = [("status_light", "Status light"), ("osd_timestamp", "Timestamp"), ("motion_tagging", "Motion box"),
-                                ("motion_detection", "Wyze motion detection"), ("notifications", "Wyze app alerts"),
+                                ("motion_detection", "Wyze motion detection"), ("sound_detection", "Wyze sound detection"), ("notifications", "Wyze app alerts"),
                                 ("hor_flip", "Mirror image"), ("ver_flip", "Upside down")] %}
                             {% if camera.is_pan_cam %}{% set settings = settings + [("motion_tracking", "Follow motion"), ("pan_cruise", "Patrol")] %}{% endif %}
                             {% for cmd, label in settings %}
@@ -255,6 +322,15 @@
                                 <span class="truncate pl-1 text-zinc-300">{{ label }}</span>
                                 <button class="button btn px-2.5 py-1" data-cmd="{{ cmd }}" data-payload="on" aria-label="{{ label }} on">On</button>
                                 <button class="button btn px-2.5 py-1" data-cmd="{{ cmd }}" data-payload="off" aria-label="{{ label }} off">Off</button>
+                            </div>
+                            {% endfor %}
+                            {# Sensitivity is set on the camera itself, so it needs the camera on this network. #}
+                            {% for cmd, label in [("motion_sensitivity", "Motion sensitivity"), ("sound_sensitivity", "Sound sensitivity")] %}
+                            <div class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-1 px-1 py-0.5">
+                                <span class="truncate pl-1 text-zinc-300">{{ label }}</span>
+                                {% for level, value in [("Low", 20), ("Med", 50), ("High", 80)] %}
+                                <button class="button btn px-2.5 py-1" data-cmd="{{ cmd }}" data-payload="{{ value }}" aria-label="{{ label }} {{ level }}">{{ level }}</button>
+                                {% endfor %}
                             </div>
                             {% endfor %}
                         </details>
@@ -359,12 +435,29 @@
     document.addEventListener('DOMContentLoaded', addApiKey);
 </script>
 {% endif %}
+<script>
+    // Chime changes go to the owner-only API; the answer is shown as text.
+    document.addEventListener("change", (e) => e.target.matches("select[data-chime-key]") && chime(e.target, { [e.target.dataset.chimeKey]: +e.target.value }));
+    document.addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-chime-key], button[data-chime-save]");
+        if (!b) return;
+        const box = b.closest(".chime-box");
+        chime(b, b.dataset.chimeKey ? { [b.dataset.chimeKey]: b.dataset.chimeValue }
+            : { chime_sound: +box.querySelector(".chime-sound").value, chime_volume: +box.querySelector(".chime-volume").value });
+    });
+    function chime(el, body) {
+        const box = el.closest(".chime-box"), status = box.querySelector(".chime-status");
+        status.textContent = "Sending…";
+        fetch(`api/${box.dataset.cam}/chime`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+            .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+            .then(({ ok, j }) => status.textContent = ok ? "Done." : j.error || Object.values(j.results || {}).map((r) => r.response).filter(Boolean).join(" ") || "That didn't work.")
+            .catch(() => status.textContent = "Couldn't reach the bridge.");
+    }
+</script>
 <script src="static/site.js?v={{ version }}"></script>
-{% if show_video %}
-{% if (webrtc and video_format == "webrtc") or video_format =="kvs" %}
+{# Always: it also holds push-to-talk #}
 <script src="static/webrtc.js?v={{ version }}"></script>
-{% else %}
+{% if show_video and not ((webrtc and video_format == "webrtc") or video_format =="kvs") %}
 <script src="static/hls.min.js?v={{ version }}"></script>
-{% endif %}
 {% endif %}
 {% endblock %}

@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+
+{% block title %}SD card · {% endblock %}
+{% block content %}
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Recordings</h1>
+</header>
+{% include '_recordings_nav.html' %}
+{% if cams %}
+<section id="sd" class="surface p-5">
+    <h2 class="font-semibold">Camera SD card</h2>
+    <p class="mt-1 text-sm text-zinc-400">Plays what the camera saved on its own card. It uses one of the camera's connections while it plays, so stop it when you're done.</p>
+    <form id="sdForm" class="mt-3 flex flex-wrap items-end gap-3">
+        <label class="block text-sm">Camera
+            <select name="cam" class="field mt-1">
+                {% for uri, name in cams.items() %}<option value="{{ uri }}">{{ name }}</option>{% endfor %}
+            </select></label>
+        <label class="block text-sm">Day
+            <input type="date" name="day" class="field mt-1" required /></label>
+        <button class="btn btn-primary" type="submit">Show</button>
+        <span id="sdStatus" class="text-sm text-zinc-400" role="status"></span>
+    </form>
+        <div class="mt-3 grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div id="sdPlayerBox" class="hidden overflow-hidden rounded-3xl bg-black">
+            <video id="sdPlayer" class="aspect-video w-full" controls muted playsinline></video>
+            <div class="flex items-center gap-3 bg-zinc-900 px-4 py-3 text-sm">
+                <span id="sdNow" class="text-zinc-400"></span>
+                <button id="sdStop" class="btn ml-auto" type="button"><i class="fas fa-stop"></i>Stop</button>
+            </div>
+        </div>
+        <div id="sdList" class="max-h-[70vh] overflow-auto"></div>
+    </div>
+</section>
+<section class="surface mt-5 p-5">
+    <h2 class="font-semibold">Play several cameras together</h2>
+    <p class="mt-1 text-sm text-zinc-400">Pick 2 to 4 cameras and a time. Each plays its own SD card from that moment. Every camera uses one extra connection while it plays.</p>
+    <form id="syncForm" class="mt-3 flex flex-wrap items-end gap-4">
+        <div class="flex flex-wrap gap-4 text-sm">
+            {% for uri, name in cams.items() %}
+            <label class="flex items-center gap-2"><input type="checkbox" name="cams" value="{{ uri }}" />{{ name }}</label>
+            {% endfor %}
+        </div>
+        <label class="block text-sm">Time <input type="datetime-local" name="when" class="field mt-1" required /></label>
+        <button id="syncGo" class="btn btn-primary" type="submit"><i class="fas fa-play"></i>Play</button>
+        <button id="syncStop" class="btn" type="button"><i class="fas fa-stop"></i>Stop all</button>
+        <span id="syncStatus" class="text-sm text-zinc-400" role="status"></span>
+    </form>
+    <div id="syncGrid" class="mt-4 grid gap-3 sm:grid-cols-2"></div>
+</section>
+<details class="surface mt-5 p-5">
+    <summary class="cursor-pointer font-semibold">Copy SD cards to this computer overnight</summary>
+    <form id="sdCopyForm" class="mt-3 space-y-3">
+        <p class="text-sm text-zinc-400">Saves the last day from each camera you tick into files on this computer, one camera at a time, only inside the hours below.
+            Off for every camera until you tick it. Battery cameras use extra battery while they copy.</p>
+        <div class="flex flex-wrap gap-4 text-sm">
+            {% for uri, name in cams.items() %}
+            <label class="flex items-center gap-2"><input type="checkbox" name="cams" value="{{ uri }}" {{ 'checked' if uri in sd_copy.cams }} />{{ name }}</label>
+            {% endfor %}
+        </div>
+        <div class="flex flex-wrap items-end gap-3">
+            <label class="block text-sm">From <input type="time" name="from" value="{{ sd_copy['from'] }}" class="field mt-1" required /></label>
+            <label class="block text-sm">To <input type="time" name="to" value="{{ sd_copy.to }}" class="field mt-1" required /></label>
+            <label class="block text-sm">Keep at most (GB) <input type="number" name="max_gb" min="1" max="1000" value="{{ sd_copy.max_gb }}" class="field mt-1 w-28" required /></label>
+            <button class="btn btn-primary" type="submit">Save</button>
+        </div>
+        <p id="sdCopyStatus" class="text-sm text-zinc-400" role="status"></p>
+    </form>
+</details>
+<script src="static/hls.min.js?v={{ version }}"></script>
+<script>
+    // SD card: list a day from the camera, then play it through MediaMTX at /<cam>-sd.
+    const sdForm = document.getElementById("sdForm");
+    const sdStatus = document.getElementById("sdStatus");
+    const sdList = document.getElementById("sdList");
+    const sdPlayer = document.getElementById("sdPlayer");
+    let sdCam = "", sdHls = null;
+    const json = (resp) => resp.json().then((r) => resp.ok ? r : Promise.reject(new Error(r.error || resp.statusText)));
+    const clock = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+    function sdStop() {
+        if (!sdCam) return;
+        navigator.sendBeacon(`sd/${encodeURIComponent(sdCam)}/stop`);
+        sdHls?.destroy();
+        sdHls = null;
+        sdPlayer.removeAttribute("src");
+        sdCam = "";
+        document.getElementById("sdPlayerBox").classList.add("hidden");
+    }
+
+    // MediaMTX only serves the path once the camera sends video, which takes a few seconds.
+    async function sdAttach(src) {
+        for (let i = 0; i < 20 && sdCam; i++) {
+            if ((await fetch(src).catch(() => ({}))).ok) break;
+            await new Promise((r) => setTimeout(r, 1500));
+        }
+        if (sdPlayer.canPlayType("application/vnd.apple.mpegurl")) sdPlayer.src = src;
+        else if (window.Hls?.isSupported()) { sdHls = new Hls(); sdHls.loadSource(src); sdHls.attachMedia(sdPlayer); }
+        sdPlayer.play().catch(() => { });
+    }
+
+    function sdPlay(cam, ts) {
+        if (sdCam && sdCam !== cam) sdStop();
+        document.getElementById("sdPlayerBox").classList.remove("hidden");
+        document.getElementById("sdNow").textContent = `Starting at ${clock(ts)}…`;
+        fetch(`sd/${encodeURIComponent(cam)}/play`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ts }) })
+            .then(json)
+            .then((r) => {
+                document.getElementById("sdNow").textContent = `From ${clock(ts)}`;
+                if (sdCam === cam) return; // already playing: the camera seeks on the same stream
+                sdCam = cam;
+                sdAttach(r.hls);
+            })
+            .catch((err) => { document.getElementById("sdNow").textContent = err.message; });
+    }
+
+    sdForm?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const cam = sdForm.cam.value;
+        const start = Math.floor(new Date(`${sdForm.day.value}T00:00`).getTime() / 1000); // the viewer's local midnight
+        sdStatus.textContent = "Asking the camera…";
+        sdList.replaceChildren();
+        fetch(`sd/${encodeURIComponent(cam)}?start=${start}`)
+            .then(json)
+            .then((r) => {
+                sdStatus.textContent = !r.sd_card ? "This camera has no SD card." : r.segments.length ? "" : "Nothing on the card for that day.";
+                for (const [from, to] of r.segments) {
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.className = "menu-item";
+                    button.textContent = `${clock(from)} – ${clock(to)}`;
+                    button.addEventListener("click", () => sdPlay(cam, from));
+                    sdList.append(button);
+                }
+            })
+            .catch((err) => { sdStatus.textContent = err.message; });
+    });
+    if (sdForm) sdForm.day.valueAsDate = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+    document.getElementById("sdStop")?.addEventListener("click", sdStop);
+
+    const sdCopyForm = document.getElementById("sdCopyForm");
+    const sdCopyStatus = document.getElementById("sdCopyStatus");
+    const sdCopyNote = () => fetch("sd-copy/status").then(json).then((r) => {
+        sdCopyStatus.textContent = `${r.state === "off" ? "Off" : r.state === "copying" ? "Copying" : "Waiting"}${r.message ? ` · ${r.message}` : ""} · ${r.copied} clips copied since start, ${r.files} on disk`;
+    }).catch(() => { });
+    sdCopyForm?.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const f = sdCopyForm;
+        const body = { cams: [...f.querySelectorAll("[name=cams]:checked")].map((c) => c.value), from: f.from.value, to: f.to.value, max_gb: f.max_gb.value };
+        fetch("sd-copy/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+            .then(json).then(sdCopyNote).catch((err) => { sdCopyStatus.textContent = err.message; });
+    });
+    if (sdCopyForm) sdCopyNote();
+    addEventListener("pagehide", sdStop);
+</script>
+{% else %}
+<p class="text-zinc-500">No cameras yet.</p>
+{% endif %}
+{% endblock %}

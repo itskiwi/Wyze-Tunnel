@@ -16,9 +16,10 @@ from requests.exceptions import ConnectionError, HTTPError, RequestException, Ti
 from wyzebridge.auth import get_secret
 from wyzebridge.bridge_utils import env_bool, env_filter
 from wyzebridge.config import IMG_PATH, MOTION, TOKEN_PATH
+from wyzebridge import vault
 from wyzebridge.logging import logger
-from wyzecam.api import RateLimitError, WyzeAPIError, post_device
-from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeCredential
+from wyzecam.api import RateLimitError, WyzeAPIError, post_device, post_upgrade
+from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeCredential, is_min_version
 
 
 def cached(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -30,9 +31,8 @@ def cached(func: Callable[..., Any]) -> Callable[..., Any]:
             if getattr(self, name, None):
                 return func(self, *args, **kwargs)
             try:
-                with open(TOKEN_PATH + name + ".pickle", "rb") as pkl_f:
-                    if not (data := pickle.load(pkl_f)):
-                        raise OSError
+                if not (data := pickle.loads(vault.read_bytes(TOKEN_PATH + name + ".pickle"))):
+                    raise OSError
                 if name == "user" and not self.creds.same_email(data.email):
                     raise ValueError("🕵️ Cached email doesn't match 'WYZE_EMAIL'")
                 logger.info(f"📚 Using '{name}' from local cache...")
@@ -98,6 +98,8 @@ class WyzeCredentials:
 
     def same_email(self, email: str) -> bool:
         return self.email.lower() == email.lower() if self.is_set else True
+
+SENSOR_MODELS = ("DWS", "PIR")  # contact and motion sensors (DWS3U, PIR3U, ...)
 
 
 class WyzeApi:
@@ -267,10 +269,7 @@ class WyzeApi:
 
         logger.info(f'☁️ Pulling "{uri}" thumbnail to {save_to}')
         try:
-            img = get(thumb, timeout=15)
-            if img.status_code == 401 and self.auth:
-                # Newer Wyze thumbnail hosts (prod-sight-safe-auth.wyze.com) reject the bare signed URL.
-                img = get(thumb, headers={"Authorization": self.auth.access_token}, timeout=15)
+            img = self.get_media(thumb, timeout=15)
             img.raise_for_status()
         except Exception as ex:
             logger.warning(f"ERROR pulling thumbnail：{ex}")
@@ -284,6 +283,14 @@ class WyzeApi:
             elif ts := int(datetime.strptime(modified, ts_format).timestamp()):
                 utime(save_to, (ts, ts))
         return True
+
+    def get_media(self, url: str, **kwargs):
+        """Get a Wyze event picture or clip. Newer hosts (prod-sight-safe-auth.wyze.com) 401 the bare signed URL
+        and want the token in Wyze-Authorization, like the app sends; older ones take the bare URL."""
+        resp = get(url, **kwargs)
+        if resp.status_code == 401 and self.auth:
+            resp = get(url, headers={"Wyze-Authorization": self.auth.access_token}, **kwargs)
+        return resp
 
     @authenticated
     def get_kvs_signal(self, cam_name: str) -> Optional[dict]:
@@ -375,12 +382,76 @@ class WyzeApi:
         return {"status": "success", "response": res.get("result")}
 
     @authenticated
-    def get_events(self, macs: Optional[list] = None, last_ts: int = 0):
+    def check_firmware(self, cam: WyzeCamera) -> dict:
+        """Ask Wyze (read-only, like the app's firmware page) whether a newer firmware is offered."""
+        params = {"device_id": cam.mac, "device_model": cam.product_model, "current_ver": cam.firmware_ver or "", "testcode": "Official Version"}
+        try:
+            offer = post_upgrade(self.auth, "get_upgrade_firmware", params)
+        except (ValueError, WyzeAPIError) as ex:
+            logger.error(f"[FIRMWARE] ERROR: {ex}")
+            return {"status": "error", "response": str(ex)}
+        return {"status": "success"} | firmware_offer(cam.firmware_ver, offer)
+
+    @authenticated
+    def begin_firmware_upgrade(self, cam: WyzeCamera, offer: dict):
+        """Tell Wyze to start the upgrade the check offered; the camera downloads and installs it."""
+        params = {"id": offer["id"], "deviceId": cam.mac, "deviceModel": cam.product_model, "currentVer": cam.firmware_ver or "", "targetVer": offer["latest"], "testCode": "Official Version"}
+        try:
+            resp = post_upgrade(self.auth, "begin_upgrade", params)
+        except (ValueError, WyzeAPIError) as ex:
+            logger.error(f"[FIRMWARE] ERROR: {ex}")
+            return {"status": "error", "response": str(ex)}
+        return {"status": "success", "response": resp.get("msg", "started")}
+
+    @authenticated
+    def set_chime(self, cam: WyzeCamera, sound: int, volume: int):
+        """Set the sound and volume of the Wyze Chime paired with a doorbell (the app also sends P1353=1, which rings it once)."""
+        objects = wyzecam.api.get_homepage_object_list(self.auth)
+        chimes = [d["mac"] for d in objects["device_list"] if d.get("product_model") == "CHIME" and d.get("parent_device_mac") == cam.mac]
+        if not chimes:
+            return {"status": "error", "response": "No Wyze Chime is paired with this doorbell"}
+        logger.info(f"[CONTROL] ☁️ chime sound={sound} volume={volume} for {cam.name_uri} via Wyze API")
+        try:
+            for mac in chimes:
+                wyzecam.api.set_property_list(self.auth, mac, "CHIME", {"P1351": volume, "P1352": sound, "P1353": 1})
+        except (ValueError, WyzeAPIError) as ex:
+            logger.error(f"[CONTROL] ERROR: {ex}")
+            return {"status": "error", "response": str(ex)}
+        return {"status": "success", "response": f"{len(chimes)} chime{'s'[:len(chimes) ^ 1]} updated"}
+
+    @authenticated
+    def get_rules(self):
+        """Rules and shortcuts without their triggers and actions (those name devices)."""
+        try:
+            autos = wyzecam.api.get_auto_list(self.auth)
+        except (ValueError, WyzeAPIError) as ex:
+            logger.error(f"[CONTROL] ERROR: {ex}")
+            return {"status": "error", "response": str(ex)}
+        rules = [
+            {"id": str(a["auto_id"]), "name": str(a.get("auto_name") or ""), "enabled": bool(a.get("is_enable")), "shortcut": bool(a.get("is_hot_button"))}
+            for a in autos
+            if a.get("auto_id")
+        ]
+        return {"status": "success", "rules": rules}
+
+    @authenticated
+    def run_shortcut(self, auto_id: str):
+        try:
+            wyzecam.api.run_auto(self.auth, auto_id)
+        except (ValueError, WyzeAPIError) as ex:
+            logger.error(f"[CONTROL] ERROR: {ex}")
+            return {"status": "error", "response": str(ex)}
+        logger.info("[CONTROL] ☁️ Ran a Wyze shortcut")
+        return {"status": "success"}
+
+    @authenticated
+    def get_events(self, macs: Optional[list] = None, last_ts: int = 0, history: int = 0):
+        """New events since last_ts, oldest first; or with history, the newest 50 from that many seconds back."""
         current_ms = int(time() + 60) * 1000
         params = {
-            "count": 20,
-            "order_by": 1,
-            "begin_time": max((last_ts + 1) * 1_000, (current_ms - 1_000_000)),
+            "count": 50 if history else 20,
+            "order_by": 2 if history else 1,
+            "begin_time": current_ms - history * 1000 if history else max((last_ts + 1) * 1_000, (current_ms - 1_000_000)),
             "end_time": current_ms,
             "nonce": str(int(time() * 1000)),
             "device_id_list": list(set(macs or [])),
@@ -397,6 +468,24 @@ class WyzeApi:
         except (HTTPError, RequestException, WyzeAPIError) as ex:
             logger.error(f"[EVENTS] {type(ex).__name__}: {ex}, cooling down.")
             return time() + 60, []
+
+    @authenticated
+    def get_sensor_events(self, since_ms: int) -> list[dict]:
+        """Open/close and motion events from Sense Hub sensors, newest first. Read-only; same call the Wyze app's sensor History page makes."""
+        try:
+            devices = wyzecam.api.get_homepage_object_list(self.auth)["device_list"]
+            found = []
+            for dev in devices:
+                model = str(dev.get("product_model") or "")
+                if not model.startswith(SENSOR_MODELS) or not dev.get("mac"):
+                    continue
+                params = {"device_mac": dev["mac"], "event_type": "2", "begin_time": since_ms, "end_time": int(time() + 60) * 1000, "count": 50, "order_by": 2}
+                for ev in post_device(self.auth, "get_event_list", params, api_version=2).get("event_list") or []:
+                    found.append(ev | {"nickname": dev.get("nickname") or model, "device_model": model})
+            return found
+        except (HTTPError, RequestException, WyzeAPIError, RateLimitError, KeyError, ValueError) as ex:
+            logger.error(f"[EVENTS] sensor history: {type(ex).__name__}: {ex}")
+            return []
 
     @authenticated
     def set_device_info(self, cam: WyzeCamera, params: dict):
@@ -429,6 +518,16 @@ class WyzeApi:
                 setattr(self, data_attr, None)
             for token_file in Path(TOKEN_PATH).glob("*.pickle"):
                 token_file.unlink()
+
+
+def firmware_offer(current: Optional[str], offer: dict) -> dict:
+    """What the upgrade service offered, and whether it is newer than what the camera runs."""
+    latest = str(offer.get("firmware_ver") or "")
+    try:
+        newer = bool(latest and latest != current and is_min_version(latest, current))
+    except ValueError:
+        newer = False
+    return {"current": current, "latest": latest, "update": newer, "id": offer.get("id") if newer else None}
 
 
 def url_timestamp(url: str) -> int:
@@ -490,15 +589,13 @@ def save_lan_keys(cams: list[WyzeCamera]) -> None:
 
     Unlike the *.pickle cache, clear_cache() leaves this file alone.
     """
-    path = Path(LAN_KEYS_FILE)
-    path.write_text(json.dumps([c.model_dump(exclude={"camera_info"}) for c in cams]))
-    path.chmod(0o600)
+    vault.write_text(LAN_KEYS_FILE, json.dumps([c.model_dump(exclude={"camera_info"}) for c in cams]))
 
 
 def load_lan_keys() -> list[WyzeCamera]:
     try:
-        cams = [WyzeCamera(**c) for c in json.loads(Path(LAN_KEYS_FILE).read_text())]
-    except (FileNotFoundError, ValueError, TypeError):
+        cams = [WyzeCamera(**c) for c in json.loads(vault.read_text(LAN_KEYS_FILE))]
+    except (OSError, ValueError, TypeError):
         return []
     if cams:
         logger.debug(f"[API] Wyze unreachable, using saved keys for {len(cams)} cameras")
@@ -549,9 +646,8 @@ def filter_cams(cams: list[WyzeCamera]) -> list[WyzeCamera]:
 
 
 def pickle_dump(name: str, data: object):
-    with open(TOKEN_PATH + name + ".pickle", "wb") as f:
-        logger.info(f"💾 Saving '{name}' to local cache...")
-        pickle.dump(data, f)
+    logger.info(f"💾 Saving '{name}' to local cache...")
+    vault.write_bytes(TOKEN_PATH + name + ".pickle", pickle.dumps(data))
 
 
 def parse_token(access_token: Optional[str]) -> tuple[Optional[str], Optional[str]]:

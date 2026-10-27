@@ -347,6 +347,11 @@
                 pairCodes.classList.replace("hidden", "flex");
                 out.className = "mt-2 text-sm text-zinc-400";
                 out.textContent = "Each code works once, for 10 minutes. Reload this page after pairing to see the phone below.";
+                // Without this, a half-finished away setup looks like it worked: only the At home code shows.
+                if (!codes.anywhere && awayBox && !document.getElementById("awaySignIn").classList.contains("hidden")) {
+                    out.className = "mt-2 text-sm text-amber-300";
+                    out.textContent = "This code only works at home. For one that works away, click Sign in to Tailscale above first.";
+                }
             })
             .catch((err) => { out.className = "mt-2 text-sm text-rose-300"; out.textContent = err.message; });
     });

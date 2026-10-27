@@ -24,6 +24,7 @@ AUTH_API = "https://auth-prod.api.wyze.com"
 WYZE_API = "https://api.wyzecam.com/app"
 CLOUD_API = "https://app-core.cloud.wyze.com/app"
 APP_API = "https://app.wyzecam.com/app"
+UPGRADE_API = "https://wyze-upgrade-service.wyzecam.com/app/v2/upgrade"
 SC_SV = {
     "default": {
         "sc": "9f275790cab94a72bd206c8876429f3c",
@@ -248,6 +249,7 @@ def get_camera_list(auth_info: WyzeCredential) -> list[WyzeCamera]:
                 parent_enr=parent_enr,
                 parent_mac=parent_mac,
                 thumbnail=thumbnail,
+                online={0: False, 1: True}.get(device.get("conn_state")),
             )
         )
     return result
@@ -268,6 +270,28 @@ def run_action(auth_info: WyzeCredential, camera: WyzeCamera, action: str):
     return validate_resp(resp)
 
 
+def get_auto_list(auth_info: WyzeCredential) -> list[dict]:
+    """The account's rules and shortcuts (CloudApi.URL_V2_GET_AUTO_LIST; a shortcut has is_hot_button 1)."""
+    resp = post(f"{WYZE_API}/v2/auto/get_auto_list", json=_payload(auth_info), headers=_headers())
+
+    return validate_resp(resp).get("auto_list") or []
+
+
+def run_auto(auth_info: WyzeCredential, auto_id: str) -> dict:
+    """Run one rule or shortcut now (CloudApi.URL_V2_RUN_AUTO)."""
+    payload = dict(_payload(auth_info), auto_id=auto_id)
+    resp = post(f"{WYZE_API}/v2/auto/run_auto", json=payload, headers=_headers())
+
+    return validate_resp(resp)
+
+
+def set_property_list(auth_info: WyzeCredential, mac: str, model: str, props: dict[str, int]) -> dict:
+    """Set several properties at once, like the Wyze app's chime screen (CloudProtocol.setPropertyList)."""
+    params = {"device_mac": mac, "device_model": model, "property_list": [{"pid": k, "pvalue": v} for k, v in props.items()]}
+
+    return post_device(auth_info, "set_property_list", params, api_version=2)
+
+
 def post_device(
     auth_info: WyzeCredential, endpoint: str, params: dict, api_version: int = 1
 ) -> dict:
@@ -284,6 +308,13 @@ def post_device(
         resp = post(device_url, json=params, headers=_headers())
 
     return validate_resp(resp)
+
+
+def post_upgrade(auth_info: WyzeCredential, endpoint: str, params: dict) -> dict:
+    """Post to the Wyze upgrade service, signed like the app's "dynamic signature" calls."""
+    payload = sort_dict(params)
+    headers = sign_payload(auth_info, "9319141212m2ik", payload)
+    return validate_resp(post(f"{UPGRADE_API}/{endpoint}", data=payload, headers=headers))
 
 
 def get_cam_webrtc(auth_info: WyzeCredential, mac_id: str, model: str = "") -> dict:

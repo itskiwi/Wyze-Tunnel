@@ -6,7 +6,7 @@ set -euo pipefail
 
 ALLOW='192\.168\.[0-3]\.[0-9]+|10\.0\.0\.21|10\.255\.255\.255|172\.30\.32\.2|2C:AA:8E:01:02:03'
 ALLOW+='|@(example\.com|mail\.com|doe\.com|bridge\.local|users\.noreply\.github\.com)|noreply@anthropic\.com|myEmail123@'
-ALLOW+='|@2x\.png|tail1234\.ts\.net|wt_your_key|whsec_\.\.\.'
+ALLOW+='|@2x\.png|tail1234\.ts\.net|wt_your_key|whsec_\.\.\.|100\.64\.0\.0|:10\.0\.0\.0$|172\.16\.0\.0|100\.101\.102\.103|100\.64\.1\.2'
 
 PATTERNS=(
     '\b(192\.168|10\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}\b'   # home network addresses

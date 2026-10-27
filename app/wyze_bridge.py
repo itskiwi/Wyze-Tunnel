@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 from threading import Thread
 
-from wyzebridge import config, detect, guests, integrations, phone_cams, phrases, pocket, recording, timelapse, webhooks
+from wyzebridge import config, detect, devices, guests, integrations, lockdown, phone_cams, phrases, pocket, recording, sd_copy, tamper, timelapse, webhooks
 from wyzebridge.auth import STREAM_AUTH, WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream
 from wyzebridge.go2rtc import lan_controls, tutk_available
@@ -29,13 +29,18 @@ class WyzeBridge(Thread):
         print(f"\n🚀 DOCKER-WYZE-BRIDGE v{config.VERSION} {config.BUILD_STR}\n")
         self.api: WyzeApi = WyzeApi()
         self.streams: StreamManager = StreamManager()
+        lockdown.seal_secrets()
         self.mtx: MtxServer = MtxServer()
         self.mtx.setup_webrtc(config.BRIDGE_IP)
         if config.LLHLS:
             self.mtx.setup_llhls(config.TOKEN_PATH, bool(config.HASS_TOKEN))
         detect.start_frigate(lambda: list(self.streams.streams))
         recording.start_trimming()
+        sd_copy.start(self.streams)
         timelapse.start(self.streams.get_rtsp_snap)
+        tamper.start(self.streams.get_rtsp_snap, lambda: [u for u, s in self.streams.streams.items() if s.state == 3])
+        devices.start_watch(lambda: self.api.auth, self.api.refresh_token)
+        devices.start_scheduler(lambda: self.api.auth, self.api.refresh_token)
 
     def run(self, fresh_data: bool = False) -> None:
         self._initialize(fresh_data)

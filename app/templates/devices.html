@@ -1,0 +1,288 @@
+{% extends 'base.html' %}
+
+{% block title %}Devices · {% endblock %}
+{% block content %}
+<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
+    <h1 class="page-title">Devices</h1>
+    {% if not current_guest() %}<a href="rules" class="btn ml-auto"><i class="fas fa-bolt"></i>Automations</a>{% endif %}
+    <button id="refresh" class="btn {{ '' if not current_guest() else 'ml-auto' }}"><i class="fas fa-rotate"></i>Refresh</button>
+</header>
+
+<div class="mx-auto max-w-2xl">
+    <p class="text-sm text-zinc-400">Plugs, lights, locks, sensors and the thermostat on your Wyze account. States come from the Wyze cloud and can be a minute old.</p>
+    <p id="status" class="mt-3 text-sm text-zinc-400" role="status">Loading…</p>
+    <div id="groups" class="mt-4 space-y-6"></div>
+</div>
+{% endblock %}
+
+{% block javascript %}
+<script>
+    const GROUPS = { OutdoorPlug: "Plugs", Plug: "Plugs", MeshLight: "Lights", Lock: "Locks", Thermostat: "Thermostat", Common: "Room sensors",
+        ContactSensor: "Door and window sensors", MotionSensor: "Motion sensors", ChimeSensor: "Chimes" };
+    const status = document.getElementById("status");
+    const el = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls || "", textContent: text ?? "" });
+
+    function send(dev, body) {
+        status.className = "mt-3 text-sm text-zinc-400";
+        status.textContent = `Sending to ${dev.name}…`;
+        return fetch("api/devices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mac: dev.mac, ...body }) })
+            .then((r) => r.json().then((data) => r.ok ? data : Promise.reject(new Error(data.error))))
+            .then(() => { status.textContent = `Sent to ${dev.name}.`; setTimeout(() => load(true), 3000); })
+            .catch((err) => { status.className = "mt-3 text-sm text-rose-300"; status.textContent = err.message || "Couldn't send. Try again."; });
+    }
+
+    function button(label, onClick, primary) {
+        const b = el("button", primary ? "btn btn-primary" : "btn", label);
+        b.addEventListener("click", onClick);
+        return b;
+    }
+
+    function facts(dev) {
+        const s = dev.state;
+        const out = [];
+        if (s.on !== undefined) out.push(s.on ? "On" : "Off");
+        if (s.locked !== undefined) out.push(s.locked ? "Locked" : "Unlocked");
+        if (s.open !== undefined) out.push(s.open ? "Open" : "Closed");
+        if (s.motion !== undefined) out.push(s.motion ? "Motion" : "No motion");
+        if (s.temperature !== undefined) out.push(`${s.temperature}°${s.temp_unit || ""}`);
+        if (s.humidity !== undefined) out.push(`${s.humidity}% humidity`);
+        if (s.mode_sys) out.push(`Mode ${s.mode_sys}${s.working_state ? `, ${s.working_state}` : ""}`);
+        if (s.heat_sp) out.push(`Heat to ${s.heat_sp}, cool to ${s.cool_sp}`);
+        if (s.fan_mode) out.push(`Fan ${s.fan_mode}`);
+        if (s.current_scenario) out.push(`Preset ${s.current_scenario}`);
+        if (s.dev_hold === "1") out.push(Number(s.dev_holdtime) > 0 ? `Held until ${when(Number(s.dev_holdtime))}` : "Held");
+        if (s.emheat === "1") out.push("Emergency heat on");
+        if (s.avg_temper) out.push(`Room sensor average ${s.avg_temper}°`);
+        if (s.in_use !== undefined) out.push(s.in_use ? "Counts for the thermostat" : "Not used by the thermostat");
+        if (s.brightness) out.push(`${s.brightness}% bright`);
+        if (s.battery !== undefined && s.battery !== null) out.push(`Battery ${s.battery}${s.locked !== undefined ? "%" : ""}`);
+        if (s.low_battery) out.push("Low battery");
+        if (dev.battery_days) out.push(`about ${dev.battery_days} days of battery left`);
+        if (dev.group) out.push(`Group: ${dev.group}`);
+        return out.join(" · ");
+    }
+
+    function controls(dev) {
+        const s = dev.state, box = el("div", "mt-3 flex flex-wrap items-center gap-2");
+        if (dev.type === "OutdoorPlug" || dev.type === "Plug") {
+            box.append(button(s.on ? "Turn off" : "Turn on", () => send(dev, { on: !s.on }), !s.on));
+        } else if (dev.type === "MeshLight") {
+            box.append(button(s.on ? "Turn off" : "Turn on", () => send(dev, { on: !s.on }), !s.on));
+            const bright = Object.assign(el("input", "w-32"), { type: "range", min: 1, max: 100, value: s.brightness || 100 });
+            bright.setAttribute("aria-label", "Brightness");
+            bright.addEventListener("change", () => send(dev, { brightness: Number(bright.value) }));
+            const warm = Object.assign(el("input", "w-32"), { type: "range", min: 1800, max: 6500, step: 100, value: s.color_temp || 2700 });
+            warm.setAttribute("aria-label", "Color temperature");
+            warm.addEventListener("change", () => send(dev, { color_temp: Number(warm.value) }));
+            const color = Object.assign(el("input", "h-9 w-12"), { type: "color", value: `#${s.color || "FFFFFF"}` });
+            color.setAttribute("aria-label", "Color");
+            color.addEventListener("change", () => send(dev, { color: color.value }));
+            box.append(bright, warm, color);
+        } else if (dev.type === "Thermostat") {
+            const mode = el("select", "field w-28");
+            mode.setAttribute("aria-label", "Mode");
+            mode.append(...["auto", "heat", "cool", "off"].map((m) => new Option(m, m, false, m === s.mode_sys)));
+            const heat = Object.assign(el("input", "field w-20"), { type: "number", value: s.heat_sp || "" });
+            heat.setAttribute("aria-label", "Heat to");
+            const cool = Object.assign(el("input", "field w-20"), { type: "number", value: s.cool_sp || "" });
+            cool.setAttribute("aria-label", "Cool to");
+            box.append(mode, el("span", "text-sm text-zinc-400", "Heat"), heat, el("span", "text-sm text-zinc-400", "Cool"), cool,
+                button("Save", () => send(dev, { mode: mode.value, heat_sp: Number(heat.value), cool_sp: Number(cool.value) }), true));
+            const pick = (label, key, values, current) => {
+                const sel = el("select", "field w-28");
+                sel.setAttribute("aria-label", label);
+                sel.append(...values.map((v) => new Option(`${label} ${v}`, v, false, v === current)));
+                sel.addEventListener("change", () => send(dev, { [key]: sel.value }));
+                return sel;
+            };
+            const emheat = Object.assign(el("input"), { type: "checkbox", checked: s.emheat === "1" });
+            emheat.addEventListener("change", () => send(dev, { emheat: emheat.checked }));
+            const em = el("label", "flex items-center gap-1 text-sm text-zinc-400");
+            em.append(emheat, "Emergency heat");
+            box.append(pick("Fan", "fan_mode", ["auto", "on"], s.fan_mode), pick("Preset", "preset", ["home", "away", "sleep"], s.current_scenario),
+                s.dev_hold === "1" ? button("Resume schedule", () => send(dev, { hold: false })) : button("Hold", () => send(dev, { hold: 0 })), em);
+        } else if (dev.model === "CO_TH1" && s.in_use !== undefined) {
+            box.append(button(s.in_use ? "Stop using for the thermostat" : "Use for the thermostat", () => send(dev, { in_use: !s.in_use })));
+        } else if (dev.type === "Lock") {
+            box.append(button("Lock", () => send(dev, { lock: true }), true),
+                button("Unlock", () => confirm(`Unlock ${dev.name}?`) && send(dev, { lock: false })));
+        }
+        return box.childElementCount ? box : "";
+    }
+
+    const getJson = (url) => fetch(url).then((r) => r.json().then((data) => r.ok ? data : Promise.reject(new Error(data.error || "Couldn't load that."))));
+    const when = (t) => new Date(t * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const day = (t) => new Date(t).toLocaleDateString([], { month: "short", day: "numeric" });
+    const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    function codeLine(c) {
+        const parts = [c.type];
+        if (c.expired) parts.push("expired");
+        if (c.type === "temporary" && c.end) parts.push(`${c.begin ? day(c.begin) + " to " : "until "}${day(c.end)}`);
+        if (c.type === "recurring") parts.push(`${c.days.map((d) => DAYS[d % 7] || d).join(" ")} ${c.from}-${c.to}`.trim());
+        return `${c.name || "Unnamed"}: ${parts.join(", ")}`;
+    }
+
+    function lockPanel(dev, minutes) {
+        const box = el("details", "mt-3 text-sm"), body = el("div", "mt-2 space-y-3");
+        box.append(el("summary", "cursor-pointer text-zinc-300", "Activity and keypad codes"), body);
+        const alert = el("label", "flex flex-wrap items-center gap-2 text-zinc-400", "Alert if unlocked for");
+        const mins = Object.assign(el("input", "field w-20"), { type: "number", min: 0, max: 1440, value: minutes || "" , placeholder: "off" });
+        mins.setAttribute("aria-label", "Minutes before the unlocked alert (empty is off)");
+        alert.append(mins, "minutes", button("Save", () => fetch("api/devices/lock-alert", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ minutes: mins.value || 0 }) })
+            .then((r) => r.json().then((data) => r.ok ? data : Promise.reject(new Error(data.error))))
+            .then((data) => { status.className = "mt-3 text-sm text-zinc-400"; status.textContent = data.lock_minutes ? `You'll be alerted when ${dev.name} stays unlocked ${data.lock_minutes} minutes.` : "Unlocked alert is off."; })
+            .catch((err) => { status.className = "mt-3 text-sm text-rose-300"; status.textContent = err.message; })));
+        const log = el("div", "space-y-1 text-zinc-400", "Loading…");
+        body.append(alert, log);
+        box.addEventListener("toggle", () => {
+            if (!box.open || box.dataset.loaded) return;
+            box.dataset.loaded = "1";
+            getJson(`api/devices/lock-log?mac=${encodeURIComponent(dev.mac)}`).then((data) => {
+                const rows = data.events.map((e) => el("p", "", `${when(e.time)}  ${e.event}${e.who ? ` by ${e.who}` : ""}${e.source ? ` (${e.source})` : ""}`));
+                const codes = data.codes.map((c) => el("p", "", codeLine(c)));
+                log.replaceChildren(el("p", "font-medium text-zinc-300", "Recent activity"), ...(rows.length ? rows : [el("p", "", "Nothing recent.")]),
+                    el("p", "mt-2 font-medium text-zinc-300", "Keypad codes (names only)"), ...(codes.length ? codes : [el("p", "", "No keypad codes.")]));
+            }).catch((err) => { delete box.dataset.loaded; log.textContent = err.message; });
+        });
+        return box;
+    }
+
+    function schedulePanel(dev, entries) {
+        const box = el("details", "mt-3 text-sm"), list = el("div", "mt-2 space-y-2");
+        const next = entries.map((e) => e.next).filter(Boolean).sort()[0];
+        box.append(el("summary", "cursor-pointer text-zinc-300", next ? `Schedule · next ${when(next)}` : "Schedule"), list);
+        const addRow = (e) => {
+            const row = el("div", "flex flex-wrap items-center gap-2");
+            const time = Object.assign(el("input", "field w-28"), { type: "time", value: e.time });
+            time.setAttribute("aria-label", "Time");
+            const on = el("select", "field w-24");
+            on.setAttribute("aria-label", "Action");
+            on.append(new Option("Turn on", "1", false, e.on), new Option("Turn off", "0", false, !e.on));
+            const days = DAYS.map((d, i) => {
+                const c = Object.assign(document.createElement("input"), { type: "checkbox", checked: e.days.includes(i) });
+                const l = el("label", "flex items-center gap-1 text-zinc-400");
+                l.append(c, d);
+                return c;
+            });
+            row.append(time, on, ...days.map((c) => c.parentNode), button("Remove", () => row.remove()));
+            row.read = () => ({ time: time.value, on: on.value === "1", days: days.map((c, i) => c.checked ? i : -1).filter((i) => i >= 0) });
+            list.append(row);
+        };
+        entries.forEach(addRow);
+        const bar = el("div", "flex gap-2");
+        bar.append(button("Add time", () => addRow({ time: "07:00", on: true, days: [0, 1, 2, 3, 4, 5, 6] })), button("Save schedule", () => {
+            status.className = "mt-3 text-sm text-zinc-400";
+            fetch("api/devices/schedules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mac: dev.mac, schedules: [...list.children].map((r) => r.read()) }) })
+                .then((r) => r.json().then((data) => r.ok ? data : Promise.reject(new Error(data.error))))
+                .then(() => { status.textContent = `Schedule saved for ${dev.name}.`; load(false); })
+                .catch((err) => { status.className = "mt-3 text-sm text-rose-300"; status.textContent = err.message || "Couldn't save."; });
+        }, true));
+        box.append(bar, el("p", "mt-1 text-xs text-zinc-500", "Runs from this bridge in its own time zone."));
+        return box;
+    }
+
+    const SVGNS = "http://www.w3.org/2000/svg";
+    const svg = (tag, attrs) => Object.entries(attrs).reduce((n, [k, v]) => (n.setAttribute(k, v), n), document.createElementNS(SVGNS, tag));
+
+    function chart(title, points, series, t0, t1) {
+        const W = 320, H = 110, P = 28, vals = points.flatMap((p) => series.map((s) => p[s.key]).filter((v) => v !== undefined));
+        const wrap = el("figure", "mt-2"), g = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "w-full text-zinc-500", role: "img", "aria-label": title });
+        wrap.append(el("figcaption", "text-xs text-zinc-400", `${title}${series.length > 1 ? ` (${series.map((s) => s.label).join(", ")})` : ""}`), g);
+        if (!vals.length) { wrap.append(el("p", "text-xs text-zinc-500", "No readings yet.")); return wrap; }
+        const lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
+        const x = (t) => P + ((t - t0) / (t1 - t0)) * (W - P - 4), y = (v) => H - 14 - ((v - lo) / span) * (H - 24);
+        [lo, hi].forEach((v) => { const t = svg("text", { x: 0, y: y(v) + 3, "font-size": 9, fill: "currentColor" }); t.textContent = Math.round(v * 10) / 10; g.append(t); });
+        series.forEach((s) => {
+            const pts = points.filter((p) => p[s.key] !== undefined).map((p) => `${x(p.t).toFixed(1)},${y(p[s.key]).toFixed(1)}`).join(" ");
+            g.append(svg("polyline", { points: pts, fill: "none", stroke: s.color, "stroke-width": 1.5, "stroke-dasharray": s.dash || "" }));
+        });
+        return wrap;
+    }
+
+    const span = (m) => `${Math.floor(m / 60)}h ${m % 60}m`;
+    function historyPanel(dev) {
+        const box = el("details", "mt-3 text-sm"), body = el("div", "mt-2");
+        box.append(el("summary", "cursor-pointer text-zinc-300", "History"), body);
+        const show = (hours) => getJson(`api/devices/history?mac=${encodeURIComponent(dev.mac)}&hours=${hours}`).then((data) => {
+            const t1 = Date.now() / 1000, t0 = t1 - hours * 3600, p = data.points;
+            const out = [chart(`Temperature °${dev.state.temp_unit || dev.state.temperature_unit || ""}`, p, [{ key: "temp", label: "now", color: "#38bdf8" }, { key: "heat", label: "heat to", color: "#fb923c", dash: "3 3" }, { key: "cool", label: "cool to", color: "#818cf8", dash: "3 3" }], t0, t1),
+                chart("Humidity %", p, [{ key: "hum", label: "now", color: "#34d399" }], t0, t1)];
+            if (dev.model === "CO_EA1") out.push(el("p", "mt-2 text-xs text-zinc-400", `Heating ${span(data.heat_minutes)}, cooling ${span(data.cool_minutes)} in this time.`));
+            body.replaceChildren(...out);
+        }).catch((err) => { body.textContent = err.message; });
+        const bar = el("div", "flex gap-2");
+        bar.append(button("24 hours", () => show(24)), button("7 days", () => show(168)));
+        body.before(bar);
+        box.addEventListener("toggle", () => { if (box.open && !box.dataset.loaded) { box.dataset.loaded = "1"; show(24); } });
+        return box;
+    }
+
+    function usagePanel(dev) {
+        const box = el("details", "mt-3 text-sm"), body = el("div", "mt-2 space-y-1 text-zinc-400", "Loading…");
+        box.append(el("summary", "cursor-pointer text-zinc-300", "Time on"), body);
+        box.addEventListener("toggle", () => {
+            if (!box.open || box.dataset.loaded) return;
+            box.dataset.loaded = "1";
+            getJson(`api/devices/usage?mac=${encodeURIComponent(dev.mac)}`).then((data) => {
+                const rows = data.days.map((d) => { const m = d.minutes.reduce((a, b) => a + b, 0); return el("p", "", `${new Date(d.date_ts).toLocaleDateString()}  ${span(m)}`); });
+                body.replaceChildren(...(rows.length ? rows : [el("p", "", "No usage recorded.")]));
+            }).catch((err) => { delete box.dataset.loaded; body.textContent = err.message; });
+        });
+        return box;
+    }
+
+    function filterPanel(dev) {
+        const box = el("details", "mt-3 text-sm"), body = el("div", "mt-2 space-y-2 text-zinc-400", "Loading…");
+        box.append(el("summary", "cursor-pointer text-zinc-300", "Air filters"), body);
+        box.addEventListener("toggle", () => {
+            if (!box.open || box.dataset.loaded) return;
+            box.dataset.loaded = "1";
+            getJson(`api/devices/filters?mac=${encodeURIComponent(dev.mac)}`).then((data) => {
+                const rows = data.filters.map((f) => {
+                    const row = el("div", "flex flex-wrap items-center gap-2");
+                    row.append(el("span", f.replace ? "text-rose-300" : "", `${f.name}${f.size ? ` (${f.size})` : ""}: ${f.used ?? "?"}% used of ${f.life_months} months${f.replace ? ", replace it" : ""}`),
+                        button("I replaced it", () => confirm(`Reset ${f.name}?`) && send(dev, { filter_reset: f.n })));
+                    return row;
+                });
+                body.replaceChildren(...(rows.length ? rows : [el("p", "", "No filters set up in the Wyze app.")]));
+            }).catch((err) => { delete box.dataset.loaded; body.textContent = err.message; });
+        });
+        return box;
+    }
+
+    function render(list, lockMinutes, scheds) {
+        const groups = {};
+        list.forEach((d) => (groups[GROUPS[d.type] || "Hubs and other devices"] ??= []).push(d));
+        document.getElementById("groups").replaceChildren(...Object.entries(groups).map(([name, devs]) => {
+            const section = el("section", "surface p-5");
+            section.append(el("h2", "font-semibold", name));
+            devs.forEach((dev) => {
+                const row = el("div", "mt-4 border-t border-zinc-800 pt-4 first-of-type:border-0");
+                const head = el("div", "flex flex-wrap items-center gap-2");
+                head.append(el("span", "font-medium", dev.name), el("span", "text-xs text-zinc-500", dev.model),
+                    el("span", `chip ${dev.online ? "chip-ok" : "chip-bad"} ml-auto`, dev.online ? "Online" : "Offline"));
+                row.append(head, el("p", "mt-1 text-sm text-zinc-400", dev.state.error || facts(dev)), controls(dev));
+                if (["Plug", "OutdoorPlug", "MeshLight"].includes(dev.type)) row.append(schedulePanel(dev, scheds[dev.mac] || []));
+                if (dev.type === "Lock") row.append(lockPanel(dev, lockMinutes));
+                if (dev.type === "Plug" || dev.type === "OutdoorPlug") row.append(usagePanel(dev));
+                if (dev.model === "CO_EA1" || dev.model === "CO_TH1") row.append(historyPanel(dev));
+                if (dev.model === "CO_EA1") row.append(filterPanel(dev));
+                section.append(row);
+            });
+            return section;
+        }));
+    }
+
+    function load(fresh) {
+        return Promise.all([getJson(`api/devices${fresh ? "?fresh=1" : ""}`), getJson("api/devices/schedules")])
+            .then(([data, scheds]) => {
+                render(data.devices, data.lock_minutes, scheds);
+                if (!status.classList.contains("text-rose-300")) status.textContent = data.devices.length ? "" : "No plugs, lights, locks or sensors on this Wyze account.";
+            })
+            .catch((err) => { status.className = "mt-3 text-sm text-rose-300"; status.textContent = err.message || "Couldn't load devices."; });
+    }
+    document.getElementById("refresh").addEventListener("click", () => load(true));
+    load(false);
+</script>
+{% endblock %}

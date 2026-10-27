@@ -4,6 +4,7 @@ GET_CMDS = {
     "notifications": None,
     "update_snapshot": None,
     "motion_detection": None,
+    "sound_detection": None,
     "take_photo": "K10058TakePhoto",
     "irled": "K10044GetIRLEDStatus",
     "night_vision": "K10040GetNightVisionStatus",
@@ -19,18 +20,25 @@ GET_CMDS = {
     "ptz_position": "K11006GetCurCruisePoint",
     "motion_tracking": "K11020GetMotionTracking",
     "motion_tagging": "K10290GetMotionTagging",
+    "motion_sensitivity": "K10204GetMotionAlarmParam",
+    "sound_sensitivity": "K10254GetSoundAlarmParam",
     "camera_info": "K10020CheckCameraInfo",
     "battery_usage": "K10448GetBatteryUsage",
     "rtsp": "K10604GetRtspParam",
+    "doorbell_chime": "K12082GetDb2DdqParameter",
+    "ring_sound": "K12088GetDb2RingSound",
     "accessories": "K10720GetAccessoriesInfo",
     "floodlight": "K10788GetIntegratedFloodlightInfo",
+    "wdr": "K12090GetDb2WDRStatus",
+    "db2_battery": "K12084GetDb2BatteryLevel",
     "whitelight": "K10820GetWhiteLightInfo",
     "param_info": "K10020CheckCameraParams",  # Requires a Payload
+    "sd_minutes": "K10350GetRecordInfo",  # Requires a Payload: epoch start of a 12-hour window
     "_bitrate": "K10050GetVideoParam",  # Only works on newer firmware
 }
 
 # These GET_CMDS can include a payload:
-GET_PAYLOAD = {"param_info"}
+GET_PAYLOAD = {"param_info", "sd_minutes"}
 
 SET_CMDS = {
     "state": None,
@@ -41,6 +49,7 @@ SET_CMDS = {
     "bitrate": None,
     "notifications": None,
     "motion_detection": None,
+    "sound_detection": None,
     "irled": "K10046SetIRLEDStatus",
     "night_vision": "K10042SetNightVisionStatus",
     "status_light": "K10032SetNetworkLightStatus",
@@ -57,14 +66,25 @@ SET_CMDS = {
     "ptz_position": "K11018SetPTZPosition",
     "motion_tracking": "K11022SetMotionTracking",
     "motion_tagging": "K10292SetMotionTagging",
+    "motion_sensitivity": "K10206SetMotionSensitivity",
+    "sound_sensitivity": "K10256SetSoundSensitivity",
     "hor_flip": "K10052HorizontalFlip",
     "ver_flip": "K10052VerticalFlip",
     "rtsp": "K10600SetRtspSwitch",
     "quick_response": "K11635ResponseQuickMessage",
     "spotlight": "K10646SetSpotlightStatus",
     "floodlight": "K12060SetFloodLightSwitch",
+    "wdr": "K12092SetDb2WDRStatus",
+    "fl_motion": None,  # Floodlight v2, see wyze_control.floodlight_v2_set
+    "fl_duration": None,
+    "fl_brightness": None,
     "format_sd": "K10242FormatSDCard",
+    "doorbell_chime": "K12080SetDb2DdqParameter",  # payload "type,0,seconds"; 0 leaves a field alone
+    "ring_sound": "K12086SetDb2RingSound",
 }
+
+# Commands that change something on the camera when given a value. Guests and family can't send these.
+OWNER_CMDS = {"wdr", "fl_motion", "fl_duration", "fl_brightness"}
 
 CMD_VALUES = {
     "on": 1,
