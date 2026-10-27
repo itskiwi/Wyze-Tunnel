@@ -1530,6 +1530,8 @@ def create_app():
             settings=detect.load_settings(),
             env_frigate=bool(detect.FRIGATE_URL),
             can_detect=detect.cv2 is not None,
+            gpu=detect.ai.device() == "gpu",
+            default_model=detect.default_model(),
             keep_days=max(1, detect.KEEP.days),
             api=WbAuth.api,
             version=config.VERSION,

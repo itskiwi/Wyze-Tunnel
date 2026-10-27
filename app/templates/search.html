@@ -36,9 +36,9 @@
         </fieldset>
         <fieldset>
             <legend class="text-sm text-zinc-400">How hard to look</legend>
-            {% for value, title, note in [("standard", "Standard", "Fast, fine on a Raspberry Pi. 23 MB."), ("strong", "Stronger", "Spots smaller, farther people and cars, and trucks. Uses a few times more CPU, so pick it on a PC. 36 MB.")] %}
+            {% for value, title, note in [("standard", "Standard", "Fast, fine on a Raspberry Pi. 23 MB."), ("strong", "Stronger", "Spots smaller, farther people and cars, and trucks. Runs on this PC's graphics chip, so it stays light. 36 MB." if gpu else "Spots smaller, farther people and cars, and trucks. Uses a few times more CPU, so pick it on a PC. 36 MB.")] %}
             <label class="mt-2 flex items-start gap-3">
-                <input type="radio" name="model" value="{{ value }}" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.get('model', 'standard') == value }} />
+                <input type="radio" name="model" value="{{ value }}" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.get('model', default_model) == value }} />
                 <span><span class="block">{{ title }}</span><span class="block text-sm text-zinc-500">{{ note }}</span></span>
             </label>
             {% endfor %}
