@@ -18,17 +18,20 @@ under the run's artifacts as **store-msix**. It is never attached to GitHub rele
 - **App updates** come from the Store, so the tray stops pointing at GitHub releases. Windows restarts the tray after a Store
   update.
 
-## Trying the test package (Windows 11)
+## Trying the test package
 
-The CI's `wyze-tunnel-<version>-test.msix` is unsigned on purpose. Uninstall the regular Wyze Tunnel app first, so that two trays
-don't run. Then, in PowerShell:
+The CI's `wyze-tunnel-<version>-test.msix` is unsigned. Windows only installs an unsigned desktop app like this one with
+**Developer Mode** turned on (Settings, System, For developers). Quit the regular Wyze Tunnel app first, so that two trays don't
+run. Then, in PowerShell:
 
 ```powershell
-Add-AppxPackage -AllowUnsigned .\wyze-tunnel-0.1.7-test.msix
+Copy-Item .\wyze-tunnel-0.1.7-test.msix .\wyze-tunnel-test.zip
+Expand-Archive .\wyze-tunnel-test.zip .\wyze-tunnel-test
+Add-AppxPackage -Register .\wyze-tunnel-test\AppxManifest.xml
 ```
 
-Remove it in Settings, Apps, or with `Get-AppxPackage WyzeTunnel.Test | Remove-AppxPackage`. Your settings and cameras stay in
-`%LOCALAPPDATA%\Wyze Tunnel`, as with the regular app.
+Remove it with `Get-AppxPackage WyzeTunnel.Test | Remove-AppxPackage`, and then you can turn Developer Mode off again. Your
+settings and cameras stay in `%LOCALAPPDATA%\Wyze Tunnel`, as with the regular app.
 
 ## Submitting to the Store (owner steps)
 
