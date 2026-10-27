@@ -1,102 +1,254 @@
 {% extends 'base.html' %}
 
-{% block title %}Event history · {% endblock %}
+{% block title %}Events · {% endblock %}
 {% block content %}
 <header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
     <h1 class="page-title">Recordings</h1>
-    {% if not current_guest() %}<button id="clear" type="button" class="btn ml-auto">Delete all</button>{% endif %}
+    {% if not current_guest() %}
+    <button id="pick" type="button" class="btn ml-auto" aria-pressed="false"><i class="fas fa-list-check" aria-hidden="true"></i>Select</button>
+    <button id="clear" type="button" class="btn">Delete all</button>
+    {% endif %}
 </header>
 {% include '_recordings_nav.html' %}
-<p class="mb-4 text-sm text-zinc-400">Every camera event's picture and clip, and open/close and motion history from your sensors, saved here after Wyze deletes its own copies.</p>
 
-<form id="filters" class="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-    <label><span class="text-sm text-zinc-400">Device</span><select name="device" class="field mt-1"><option value="">All</option></select></label>
-    <label><span class="text-sm text-zinc-400">Type</span><select name="type" class="field mt-1"><option value="">All</option></select></label>
-    <label><span class="text-sm text-zinc-400">From</span><input type="date" name="since" class="field mt-1" /></label>
-    <label><span class="text-sm text-zinc-400">To</span><input type="date" name="until" class="field mt-1" /></label>
-    <label><span class="text-sm text-zinc-400">Search</span><input type="search" name="q" maxlength="100" class="field mt-1" /></label>
-</form>
+<div class="ev-page">
+    <form id="filters" class="ev-bar" role="search">
+        <label class="ev-search"><i class="fas fa-magnifying-glass" aria-hidden="true"></i><span class="sr-only">Search events</span>
+            <input type="search" name="q" maxlength="100" placeholder="Search, like &quot;package&quot; or a camera" autocomplete="off" /></label>
+        <label><span class="sr-only">Camera</span><select name="device" class="field ev-cams"><option value="">All cameras</option></select></label>
+    </form>
 
-<ul id="list" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></ul>
-<p id="empty" class="hidden text-zinc-500">No events saved yet.</p>
-<button id="more" type="button" class="btn mx-auto mt-5 hidden">Show more</button>
+    <div class="ev-week">
+        <button type="button" id="older" class="round-btn" title="Earlier week"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
+        <div id="week" class="ev-days" role="group" aria-label="Day"></div>
+        <button type="button" id="newer" class="round-btn" title="Later week"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
+    </div>
+
+    <section id="recap" class="surface ev-recap" hidden>
+        <div class="ev-rhead"><h2 id="recapTitle"></h2><span id="recapCount"></span></div>
+        <ul id="recapList"></ul>
+        <div class="ev-ribbon" aria-hidden="true"><div id="ribbon" class="ev-track"></div>
+            <div class="ev-hours"><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div></div>
+        <div class="ev-rbtns">
+            <button type="button" id="review" class="btn btn-primary" hidden></button>
+            <button type="button" id="playAll" class="btn" hidden></button>
+        </div>
+    </section>
+
+    <div id="chips" class="ev-chips" role="group" aria-label="Kind of event"></div>
+    <div id="list"></div>
+    <p id="empty" class="ev-empty" hidden></p>
+    <button id="more" type="button" class="btn mx-auto mt-5" hidden>Show more</button>
+</div>
+
+{% if not current_guest() %}
+<div id="pickBar" class="surface ev-pickbar" hidden>
+    <span id="pickCount">Tap events to pick them</span>
+    <button type="button" id="pickKeep" class="btn"><i class="fas fa-star" aria-hidden="true"></i>Keep</button>
+    <button type="button" id="pickDelete" class="btn"><i class="fas fa-trash" aria-hidden="true"></i>Delete</button>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block javascript %}
+<script src="static/events.js?v={{ version }}"></script>
 <script>
-    const form = document.getElementById("filters"), list = document.getElementById("list");
-    const more = document.getElementById("more"), empty = document.getElementById("empty");
-    const media = (id, kind) => `history/media/${id}/${kind}`;
-    let last = 0, ready = false;
+    const { kind, weight, row, play, clock, span, h, icon } = WTEvents;
+    const OWNER = {{ 'false' if current_guest() else 'true' }};
+    const $ = (id) => document.getElementById(id);
+    const form = $("filters"), list = $("list"), DAY = 86400;
+    const midnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+    const unix = (d) => Math.floor(d.getTime() / 1000);
+    const today = midnight(new Date());
+    let day = today, weekEnd = today, type = "", data = null, ready = false, picking = false;
+    const picked = new Set();
 
-    function fill(select, values) {
-        select.append(...values.map(v => Object.assign(document.createElement("option"), { value: v, textContent: v })));
+    // "New since you last looked" is per browser; the first visit starts with nothing new.
+    const store = (k, v) => { try { return v === undefined ? localStorage.getItem(k) : localStorage.setItem(k, v); } catch { return null; } };
+    let seen = Number(store("events-seen")) || unix(new Date());
+    addEventListener("pagehide", () => store("events-seen", unix(new Date())));
+
+    function params(extra) {
+        const p = new URLSearchParams();
+        for (const [k, v] of new FormData(form)) if (v) p.set(k, v);
+        for (const [k, v] of Object.entries(extra)) if (v) p.set(k, v);
+        return p;
     }
 
-    function card(e) {
-        const li = document.createElement("li"), box = document.createElement("div");
-        li.className = "surface overflow-hidden";
-        if (e.img) {
-            const img = document.createElement("img");
-            img.src = media(e.id, "img"); img.loading = "lazy"; img.alt = ""; img.className = "aspect-video w-full object-cover";
-            li.append(img);
+    async function loadWeek() {
+        const start = addDays(weekEnd, -6);
+        const resp = await fetch("history/events?" + params({ since: unix(start), until: unix(addDays(weekEnd, 1)), limit: 1 }));
+        if (!resp.ok) return;
+        const { times } = await resp.json();
+        // three bars a day: night, daytime, evening
+        const bins = Array.from({ length: 7 }, () => [0, 0, 0]);
+        for (const t of times) {
+            const d = new Date(t * 1000), i = Math.round((midnight(d) - start) / DAY / 1000);
+            if (i >= 0 && i < 7) bins[i][Math.min(2, Math.floor(d.getHours() / 8))]++;
         }
-        box.className = "p-3";
-        const text = document.createElement("p"), when = document.createElement("p");
-        text.className = "font-semibold"; text.textContent = e.text;
-        when.className = "text-sm text-zinc-400";
-        when.textContent = `${e.device} · ${e.type} · ${new Date(e.ts * 1000).toLocaleString()}`;
-        box.append(text, when);
-        if (e.clip) {
-            const play = document.createElement("button");
-            play.type = "button"; play.className = "btn mt-2"; play.textContent = "Play clip";
-            play.onclick = () => {
-                const v = document.createElement("video");
-                v.src = media(e.id, "clip"); v.controls = v.autoplay = true; v.className = "w-full";
-                play.replaceWith(v);
-            };
-            box.append(play);
-        }
-        {% if not current_guest() %}
-        const del = document.createElement("button");
-        del.type = "button"; del.className = "btn ml-2 mt-2"; del.textContent = "Delete";
-        del.onclick = async () => {
-            if (confirm("Delete this event and its files?") && (await fetch(`history/${e.id}/delete`, { method: "POST" })).ok) li.remove();
-        };
-        box.append(del);
-        {% endif %}
-        li.append(box);
-        return li;
+        const top = Math.max(1, ...bins.flat());
+        $("week").replaceChildren(...bins.map((b, i) => {
+            const d = addDays(start, i), btn = h("button", "ev-day");
+            btn.type = "button";
+            btn.disabled = d > today;
+            btn.setAttribute("aria-pressed", +d === +day);
+            btn.append(h("span", "ev-dow", +d === +today ? "Today" : d.toLocaleDateString([], { weekday: "short" })), h("span", "ev-d", d.getDate()));
+            const bars = h("span", "ev-bars");
+            bars.append(...b.map((n) => Object.assign(h("i"), { style: `height:${n ? 3 + Math.round(11 * n / top) : 2}px` })));
+            btn.append(bars);
+            btn.setAttribute("aria-label", `${d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}, ${b[0] + b[1] + b[2]} events`);
+            btn.onclick = () => { day = d; type = ""; loadWeek(); load(false); };
+            return btn;
+        }));
+        $("newer").disabled = +weekEnd >= +today;
     }
 
     async function load(append) {
-        const p = new URLSearchParams();
-        for (const [k, v] of new FormData(form)) {
-            if (!v) continue;
-            // dates are local midnight; "To" includes its whole day
-            const day = new Date(v + "T00:00").getTime() / 1000;
-            p.set(k, k === "since" ? day : k === "until" ? day + 86400 : v);
-        }
-        if (append) p.set("before", last);
-        const resp = await fetch("history/events?" + p);
+        const extra = { since: unix(day), until: unix(addDays(day, 1)), type, limit: 300, before: append && data.events.length ? data.events.at(-1).ts : 0 };
+        const resp = await fetch("history/events?" + params(extra));
         if (!resp.ok) return;
-        const data = await resp.json();
-        if (!ready) { fill(form.device, data.devices); fill(form.type, data.types); ready = true; }
-        if (!append) list.replaceChildren();
-        list.append(...data.events.map(card));
-        last = data.events.length ? data.events[data.events.length - 1].ts : last;
-        more.classList.toggle("hidden", data.events.length < 60);
-        empty.classList.toggle("hidden", list.children.length > 0);
+        const got = await resp.json();
+        if (!ready) {
+            form.device.append(...got.devices.map((v) => Object.assign(h("option"), { value: v, textContent: v })));
+            ready = true;
+        }
+        $("more").hidden = got.events.length < 300;
+        if (append) { got.events = data.events.concat(got.events); got.groups = data.groups.concat(got.groups); }
+        data = got;
+        render();
+    }
+
+    function render() {
+        const byId = Object.fromEntries(data.events.map((e) => [e.id, e]));
+        const oldest = [...data.events].reverse();
+        const isToday = +day === +today;
+        const total = Object.values(data.counts).reduce((a, b) => a + b, 0);
+
+        // filter chips: only kinds this day has, each with its count
+        const chip = (t, label, n, ico) => {
+            const b = h("button", "ev-chip");
+            b.type = "button";
+            b.setAttribute("aria-pressed", t === type);
+            if (ico) b.append(icon(ico));
+            b.append(label, h("span", "ev-n", n));
+            b.onclick = () => { type = t; load(false); };
+            return b;
+        };
+        $("chips").replaceChildren(chip("", "Everything", total), ...Object.entries(data.counts).sort((a, b) => weight(b[0]) - weight(a[0]) || b[1] - a[1])
+            .map(([t, n]) => chip(t, n > 1 ? kind(t)[1] : kind(t)[0], n, kind(t)[2])));
+        $("chips").hidden = !total;
+
+        // recap: the few things worth knowing, most important first, shown newest first
+        $("recap").hidden = !data.events.length;
+        $("recapTitle").textContent = isToday ? "Today so far" : day.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+        const cams = new Set(data.events.map((e) => e.device)).size;
+        $("recapCount").textContent = `${data.events.length} event${data.events.length === 1 ? "" : "s"} · ${cams} camera${cams === 1 ? "" : "s"}`;
+        const lead = [...data.groups].sort((a, b) => weight(b.kind) - weight(a.kind) || b.last - a.last).slice(0, 5).sort((a, b) => b.last - a.last);
+        $("recapList").replaceChildren(...lead.map((g) => {
+            const e = byId[g.ids[0]], li = h("li"), b = h("button", "ev-line");
+            b.type = "button";
+            const dot = h("span", `ev-dot ${kind(g.kind)[3]}`);
+            dot.append(icon(kind(g.kind)[2]));
+            const text = h("span", "", e.text.replace(/\.$/, ""));
+            if (g.count > 1) text.append(" ", h("em", "", `×${g.count}`));
+            b.append(dot, text, h("time", "", g.count > 1 && g.last - g.first >= 60 ? span(g.first, g.last) : clock(g.last)));
+            b.onclick = () => openGroup(g, byId);
+            li.append(b);
+            return li;
+        }));
+        $("ribbon").replaceChildren(...data.events.map((e) => {
+            const d = new Date(e.ts * 1000);
+            return Object.assign(h("i", kind(e.type)[3]), { style: `left:${((d.getHours() * 60 + d.getMinutes()) / 14.4).toFixed(2)}%` });
+        }), ...(isToday ? [Object.assign(h("b", "ev-now"), { style: `left:${((new Date().getHours() * 60 + new Date().getMinutes()) / 14.4).toFixed(2)}%` })] : []));
+
+        // shortcut: "new" only looks at the day on screen, which is today by default.
+        const fresh = oldest.filter((e) => e.ts > seen && (e.clip || e.img));
+        $("review").hidden = !fresh.length;
+        $("review").replaceChildren(icon("fa-circle-play"), `Review ${fresh.length} new`);
+        $("review").onclick = () => play(fresh, 0, { review: true, owner: OWNER, onChange: render, onClose: () => { seen = unix(new Date()); store("events-seen", seen); render(); } });
+        const clips = oldest.filter((e) => e.clip), mins = Math.max(1, Math.round(clips.reduce((a, e) => a + (e.dur || 10), 0) / 60));
+        $("playAll").hidden = clips.length < 2;
+        $("playAll").replaceChildren(icon("fa-film"), `Play ${isToday ? "today" : "this day"} · ${mins} min`);
+        $("playAll").onclick = () => play(clips, 0, { auto: true, owner: OWNER, onChange: render, onDelete: drop });
+
+        // the list, by hour
+        const hours = new Map();
+        for (const g of data.groups) {
+            const d = new Date(g.last * 1000), key = d.getHours();
+            if (!hours.has(key)) hours.set(key, []);
+            hours.get(key).push(g);
+        }
+        list.replaceChildren(...[...hours].flatMap(([hr, gs]) => {
+            const n = gs.reduce((a, g) => a + g.count, 0);
+            const head = h("h3", "ev-hour", new Date(2000, 0, 1, hr).toLocaleTimeString([], { hour: "numeric" }));
+            head.append(h("small", "", `${n} event${n === 1 ? "" : "s"}`));
+            const box = h("div", "surface ev-group");
+            box.append(...gs.map((g) => {
+                const r = row(g, byId, seen);
+                r.classList.toggle("is-picked", g.ids.every((id) => picked.has(id)));
+                r.onclick = () => picking ? pick(g, r) : openGroup(g, byId);
+                return r;
+            }));
+            return [head, box];
+        }));
+        const empty = $("empty");
+        empty.hidden = data.events.length > 0;
+        empty.textContent = new FormData(form).get("q") || form.device.value || type ? "Nothing matches on this day. Try another day or clear the search."
+            : isToday ? "Nothing yet today. Events show up here as your cameras see them." : "Nothing happened this day.";
+    }
+
+    function openGroup(g, byId) {
+        // a single event plays inside the whole day so you can step to the next; a folded group plays just its own events
+        const all = g.count > 1 ? g.ids.map((id) => byId[id]).reverse() : [...data.events].reverse();
+        play(all, Math.max(0, all.findIndex((e) => e.id === g.ids[0])), { owner: OWNER, onChange: render, onDelete: drop });
+    }
+
+    function drop(e) {
+        data.events = data.events.filter((x) => x.id !== e.id);
+        data.counts[e.type] = (data.counts[e.type] || 1) - 1;
+        if (!data.counts[e.type]) delete data.counts[e.type];
+        for (const g of data.groups) { g.ids = g.ids.filter((id) => id !== e.id); g.count = g.ids.length; }
+        data.groups = data.groups.filter((g) => g.count);
+        render();
+    }
+
+    function pick(g, r) {
+        const on = !g.ids.every((id) => picked.has(id));
+        g.ids.forEach((id) => on ? picked.add(id) : picked.delete(id));
+        r.classList.toggle("is-picked", on);
+        $("pickCount").textContent = picked.size ? `${picked.size} picked` : "Tap events to pick them";
     }
 
     let timer;
-    form.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => load(false), 300); });
-    more.onclick = () => load(true);
-    {% if not current_guest() %}
-    document.getElementById("clear").onclick = async () => {
-        if (confirm("Delete every saved event, picture and clip? This can't be undone.") && (await fetch("history/clear", { method: "POST" })).ok) load(false);
-    };
-    {% endif %}
+    form.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => { loadWeek(); load(false); }, 300); });
+    form.addEventListener("submit", (e) => e.preventDefault());
+    $("more").onclick = () => load(true);
+    $("older").onclick = () => { weekEnd = addDays(weekEnd, -7); day = weekEnd; loadWeek(); load(false); };
+    $("newer").onclick = () => { weekEnd = addDays(weekEnd, 7) > today ? today : addDays(weekEnd, 7); day = weekEnd; loadWeek(); load(false); };
+    if (OWNER) {
+        const togglePick = (on) => {
+            picking = on;
+            picked.clear();
+            $("pick").setAttribute("aria-pressed", on);
+            $("pick").lastChild.textContent = on ? "Done" : "Select";
+            $("pickBar").hidden = !on;
+            $("pickCount").textContent = "Tap events to pick them";
+            render();
+        };
+        $("pick").onclick = () => togglePick(!picking);
+        const each = async (path, body) => {
+            for (const id of picked) await fetch(`history/${id}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body });
+            togglePick(false);
+            load(false);
+        };
+        $("pickKeep").onclick = () => picked.size && each("keep", JSON.stringify({ kept: true }));
+        $("pickDelete").onclick = () => picked.size && confirm(`Delete ${picked.size} event${picked.size === 1 ? "" : "s"} and their files?`) && each("delete");
+        $("clear").onclick = async () => {
+            if (confirm("Delete every saved event, picture and clip? This can't be undone.") && (await fetch("history/clear", { method: "POST" })).ok) { loadWeek(); load(false); }
+        };
+    }
+    loadWeek();
     load(false);
 </script>
 {% endblock %}
