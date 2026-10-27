@@ -119,14 +119,16 @@ function stepOf(log) {
   if (/\[\+\] Adding |Fetched \[\d+\] cameras|'cameras' from local cache/.test(log)) return 2;
   return log.trim() ? 1 : 0;
 }
+// Checked against wyze.com, Wikipedia and Wyze's support pages (2026-10-27). Keep only facts with a source.
 const FACTS = [
-  "Wyze started in Seattle in 2017, founded by a small team that had worked at Amazon.",
-  "The first Wyze Cam sold for $19.99, when a Nest Cam cost $199.",
-  "Wyze Cam v3 sees in color at night with a starlight sensor, and still launched at about $20.",
+  "Wyze started in Seattle in 2017. Its founders had worked at Amazon.",
+  "The first Wyze Cam launched in October 2017 for $19.99. Wyze says similar cameras cost about $200 then.",
+  "Wyze says it sold its millionth camera in less than a year.",
+  "Wyze Cam v3's starlight sensor sees in color in places up to 25 times darker than regular cameras.",
   "Wyze Cam v3 is rated IP65, so it handles rain and dust outdoors.",
-  "Wyze Cam Pan can spin a full 360 degrees and tilt up and down.",
-  "Most Wyze cameras can record to a microSD card, so they keep video without a cloud plan.",
-  "Wyze makes more than cameras: plugs, bulbs, locks, vacuums, scales and a thermostat.",
+  "Wyze Cam Pan v3 turns a full 360 degrees and tilts 180.",
+  "Wyze cameras can record to a microSD card on their own, with no cloud plan.",
+  "Besides cameras, Wyze has made locks, scales, a thermostat and a robot vacuum.",
 ];
 let fact = Math.floor(Math.random() * FACTS.length);
 $("fact-text").textContent = FACTS[fact];
