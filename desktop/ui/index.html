@@ -5,60 +5,189 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wyze Tunnel</title>
 <style>
-  :root { --bg: #f6f7f9; --fg: #1d2330; --muted: #5d6676; --card: #fff; --accent: #3b6cf6; --log: #0f1420; --logfg: #cfd6e4; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #11151c; --fg: #e7ebf2; --muted: #99a3b4; --card: #1a202a; --log: #0a0d13; }
+  /* Studio Soft, the same tokens as the web UI (ui/input.css). Dark is the default. */
+  @font-face { font-family: "Nunito"; font-weight: 800; src: url(nunito-latin-800-normal.woff2) format("woff2"); }
+  :root {
+    color-scheme: dark;
+    --bg: #0e100e; --card: #171a17; --line: #2a2f2a; --fg: #eef0ec; --muted: #a0a69c;
+    --accent: #3dcf8e; --accent-deep: #229a65; --on-accent: #052014; --warn: #fbbf24;
+    --ring: inset 0 0 0 1px #ffffff12, 0 12px 40px #0008;
   }
-  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); }
-  main { max-width: 640px; margin: 10vh auto; padding: 0 16px; }
-  .card { background: var(--card); border-radius: 12px; padding: 28px; box-shadow: 0 1px 3px #0002; }
-  h1 { margin: 0 0 8px; font-size: 22px; }
-  p { color: var(--muted); margin: 0 0 16px; }
-  button { font: inherit; padding: 10px 20px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg: #f5f4f0; --card: #fff; --line: #dedcd3; --fg: #1a1c19; --muted: #5d6058;
+      --accent: #15895a; --accent-deep: #0e6b45; --on-accent: #fff; --warn: #b45309;
+      --ring: 0 1px 2px #0000000f, 0 14px 40px #282c2429;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--fg); }
+  main { min-height: 100%; max-width: 480px; margin: 0 auto; padding: 32px 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; }
+  h1 { margin: 6px 0 0; font: 800 26px/1.2 Nunito, system-ui, sans-serif; letter-spacing: -.01em; }
+  h1.warn { color: var(--warn); }
+  p { color: var(--muted); margin: 0; max-width: 380px; }
+  button { font: 800 16px Nunito, system-ui, sans-serif; padding: 10px 26px; border: 0; border-radius: 999px; background: var(--accent);
+    color: var(--on-accent); cursor: pointer; box-shadow: 0 4px 0 var(--accent-deep); margin-top: 6px; }
+  button:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--accent-deep); }
   button:disabled { opacity: .5; cursor: default; }
-  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-  pre { background: var(--log); color: var(--logfg); border-radius: 8px; padding: 12px; max-height: 40vh; overflow: auto; font-size: 12px; white-space: pre-wrap; margin: 16px 0 0; }
-  dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 20px; }
-  dt { color: var(--muted); } dd { margin: 0; }
-  code { font-size: 15px; user-select: all; }
-  button.link { background: none; color: var(--accent); padding: 0 4px; }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  button.link { background: none; color: var(--accent); padding: 0 4px; box-shadow: none; font: inherit; font-weight: 600; margin: 0; }
+  code, pre, .mono { font: 12px/1.5 "Cascadia Mono", Consolas, ui-monospace, monospace; }
+  code { font-size: 14px; user-select: all; }
+  .mono { color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   [hidden] { display: none !important; }
+
+  /* Tunnel, the mascot (app/static/icon.svg), is the whole screen: it works while Wyze Tunnel starts and sleeps while it's stopped. */
+  .stage { position: relative; width: 132px; height: 150px; }
+  .stage svg { width: 132px; height: 132px; display: block; animation: bob 2.4s ease-in-out infinite; }
+  .stage::after { content: ""; position: absolute; left: 30px; right: 30px; bottom: 4px; height: 10px; border-radius: 50%;
+    background: var(--line); animation: shadow 2.4s ease-in-out infinite; }
+  .eye { transform-origin: 22px 20px; animation: blink 5s infinite; }
+  .pupil { animation: look 6s ease-in-out infinite; }
+  .asleep svg, .asleep::after, .ready svg, .ready::after { animation: none; }
+  .asleep .eye { animation: none; transform: scaleY(.12); }
+  .asleep .pupil { animation: none; }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  @keyframes shadow { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(.85); opacity: .7; } }
+  @keyframes blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
+  @keyframes look { 0%, 30%, 100% { transform: translateX(0); } 40%, 55% { transform: translateX(-3.5px); } 65%, 80% { transform: translateX(1.5px); } }
+
+  /* Startup steps: starting, signing in, connecting cameras, opening. */
+  .meter { display: flex; gap: 5px; width: 220px; margin-top: 6px; }
+  .meter i { height: 5px; flex: 1; border-radius: 3px; background: var(--line); transition: background .6s; }
+  .meter i.on { background: var(--accent); }
+  .meter i.now { background: var(--accent); animation: pulse 1.2s ease-in-out infinite alternate; }
+  @keyframes pulse { from { opacity: .25; } to { opacity: 1; } }
+
+  /* A Wyze fact to read while it starts, changing every few seconds. */
+  .fact { margin-top: 18px; max-width: 360px; min-height: 66px; transition: opacity .5s; }
+  .fact b { display: block; font: 800 12px/1 Nunito, system-ui, sans-serif; color: var(--accent); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 6px; }
+  .fact span { color: var(--fg); }
+  .fact.out { opacity: 0; }
+
+  .card { background: var(--card); border-radius: 20px; padding: 14px 20px; box-shadow: var(--ring); margin-top: 4px; }
+  dl { display: grid; grid-template-columns: max-content auto; gap: 4px 14px; margin: 0; text-align: left; }
+  dt { color: var(--muted); } dd { margin: 0; }
+  pre { width: 100%; margin: 0; background: var(--card); color: var(--muted); border-radius: 18px; padding: 14px; max-height: 40vh;
+    overflow: auto; white-space: pre-wrap; text-align: left; box-shadow: var(--ring); }
+  @media (prefers-reduced-motion: reduce) { .stage svg, .stage::after, .eye, .pupil, .meter i.now { animation: none !important; } }
 </style>
 </head>
 <body>
 <main>
-  <div class="card">
-    <h1 id="title">Wyze Tunnel</h1>
-    <p id="msg" role="status" aria-live="polite">Checking…</p>
-    <dl id="login" hidden>
+  <div class="stage" id="stage">
+    <svg viewBox="0 2 44 44" aria-hidden="true">
+      <path fill-rule="evenodd" d="M8 39.5V21a14 14 0 0 1 28 0v18.5a1.5 1.5 0 0 1-1.5 1.5h-25A1.5 1.5 0 0 1 8 39.5zM17.5 41v-3.2a4.5 4.5 0 0 1 9 0V41z" fill="var(--accent)"/>
+      <g class="eye"><circle cx="22" cy="20" r="8.2" fill="#fff"/><g class="pupil"><circle cx="23.3" cy="21.1" r="4.2" fill="#13241a"/><circle cx="24.9" cy="19.5" r="1.3" fill="#fff"/></g></g>
+    </svg>
+  </div>
+  <h1 id="title">Wyze Tunnel</h1>
+  <p id="msg" role="status" aria-live="polite">Checking…</p>
+  <div class="meter" id="meter" hidden><i></i><i></i><i></i><i></i></div>
+  <div class="mono" id="help-log" hidden></div>
+  <div class="fact" id="fact" hidden><b>Wyze fact</b><span id="fact-text"></span></div>
+  <div class="card" id="login" hidden>
+    <dl>
       <dt>Username</dt><dd><code id="user">wbadmin</code></dd>
       <dt>Password</dt><dd><code id="pw"></code> <button id="copy" class="link">Copy</button></dd>
     </dl>
-    <button id="go" hidden>Set up Wyze Tunnel</button>
-    <button id="open" hidden>Open Wyze Tunnel</button>
-    <pre id="log" hidden></pre>
   </div>
+  <button id="go" hidden>Set up Wyze Tunnel</button>
+  <button id="start" hidden>Start Wyze Tunnel</button>
+  <button id="restart" hidden>Restart Wyze Tunnel</button>
+  <button id="open" hidden>Open Wyze Tunnel</button>
+  <pre id="log" hidden></pre>
 </main>
 <script>
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const $ = (id) => document.getElementById(id);
-const say = (text) => ($("msg").textContent = text);
-let url;
+const say = (title, text) => { $("title").textContent = title; $("msg").textContent = text; };
+const STALL = 120; // seconds before the screen offers a restart
+let since = Date.now(); // when this wait (or the last restart) began
 
-// Waits for the bridge's web UI to answer, then shows the login and an Open button.
+function ago(s) {
+  if (s < 90) return "just now";
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400 * 2) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} days ago`;
+}
+// Which startup step the bridge's log has reached: 0 starting, 1 signing in, 2 adding cameras.
+function stepOf(log) {
+  if (/\[\+\] Adding |Fetched \[\d+\] cameras|'cameras' from local cache/.test(log)) return 2;
+  return log.trim() ? 1 : 0;
+}
+// Checked against wyze.com, Wikipedia and Wyze's support pages (2026-10-27). Keep only facts with a source.
+const FACTS = [
+  "Wyze started in Seattle in 2017. Its founders had worked at Amazon.",
+  "The first Wyze Cam launched in October 2017 for $19.99. Wyze says similar cameras cost about $200 then.",
+  "Wyze says it sold its millionth camera in less than a year.",
+  "Wyze Cam v3's starlight sensor sees in color in places up to 25 times darker than regular cameras.",
+  "Wyze Cam v3 is rated IP65, so it handles rain and dust outdoors.",
+  "Wyze Cam Pan v3 turns a full 360 degrees and tilts 180.",
+  "Wyze cameras can record to a microSD card on their own, with no cloud plan.",
+  "Besides cameras, Wyze has made locks, scales, a thermostat and a robot vacuum.",
+];
+let fact = Math.floor(Math.random() * FACTS.length);
+$("fact-text").textContent = FACTS[fact];
+setInterval(() => {
+  if ($("fact").hidden) return;
+  $("fact").classList.add("out");
+  setTimeout(() => {
+    fact = (fact + 1) % FACTS.length;
+    $("fact-text").textContent = FACTS[fact];
+    $("fact").classList.remove("out");
+  }, 500);
+}, 9000);
+const STEP_TEXT = ["Starting up", "Signing in to Wyze", "Connecting cameras", "Opening Wyze Tunnel"];
+
+// Why it's slow and what to do, in plain words, from the end of the log.
+const RESTART = "Restarting fixes this most of the time. If it keeps happening, restart your computer.";
+function stallHelp(log) {
+  const tail = log.trim().split("\n").slice(-15).join("\n");
+  if (!log.trim()) return ["Wyze Tunnel hasn't started yet", RESTART];
+  if (/unreachable|ConnectionError|timed out/i.test(tail)) return ["Can't reach the internet yet", "Check that this computer is online. Wyze Tunnel keeps trying on its own."];
+  if (/Traceback|Error|Exception/.test(tail)) return ["Wyze Tunnel hit a problem starting", RESTART];
+  return ["This is taking longer than usual", RESTART];
+}
+
+// Follows the bridge's startup in its log until the web UI answers, then offers to open it.
 async function showWhenUp(openBrowser) {
-  $("title").textContent = "Wyze Tunnel";
-  $("go").hidden = true;
-  say("Starting Wyze Tunnel… this can take a minute after your computer starts.");
+  since = Date.now();
+  $("go").hidden = $("log").hidden = true;
+  $("meter").hidden = false;
   for (;;) {
-    try { await fetch(url, { mode: "no-cors" }); break; } catch {}
+    const p = await invoke("progress");
+    if (p.up) break;
+    const slow = !p.stopped && (Date.now() - since) / 1000 > STALL;
+    $("stage").classList.toggle("asleep", p.stopped);
+    $("title").classList.toggle("warn", slow);
+    $("start").hidden = !p.stopped;
+    $("restart").hidden = !slow;
+    $("meter").hidden = $("fact").hidden = p.stopped || slow;
+    $("help-log").hidden = !slow;
+    if (p.stopped) {
+      say("Wyze Tunnel is stopped", "Your cameras aren't being watched or recorded.");
+    } else if (slow) {
+      say(...stallHelp(p.log));
+      $("help-log").textContent = p.log.trim().split("\n").pop() || "";
+    } else {
+      const step = stepOf(p.log);
+      [...$("meter").children].forEach((i, n) => (i.className = n < step ? "on" : n === step ? "now" : ""));
+      say("Waking up your cameras", `${STEP_TEXT[step]}… this can take a minute after your computer starts.`);
+    }
     await new Promise((r) => setTimeout(r, 2000));
   }
+  $("stage").classList.remove("asleep");
+  $("stage").classList.add("ready");
+  $("title").classList.remove("warn");
+  $("start").hidden = $("restart").hidden = $("help-log").hidden = $("meter").hidden = $("fact").hidden = true;
   const pw = await invoke("password");
   $("pw").textContent = pw || "(the one you set)";
   if (!pw) $("user").textContent = "(the one you set)";
-  say("Wyze Tunnel is running. To sign in from a phone or a browser, use:");
+  say("Your cameras are ready", "To sign in from a phone or a browser, use:");
   $("login").hidden = $("open").hidden = false;
   if (openBrowser) invoke("open_ui");
 }
@@ -67,15 +196,15 @@ async function setup(full = false) {
   $("go").disabled = true;
   $("log").hidden = false;
   $("log").textContent = "";
-  say("Setting up. The first time takes a few minutes, so keep this window open.");
+  say("Setting up", "The first time takes a few minutes, so keep this window open.");
   try {
     const code = await invoke("install", { full });
     if (code === 0) { $("log").hidden = true; return showWhenUp(true); }
-    if (code === 3) return say("Windows needs to restart to finish turning on WSL. Restart your PC, then open Wyze Tunnel again.");
-    if (code === 4) return say("Virtualization is turned off in your PC's BIOS. Restart, open the BIOS (usually Del or F2 while starting), turn on \"SVM Mode\" or \"Intel Virtualization Technology\", save, then open Wyze Tunnel again.");
-    say(`Setup didn't finish (error ${code}). Check your internet connection and try again.`);
+    if (code === 3) return say("Restart needed", "Windows needs to restart to finish turning on WSL. Restart your PC, then open Wyze Tunnel again.");
+    if (code === 4) return say("Virtualization is off", "It's turned off in your PC's BIOS. Restart, open the BIOS (usually Del or F2 while starting), turn on \"SVM Mode\" or \"Intel Virtualization Technology\", save, then open Wyze Tunnel again.");
+    say("Setup didn't finish", `Error ${code}. Check your internet connection and try again.`);
   } catch (e) {
-    say(`Setup didn't finish: ${e}`);
+    say("Setup didn't finish", String(e));
   }
   $("go").textContent = "Try again";
   $("go").disabled = false;
@@ -89,8 +218,7 @@ listen("log", ({ payload }) => {
 $("go").onclick = () => setup();
 // Tray item on Windows, shown while a camera needs the Wyze SDK: away from home (relay) or on old firmware.
 listen("full-setup", () => {
-  $("title").textContent = "Full camera support";
-  say("This sets up a small Linux system (WSL) for cameras away from home and older cameras. Windows asks for permission and may need a restart.");
+  say("Full camera support", "This sets up a small Linux system (WSL) for cameras away from home and older cameras. Windows asks for permission and may need a restart.");
   $("login").hidden = $("open").hidden = true;
   $("go").textContent = "Set up";
   $("go").hidden = $("go").disabled = false;
@@ -98,12 +226,15 @@ listen("full-setup", () => {
 });
 $("open").onclick = () => invoke("open_ui");
 $("copy").onclick = () => navigator.clipboard.writeText($("pw").textContent).then(() => ($("copy").textContent = "Copied"));
+$("start").onclick = $("restart").onclick = (e) => {
+  e.target.disabled = true;
+  since = Date.now();
+  invoke("restart").finally(() => (e.target.disabled = false));
+};
 
 invoke("info").then((info) => {
-  url = info.url;
   if (info.installed) return showWhenUp(false);
-  $("title").textContent = "Welcome to Wyze Tunnel";
-  say("Wyze Tunnel will download what it needs and set it up for you. You only do this once.");
+  say("Welcome to Wyze Tunnel", "It downloads what it needs and sets itself up. You only do this once.");
   $("go").hidden = false;
 });
 </script>
