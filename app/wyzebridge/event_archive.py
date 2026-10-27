@@ -168,6 +168,12 @@ def search(device: str = "", kind: str = "", since: int = 0, until: int = 0, q: 
     return {"events": [dict(r) for r in rows], "devices": devices, "types": types}
 
 
+def counts(since: int) -> dict:
+    """How many events of each type since a time, for the Live page's summary."""
+    with _db() as db:
+        return dict(db.execute("SELECT type, COUNT(*) FROM events WHERE ts>=? GROUP BY type", (since,)).fetchall())
+
+
 def media_file(eid: str, kind: str) -> Path | None:
     """The saved picture ("img") or clip ("clip") of an event, or None. Only ever inside the archive's media folder."""
     if kind not in ("img", "clip") or not ID_RE.fullmatch(eid):
