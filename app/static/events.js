@@ -64,10 +64,45 @@
     tags.append(...types.map(tag));
     if (g.count > 1) tags.append(h("span", "ev-more", `+${g.count - 1} more`));
     meta.append(name, tags);
+    if (g.why) {
+      const why = h("span", "ev-why");
+      why.append(icon("fa-moon"), g.why);
+      meta.append(why);
+    }
     const when = h("span", "ev-time", g.count > 1 && g.last - g.first >= 60 ? span(g.first, g.last) : clock(g.last));
     r.append(thumb(lead), meta, when);
     r.setAttribute("aria-label", `${lead.text}, ${when.textContent}${g.count > 1 ? `, ${g.count} events` : ""}`);
     return r;
+  }
+
+  // A visit: one person or vehicle on several cameras, shown as the cameras in order with how long they stayed at each.
+  function visit(g, byId, opts = {}) {
+    const cams = Object.entries(g.cameras), all = g.ids.map((id) => byId[id]).reverse();
+    const card = h("button", "surface ev-visit");
+    card.type = "button";
+    const head = h("span", "ev-vhead");
+    head.append(h("b", "", `${g.kind === "vehicle" ? "A vehicle" : "Someone"} went past ${cams.length} cameras`), h("span", "ev-time", span(g.first, g.last)));
+    const path = h("span", "ev-path");
+    path.append(...cams.map(([cam, [first, last]], i) => {
+      const mine = all.filter((e) => e.device === cam), stop = h("span", "ev-stop");
+      const stay = Math.max(...mine.map((e) => e.ts + (e.dur || 0))) - first;
+      const label = h("small", "", `${i + 1}. ${cam}`);
+      label.append(h("i", "", stay >= 60 ? `${Math.floor(stay / 60)} min ${stay % 60 ? `${stay % 60} s` : ""}` : `${Math.max(stay, 1)} s`));
+      stop.append(thumb(mine.at(-1)), label);
+      return stop;
+    }));
+    const tags = h("span", "ev-tags");
+    tags.append(tag(g.kind), h("span", "ev-more", "Plays as one clip"));
+    card.append(head, path, tags);
+    if (g.why) {
+      const why = h("span", "ev-why");
+      why.append(icon("fa-moon"), g.why);
+      card.append(why);
+      card.classList.add("ev-odd");
+    }
+    card.setAttribute("aria-label", `${head.firstChild.textContent}: ${cams.map(([c]) => c).join(", then ")}`);
+    card.onclick = () => play(all.filter((e) => e.clip || e.img), 0, { ...opts, auto: true });
+    return card;
   }
 
   // Full screen player. list: events oldest to newest. opts.review shows Seen and Keep and moves on by itself; opts.auto just moves on.
@@ -184,5 +219,5 @@
     return { close: done };
   }
 
-  window.WTEvents = { KINDS, kind, weight, tag, thumb, row, play, clock, span, length, h, icon };
+  window.WTEvents = { KINDS, kind, weight, tag, thumb, row, visit, play, clock, span, length, h, icon };
 })();
