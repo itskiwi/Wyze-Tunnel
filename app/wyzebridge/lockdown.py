@@ -35,7 +35,7 @@ def allowed(addr) -> bool:
 
 
 def secret_files() -> list[Path]:
-    names = ("wb_password", "wb_api", "wb_login", "lan_keys.json", "apps.json")
+    names = ("wb_password", "wb_api", "wb_login", "lan_keys.json", "apps.json", "passkeys.json")
     return [*Path(TOKEN_PATH).glob("*.pickle"), *(Path(TOKEN_PATH, n) for n in names)]
 
 
