@@ -68,9 +68,10 @@ class WyzeEvents:
         img = next((f["url"] for f in files if f["type"] == 1), None)
         clip = next((f["url"] for f in files if f["type"] == 2), None)  # Wyze's own short cloud video
         name = display_name(stream.camera)
-        label = "ring" if ring else next((WYZE_TAGS[t] for t in tags or [] if t in WYZE_TAGS), "motion")
+        found = [WYZE_TAGS[t] for t in tags or [] if t in WYZE_TAGS]
+        label = "ring" if ring else next(iter(found), "motion")
         msg = phrases.describe(label, name, phrases.place_of(stream.uri, name))
-        return {"uri": stream.uri, "name": name, "ts": ts, "img": img, "clip": clip, "text": msg} | (
+        return {"uri": stream.uri, "name": name, "ts": ts, "img": img, "clip": clip, "text": msg, "tags": found} | (
             {"label": "rang the doorbell"} if ring else {"label": label} if label != "motion" else {}
         )
 

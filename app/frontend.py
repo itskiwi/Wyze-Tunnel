@@ -1381,6 +1381,12 @@ def create_app():
     def history_delete(eid: str):
         return ({"status": "deleted"}, 200) if event_archive.delete(eid) else ({"error": "Not found"}, 404)
 
+    @app.route("/history/<string:eid>/keep", methods=["POST"])
+    @owner_only
+    def history_keep(eid: str):
+        kept = bool((request.get_json(silent=True) or {}).get("kept", True))
+        return ({"kept": kept}, 200) if event_archive.keep(eid, kept) else ({"error": "Not found"}, 404)
+
     @app.route("/history/clear", methods=["POST"])
     @owner_only
     def history_clear():
