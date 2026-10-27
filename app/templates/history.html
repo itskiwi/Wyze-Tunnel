@@ -62,6 +62,11 @@
     const unix = (d) => Math.floor(d.getTime() / 1000);
     const today = midnight(new Date());
     let day = today, weekEnd = today, type = "", data = null, ready = false, picking = false;
+    // links from elsewhere: history?type=person&since=<unix ts>&device=<camera name>
+    const asked = new URLSearchParams(location.search);
+    type = asked.get("type") || "";
+    if (Number(asked.get("since")) > 0) day = weekEnd = new Date(Math.min(+today, +midnight(new Date(Number(asked.get("since")) * 1000))));
+    const askedDevice = asked.get("device") || "";
     const picked = new Set();
 
     // "New since you last looked" is per browser; the first visit starts with nothing new.
@@ -112,6 +117,7 @@
         if (!ready) {
             form.device.append(...got.devices.map((v) => Object.assign(h("option"), { value: v, textContent: v })));
             ready = true;
+            if (askedDevice && got.devices.includes(askedDevice)) { form.device.value = askedDevice; loadWeek(); return load(false); }
         }
         $("more").hidden = got.events.length < 300;
         if (append) { got.events = data.events.concat(got.events); got.groups = data.groups.concat(got.groups); }
