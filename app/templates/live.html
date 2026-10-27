@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% set watch_only = guest and not guest.family %}
 {% set hide_nav = watch_only %}
+{% set watching = cam_data.cameras and not watch_only %}
 
 {% block settings_menu %}
 <p class="menu-label">Layout</p>
@@ -37,8 +38,35 @@
 
 {% block title %}Live · {% endblock %}
 {% block content %}
+{% if watching %}
+{# What's going on right now, in one line, with the alert mode and every camera in reach of a thumb #}
+<section id="watch" class="fs-display-none pt-2">
+    {% set labels = {"home": "Home", "schedule": "Normal", "away": "Away"} %}
+    <h1 id="watchStory" class="page-title text-[30px]">Checking your cameras…</h1>
+    <p id="watchDetail" class="mt-1 text-zinc-400"></p>
+    {% if guest %}
+    <p class="watch-mode-label mt-3 text-sm text-zinc-400">Alerts: <b class="text-zinc-50">{{ labels[mode] }}</b></p>
+    {% else %}
+    <div id="watchMode" class="seg mt-3 grid grid-cols-3" role="radiogroup" aria-label="Alert mode">
+        {% for value in ["home", "schedule", "away"] %}
+        <button type="button" role="radio" class="tab justify-center" data-mode="{{ value }}" aria-checked="{{ 'true' if mode == value else 'false' }}">{{ labels[value] }}</button>
+        {% endfor %}
+    </div>
+    <p id="watchModeError" class="mt-2 hidden text-sm text-rose-300" role="alert"></p>
+    {% endif %}
+    <div class="watch-cams" role="group" aria-label="Pick the big camera">
+        {% for cam_uri, camera in cam_data.cameras.items() if camera.enabled %}
+        <button type="button" class="watch-cam" data-cam="{{ cam_uri }}" data-name="{{ camera.nickname }}" data-rec="{{ 1 if camera.record else 0 }}"
+            data-img="{{ camera.img_url or '' }}" aria-pressed="false" title="Show {{ camera.nickname }} big">
+            <span class="watch-cam-pic">{% if camera.img_url %}<img src="{{ camera.img_url }}" alt="" loading="lazy">{% endif %}</span>
+            <span class="watch-cam-name">{{ camera.nickname }}</span>
+        </button>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
 <div class="summary fs-display-none flex flex-wrap items-center gap-2.5 pb-4 pt-2">
-    <h1 class="page-title mr-1.5 text-[30px]">{{ cam_data.enabled if cam_data.enabled != cam_data.available else cam_data.total }} camera{{ '' if (cam_data.enabled if cam_data.enabled != cam_data.available else cam_data.total) == 1 else 's' }}</h1>
+    <{{ "h2" if watching else "h1" }} class="page-title mr-1.5 {{ "text-lg" if watching else "text-[30px]" }}">{{ cam_data.enabled if cam_data.enabled != cam_data.available else cam_data.total }} camera{{ '' if (cam_data.enabled if cam_data.enabled != cam_data.available else cam_data.total) == 1 else 's' }}</{{ "h2" if watching else "h1" }}>
     <span class="chip chip-ok is-hidden" data-count="connected"></span>
     <span class="chip chip-warn is-hidden" data-count="connecting"></span>
     <span class="chip chip-bad is-hidden" data-count="offline"></span>
@@ -75,6 +103,42 @@
 
 <div class="cameras grid grid-cols-1 gap-3.5 md:[grid-template-columns:repeat(var(--cols,2),minmax(0,1fr))]">
     {% if cam_data.cameras %}
+    {% if watching %}
+    {# Sits right under the big camera (see .spotlight in site.css) #}
+    <section id="rewind" class="watch-panel fs-display-none" aria-label="Rewind and visits">
+        <div class="surface p-4">
+            <div class="flex items-center gap-2">
+                <h2 class="font-display text-lg font-extrabold text-zinc-50">Rewind the house</h2>
+                <div class="seg ml-auto" role="radiogroup" aria-label="How far back">
+                    {% for secs, label in [(1800, '30m'), (7200, '2h'), (86400, '24h')] %}
+                    <button type="button" role="radio" class="tab px-3 py-1.5 text-xs" data-span="{{ secs }}" aria-checked="{{ 'true' if secs == 7200 else 'false' }}">{{ label }}</button>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="rw-film" id="rwFilm"></div>
+            <div class="rw-lane" id="rwLane" role="slider" tabindex="0" aria-label="Time to rewind to" aria-valuetext="Live">
+                <div class="rw-ticks"></div><div class="rw-head"><span></span></div>
+            </div>
+            <div class="rw-axis" id="rwAxis"></div>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+                <button type="button" class="btn px-3 py-2 text-sm" data-step="-1" aria-label="Previous event"><i class="fas fa-chevron-left"></i> Previous</button>
+                <button type="button" class="btn px-3 py-2 text-sm" data-step="1" aria-label="Next event">Next <i class="fas fa-chevron-right"></i></button>
+                <button type="button" class="chip chip-ok ml-auto cursor-pointer" id="rwLive">Back to live</button>
+            </div>
+            <p class="mt-2 text-xs text-zinc-500" id="rwHint">Drag along the line to rewind every camera at once. Tap a picture to play from there.</p>
+        </div>
+        <div class="surface watch-card hidden p-4" id="visit">
+            <p class="visit-kicker"></p>
+            <h2 class="font-display text-xl font-extrabold text-zinc-50" data-title></h2>
+            <ol class="visit-steps"></ol>
+            <button type="button" class="btn btn-primary mt-3 hidden w-full justify-center" data-play><i class="fas fa-play"></i> Play the whole visit</button>
+        </div>
+        <div class="surface watch-card hidden p-4" id="quiet">
+            <h2 class="font-display text-lg font-extrabold text-zinc-50">Since midnight</h2>
+            <ul class="quiet-list"></ul>
+        </div>
+    </section>
+    {% endif %}
     {% for cam_uri,camera in cam_data.cameras.items() %}
     <div id="{{ cam_uri }}" class="camera {{'is-hidden' if not camera.enabled}}" data-enabled="{{camera.enabled}}"
         data-connected="{{camera.connected}}" data-battery="{{camera.is_battery}}" data-doorbell="{{camera.is_doorbell}}">
@@ -369,6 +433,13 @@
     {% endfor %}
 </div>
 {# Phones: tap a picture to fill the screen; swipe for the next camera #}
+{% if watching %}
+<dialog id="rwPlayer" class="watch-player" aria-label="Playback">
+    <video controls playsinline autoplay></video>
+    <p class="flex items-center gap-2 pt-2 text-sm text-zinc-400"><span data-label></span>
+        <button type="button" class="btn ml-auto px-3 py-1.5" data-close>Close</button></p>
+</dialog>
+{% endif %}
 <div id="camFocus" class="is-hidden" role="dialog" aria-label="Camera view">
     <button type="button" class="round-btn" data-close aria-label="Close"><i class="fas fa-xmark"></i></button>
     <p><span data-name></span> <span data-count></span></p>
@@ -456,6 +527,7 @@
     }
 </script>
 <script src="static/site.js?v={{ version }}"></script>
+{% if watching %}<script src="static/watch.js?v={{ version }}"></script>{% endif %}
 {# Always: it also holds push-to-talk #}
 <script src="static/webrtc.js?v={{ version }}"></script>
 {% if show_video and not ((webrtc and video_format == "webrtc") or video_format =="kvs") %}

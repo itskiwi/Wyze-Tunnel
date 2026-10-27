@@ -7,12 +7,12 @@ from types import SimpleNamespace
 from typing import Callable, Generator, Optional
 from urllib.parse import urlparse
 
-from flask import g, request
+from flask import g, redirect, request
 from flask import url_for as _url_for
 from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import check_password_hash
 from wyzebridge import config
-from wyzebridge import guests, integrations, phrases, pocket, tamper
+from wyzebridge import guests, integrations, passkeys, phrases, pocket, tamper
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
@@ -40,6 +40,8 @@ def verify_password(username, password):
         return request.path.startswith(API_ENDPOINTS)
     if username == WbAuth.username:
         return check_password_hash(WbAuth.hashed_password(), password)
+    if not username and WbAuth.enabled and passkeys.signed_in(request.cookies.get(passkeys.COOKIE, "")):
+        return True
     if not username and (paired := request.cookies.get(pocket.COOKIE)):
         username, password = pocket.from_cookie(paired)
     if WbAuth.enabled and username:
@@ -57,8 +59,10 @@ def guest_login(username: str, password: str):
 
 
 def owner_password() -> bool:
-    """Signed in with the owner's own password: not the API key, Home Assistant, an app token, a guest or family."""
+    """Signed in with the owner's own password or passkey: not the API key, Home Assistant, an app token, a guest or family."""
     creds = request.authorization
+    if not creds and WbAuth.enabled and passkeys.signed_in(request.cookies.get(passkeys.COOKIE, "")):
+        return True
     return bool(WbAuth.enabled and creds and creds.username == WbAuth.username and check_password_hash(WbAuth.hashed_password(), creds.password or ""))
 
 
@@ -115,7 +119,20 @@ def unauthorized():
     if g.get("guest_denied"):
         # 403, not 401, so the browser doesn't ask a guest to log in again.
         return {"error": "Guests can only watch."}, 403
+    if passkey_page():
+        return redirect(url_for("passkey_sign_in", next=request.full_path.rstrip("?")))
     return {"error": "Unauthorized"}, 401
+
+
+def passkey_page() -> bool:
+    """A page opened in the browser where a passkey can sign in: show that instead of the password box."""
+    return (
+        request.method == "GET"
+        and not request.authorization
+        and request.endpoint != "passkey_password"
+        and "text/html" in request.headers.get("Accept", "")
+        and passkeys.offered()
+    )
 
 
 def url_for(endpoint, **values):
@@ -259,7 +276,7 @@ def setup_steps(cams: dict[str, dict]) -> list[dict]:
     ]
 
 # Kept by "Start over": the web login, the downloaded detection models, finished timelapse videos and the event archive.
-KEEP_ON_START_OVER = {"wb_login", "wb_password", "wb_api", "models", "timelapse", "event_archive"}
+KEEP_ON_START_OVER = {"wb_login", "wb_password", "wb_api", "passkeys.json", "models", "timelapse", "event_archive"}
 
 
 def start_over(token_path: str, img_path: str, record_root: Path) -> str:

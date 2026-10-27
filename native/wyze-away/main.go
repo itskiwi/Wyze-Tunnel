@@ -1,5 +1,6 @@
 // Command wyze-away puts the web UI on the user's own private Tailscale network with embedded Tailscale (tsnet),
-// so a phone with the Tailscale app can open it from anywhere. No router ports are opened.
+// so a phone with the Tailscale app can open it from anywhere. No router ports are opened. It answers on
+// http (port 80) and, once the tailnet has HTTPS certificates turned on, https (443) for passkeys.
 //
 // With -funnel it also asks for a public https link (Tailscale Funnel) for phones without the app. Requests
 // through it carry PublicHeader, and the bridge then lets in only phones paired by QR code.
@@ -79,6 +80,28 @@ func publicProxy(target string) *httputil.ReverseProxy {
 	}
 }
 
+// httpsProxy serves the tailnet https address. Passkeys only work over https, so the bridge needs to know.
+func httpsProxy(target string) *httputil.ReverseProxy {
+	u := &url.URL{Scheme: "http", Host: target}
+	return &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(u)
+			r.Out.Host = r.In.Host
+			r.Out.Header.Set("X-Forwarded-Proto", "https")
+		},
+		FlushInterval: -1,
+	}
+}
+
+// serveHTTPS waits for the tailnet's HTTPS certificates, a one-time switch in Tailscale's DNS settings.
+func serveHTTPS(srv *tsnet.Server, target string) {
+	for ; ; time.Sleep(30 * time.Second) {
+		if ln, err := srv.ListenTLS("tcp", ":443"); err == nil {
+			log.Print(http.Serve(ln, httpsProxy(target)))
+		}
+	}
+}
+
 // serveFunnel keeps asking for the public link; it needs a one-time "allow" in Tailscale, which may come later.
 func serveFunnel(srv *tsnet.Server, lc *local.Client, target string) {
 	for ; ; time.Sleep(5 * time.Second) {
@@ -154,6 +177,8 @@ func main() {
 	target := fmt.Sprintf("127.0.0.1:%d", *port)
 	if *funnel {
 		go serveFunnel(srv, lc, target)
+	} else {
+		go serveHTTPS(srv, target)
 	}
 	for {
 		c, err := ln.Accept()

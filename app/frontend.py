@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, automations, backup, camera_settings, config, detect, devices, event_archive, floorplan, go2rtc, guests, homekit, integrations, lockdown, masks, network, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, visitors, weather, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, automations, backup, camera_settings, config, detect, devices, event_archive, floorplan, go2rtc, guests, homekit, integrations, lockdown, masks, network, passkeys, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, visitors, weather, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.diagnostics import build_report
@@ -57,7 +57,7 @@ def create_app():
     @app.context_processor
     def page_version():
         # Every page's footer, update check and cache-busting asset links need it.
-        return {"version": config.VERSION}
+        return {"version": config.VERSION, "drive_full": recording.DRIVE_FULL}
 
     def auth_required(view):
         @wraps(view)
@@ -245,6 +245,7 @@ def create_app():
                 video_format=video_format.lower(),
                 autoplay=autoplay,
                 weather_on=weather.enabled(),
+                mode=webhooks.ALERTS.get("mode") or "schedule",
             )
         )
 
@@ -1052,6 +1053,65 @@ def create_app():
             version=config.VERSION,
         )
 
+    @app.route("/passkeys/sign-in")
+    def passkey_sign_in():
+        """Sign in with a passkey; the password box is one tap away."""
+        return render_template("passkey.html", next=passkeys.safe_next(request.args.get("next")))
+
+    @app.route("/passkeys/sign-in/options", methods=["POST"])
+    def passkey_sign_in_options():
+        return Response(passkeys.sign_in_options(), mimetype="application/json")
+
+    @app.route("/passkeys/sign-in/finish", methods=["POST"])
+    def passkey_sign_in_finish():
+        if not WbAuth.enabled:
+            return {"error": "Login is turned off (WB_AUTH=False)."}, 400
+        data = request.get_json(silent=True)
+        try:
+            cookie = passkeys.sign_in(data if isinstance(data, dict) else {})
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        resp = make_response({"status": "signed_in"})
+        resp.set_cookie(passkeys.COOKIE, cookie, max_age=passkeys.COOKIE_SECONDS, secure=True, httponly=True, samesite="Lax")
+        return resp
+
+    @app.route("/passkeys/password")
+    @auth_required
+    def passkey_password():
+        """The browser's password box, for someone without their passkey device."""
+        return redirect(passkeys.safe_next(request.args.get("next")))
+
+    @app.route("/passkeys")
+    @owner_only
+    def passkey_list():
+        return {"keys": passkeys.list_keys(), "secure": passkeys.secure()}
+
+    @app.route("/passkeys/register/options", methods=["POST"])
+    @owner_only
+    def passkey_register_options():
+        try:
+            return Response(passkeys.register_options(WbAuth.username), mimetype="application/json")
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
+    @app.route("/passkeys/register", methods=["POST"])
+    @owner_only
+    def passkey_register():
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or not isinstance(data.get("credential"), dict):
+            return {"error": "That passkey answer wasn't readable. Try again."}, 400
+        try:
+            return passkeys.register(data["credential"], str(data.get("name", "")))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+
+    @app.route("/passkeys/<string:key_id>", methods=["DELETE"])
+    @owner_only
+    def passkey_remove(key_id: str):
+        if not passkeys.remove(key_id):
+            return {"error": "That passkey is already gone."}, 404
+        return {"status": "removed"}
+
     @app.route("/weather")
     @auth_required
     def weather_now():
@@ -1326,6 +1386,12 @@ def create_app():
 
         return event_archive.search(a.get("device", "")[:100], a.get("type", "")[:30], num("since"), num("until"), a.get("q", "")[:100], num("before"), num("limit") or 60)
 
+    @app.route("/history/counts")
+    @auth_required
+    def history_counts():
+        since = request.args.get("since", "")
+        return event_archive.counts(int(since) if since.isdigit() else 0)
+
     @app.route("/history/media/<string:eid>/<string:kind>")
     @auth_required
     def history_media(eid: str, kind: str):
@@ -1337,6 +1403,12 @@ def create_app():
     @owner_only
     def history_delete(eid: str):
         return ({"status": "deleted"}, 200) if event_archive.delete(eid) else ({"error": "Not found"}, 404)
+
+    @app.route("/history/<string:eid>/keep", methods=["POST"])
+    @owner_only
+    def history_keep(eid: str):
+        kept = bool((request.get_json(silent=True) or {}).get("kept", True))
+        return ({"kept": kept}, 200) if event_archive.keep(eid, kept) else ({"error": "Not found"}, 404)
 
     @app.route("/history/clear", methods=["POST"])
     @owner_only
@@ -1553,6 +1625,8 @@ def create_app():
             settings=detect.load_settings(),
             env_frigate=bool(detect.FRIGATE_URL),
             can_detect=detect.cv2 is not None,
+            gpu=detect.ai.device() == "gpu",
+            default_model=detect.default_model(),
             keep_days=max(1, detect.KEEP.days),
             api=WbAuth.api,
             version=config.VERSION,

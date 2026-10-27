@@ -76,6 +76,34 @@ jobs:
         with:
           name: desktop-${{ runner.os }}
           path: ${{ matrix.out }}
+      # The Microsoft Store package (docs/microsoft-store.md). Kept out of releases: the Store signs and ships it.
+      - name: Build the Store package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          STORE_NAME: ${{ vars.STORE_NAME }}
+          STORE_PUBLISHER: ${{ vars.STORE_PUBLISHER }}
+          STORE_PUBLISHER_NAME: ${{ vars.STORE_PUBLISHER_NAME }}
+        run: |
+          $v = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          ../windows/msix/build.ps1 -Version $v -Out "$PWD/wyze-tunnel-$v-test.msix"
+          if ($env:STORE_NAME) {
+            ../windows/msix/build.ps1 -Version $v -Out "$PWD/wyze-tunnel-$v-store.msix" -Name $env:STORE_NAME -Publisher $env:STORE_PUBLISHER -PublisherName $env:STORE_PUBLISHER_NAME
+          }
+      - name: Check the Store package installs
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Add-AppxPackage -AllowUnsigned (Get-Item wyze-tunnel-*-test.msix)
+          $p = Get-AppxPackage WyzeTunnel.Test
+          $p | Format-List Name, Version, InstallLocation, SignatureKind
+          if (-not (Test-Path "$($p.InstallLocation)/windows/install-native.ps1")) { throw 'install-native.ps1 is missing' }
+          Remove-AppxPackage $p.PackageFullName
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: store-msix
+          path: desktop/*.msix
 
   release:
     # Publish even when the Mac build couldn't get a runner; Windows is the platform that must ship.
@@ -85,6 +113,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: desktop-*
           path: dist
           merge-multiple: true
       - run: ls dist/*.exe
