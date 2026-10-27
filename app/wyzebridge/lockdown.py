@@ -2,6 +2,9 @@
 
 import os
 import socket
+import subprocess
+import sys
+import time
 from ipaddress import ip_address, ip_network
 from pathlib import Path
 
@@ -65,6 +68,31 @@ def open_ports(ip: str) -> list[int]:
     return found
 
 
+_fw = (0.0, False)
+
+
+def firewall_too_open() -> bool:
+    """Windows: an inbound allow rule lets any address reach the web page or video server (Windows' own prompt makes those).
+    Checked here, not only by the tray, so the card is right whichever tray version did the update."""
+    global _fw
+    if time.monotonic() - _fw[0] < 60:
+        return _fw[1]
+    progs = [p for p in (sys.executable, os.getenv("MEDIAMTX_BIN", "")) if p and "'" not in p]
+    ps = "; ".join(
+        f"Get-NetFirewallApplicationFilter -Program '{p}' -ErrorAction SilentlyContinue | Get-NetFirewallRule -ErrorAction SilentlyContinue | "
+        "Where-Object { $_.Direction -eq 'Inbound' -and $_.Enabled -eq 'True' -and $_.Action -eq 'Allow' } | "
+        "Get-NetFirewallAddressFilter | Where-Object { $_.RemoteAddress -contains 'Any' } | ForEach-Object { 'open' }"
+        for p in progs
+    )
+    try:
+        out = subprocess.run(["powershell.exe", "-NoProfile", "-Command", ps], capture_output=True, text=True, timeout=30,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    except (OSError, subprocess.SubprocessError):
+        out = ""
+    _fw = (time.monotonic(), "open" in out)
+    return _fw[1]
+
+
 def open_readers(users) -> list[dict]:
     """Stream server logins that let anyone watch: no password and not limited to this PC."""
     local = {"127.0.0.1", "::1"}
@@ -89,8 +117,10 @@ def checks(public_link: str, login_on: bool, stream_users) -> list[dict]:
                  "fix": "The unused SRT video port is open. Restart Wyze Tunnel to close it."}
     rows = [reach]
     if os.name == "nt" and (update := os.getenv("WT_UPDATE_FILE")):
-        rows.append({"ok": not Path(update).with_name("firewall-blocked").exists(), "title": "Windows Firewall only lets in your home network",
-                     "fix": "A firewall rule is missing or lets in any address. Click Fix phone and camera access in the Wyze Tunnel tray menu."})
+        ok = not Path(update).with_name("firewall-blocked").exists() and not firewall_too_open()
+        rows.append({"ok": ok, "title": "Windows Firewall only lets in your home network", "action": "firewall",
+                     "fix": "Not private yet: Windows Firewall lets any address reach the web page or video. "
+                            "Click Fix it (or Fix phone and camera access in the tray menu), then Yes on the Windows prompt."})
     rows.append({"ok": not public_link, "title": "No public links or router ports",
                  "fix": "A public Tailscale Funnel link is still live. Restart Wyze Tunnel to close it."})
     rows.append({"ok": login_on and not open_readers(stream_users), "title": "Every video link needs a login",

@@ -7,6 +7,7 @@ Two kinds of source, both pulled by a small ffmpeg relay into MediaMTX:
 """
 
 import ctypes
+import ipaddress
 import os
 import signal
 import socket
@@ -62,12 +63,16 @@ def local_ipv4s() -> set[str]:
     return ips
 
 
-def on_local_network(ip: str, octets: int = 3) -> bool:
-    """Whether go2rtc's LAN discovery can reach this camera: same /24 (octets=3), or same /16 (octets=2)."""
-    # shortcut: Python can't read the mask on Windows; home routers use /24 to /22, so a /24 miss inside the
+def on_local_network(ip: str, prefix: int = 22) -> bool:
+    """Whether go2rtc's LAN discovery can reach this camera: within /22 of this PC (or another prefix)."""
+    # shortcut: Python can't read the mask on Windows; home LANs are /24 to /22, so a /22 miss inside the
     # same /16 is either a second site (another 192.168.x home) or a bigger LAN, and gets LAN after the cloud.
-    nets = {a.rsplit(".", 4 - octets)[0] for a in local_ipv4s() if not a.startswith(("169.254.", "127."))}
-    return ip.rsplit(".", 4 - octets)[0] in nets
+    try:
+        cam = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return any(cam in ipaddress.ip_network(f"{a}/{prefix}", strict=False)
+               for a in local_ipv4s() if not a.startswith(("169.254.", "127.")))
 
 
 def source_chain(cam: WyzeCamera) -> list[str]:
@@ -95,7 +100,7 @@ def source_chain(cam: WyzeCamera) -> list[str]:
         # shortcut: the Pro models (cloud_only) follow IDisposable's get_streams path untested here; SOURCE_<MODEL> overrides.
         if cam.webrtc_support:
             chain.append("webrtc")
-        if lan and "lan" not in chain and on_local_network(cam.ip, 2):
+        if lan and "lan" not in chain and on_local_network(cam.ip, 16):
             chain.append("lan")
     return chain
 

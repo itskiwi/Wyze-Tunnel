@@ -3,7 +3,7 @@ from collections import deque
 from threading import Thread
 from typing import Any
 
-from wyzebridge import automations, event_archive, phrases, visitors
+from wyzebridge import automations, event_archive, phrases, recording, visitors
 from wyzebridge.config import MOTION_INT, MOTION_START
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import update_preview
@@ -68,9 +68,10 @@ class WyzeEvents:
         img = next((f["url"] for f in files if f["type"] == 1), None)
         clip = next((f["url"] for f in files if f["type"] == 2), None)  # Wyze's own short cloud video
         name = display_name(stream.camera)
-        label = "ring" if ring else next((WYZE_TAGS[t] for t in tags or [] if t in WYZE_TAGS), "motion")
+        found = [WYZE_TAGS[t] for t in tags or [] if t in WYZE_TAGS]
+        label = "ring" if ring else next(iter(found), "motion")
         msg = phrases.describe(label, name, phrases.place_of(stream.uri, name))
-        return {"uri": stream.uri, "name": name, "ts": ts, "img": img, "clip": clip, "text": msg} | (
+        return {"uri": stream.uri, "name": name, "ts": ts, "img": img, "clip": clip, "text": msg, "tags": found} | (
             {"label": "rang the doorbell"} if ring else {"label": label} if label != "motion" else {}
         )
 
@@ -84,6 +85,7 @@ class WyzeEvents:
                 stream.motion = self.last_ts
                 logger.info(f"[MOTION] {msg} ({name})")
                 EVENT_LOG.appendleft(entry)
+                recording.mark(stream.uri, self.last_ts)
                 if event_id:  # Wyze deletes its copies after 14 days; ours stay. A thread: the downloads take seconds.
                     Thread(target=event_archive.save_event, args=(self.api, event_id, entry, img, entry["clip"]), daemon=True).start()
                 sound = entry.get("label") in SOUND_LABELS

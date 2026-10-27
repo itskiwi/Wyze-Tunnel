@@ -27,9 +27,9 @@ def test_auto_chain(both, monkeypatch):
         assert go2rtc.source_chain(cam(model=pro)) == ["webrtc"]
     monkeypatch.setattr(go2rtc, "tutk_available", lambda: False)
     monkeypatch.setattr(go2rtc, "local_ipv4s", lambda: {"169.254.1.7", "192.168.3.10"})
-    assert go2rtc.source_chain(cam(ip="192.168.3.27")) == ["lan", "webrtc"]  # same /24 network
-    assert go2rtc.source_chain(cam(ip="192.168.0.27")) == ["webrtc", "lan"]  # a /22 LAN or another 192.168 home: cloud first
-    assert go2rtc.source_chain(cam(ip="192.168.0.27", model="WYZEDB3")) == ["lan"]
+    assert go2rtc.source_chain(cam(ip="192.168.0.27")) == ["lan", "webrtc"]  # same /22 network
+    assert go2rtc.source_chain(cam(ip="192.168.50.27")) == ["webrtc", "lan"]  # another 192.168 home: cloud first
+    assert go2rtc.source_chain(cam(ip="192.168.50.27", model="WYZEDB3")) == ["lan"]
     assert go2rtc.source_chain(cam(ip="10.0.0.21")) == ["webrtc"]  # another site: LAN discovery can't reach it
     assert go2rtc.source_chain(cam(ip="169.254.1.2")) == ["webrtc"]
     monkeypatch.setattr(go2rtc, "go2rtc_available", lambda: False)

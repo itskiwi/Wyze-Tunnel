@@ -193,7 +193,7 @@
                     <span class="icon status {{'enabled' if camera.enabled}}" data-cam="{{cam_uri}}">
                         <i class="fas fa-circle-stop text-zinc-500" aria-hidden="true"></i>
                     </span>
-                    <span class="truncate">{{camera.nickname}}</span>
+                    <a class="truncate hover:underline" href="camera?cam={{ cam_uri }}" title="Open {{ camera.nickname }} full screen">{{camera.nickname}}</a>
                     <span class="status-label rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-300">{{ 'off' if not camera.enabled else 'idle' }}</span>
                     <span class="net-mode rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] font-medium text-zinc-300 {{ '' if camera.net_mode else 'is-hidden' }}" data-mode="{{ camera.net_mode }}" title="How Wyze Tunnel reaches this camera">{{ camera.net_mode }}</span>
                     {% if weather_on and camera.outdoor %}
@@ -236,6 +236,7 @@
                             <button type="button" class="menu-item" data-proxy=".vp-full"><i class="fas fa-expand w-4"></i>Full screen</button>
                             <button type="button" class="pip menu-item is-hidden" data-cam="{{cam_uri}}" title="Keep this camera on screen over other apps"><i class="fas fa-clone w-4"></i>Keep on screen</button>
                             {% endif %}
+                            <a class="menu-item" href="camera?cam={{ cam_uri }}"><i class="fas fa-up-right-and-down-left-from-center w-4"></i>Open camera</a>
                             <button type="button" class="toggle-details menu-item" data-cam="{{cam_uri}}"><i class="fas fa-circle-info w-4"></i>Details</button>
                         </div>
                         <p class="menu-label"><i class="fas fa-power-off"></i> Power</p>

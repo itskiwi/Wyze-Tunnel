@@ -381,6 +381,10 @@ mod vm {
         c.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]).arg(res.join("windows/install-native.ps1")).arg(arg);
         c
     }
+    /// The Health page's Fix it button touches this, next to WT_UPDATE_FILE.
+    pub fn firewall_fix_requested() -> bool {
+        fs::remove_file(data().join("fix-firewall")).is_ok()
+    }
     /// Native mode: a firewall rule for the bridge's programs is missing or blocking (read-only check).
     /// Mirrored to a "firewall-blocked" flag next to WT_UPDATE_FILE so the web UI can show a tip.
     pub fn firewall_blocked(res: &Path) -> bool {
@@ -438,7 +442,13 @@ mod vm {
 fn check_firewall(app: AppHandle) {
     std::thread::spawn(move || {
         if let (false, Ok(res)) = (BUSY.load(Ordering::SeqCst), app.path().resource_dir()) {
-            FIREWALL_BLOCKED.store(vm::firewall_blocked(&res), Ordering::SeqCst);
+            let blocked = vm::firewall_blocked(&res);
+            // Updates run without a window, so they can't ask for the prompt; say what's left to do.
+            if blocked && !FIREWALL_BLOCKED.swap(true, Ordering::SeqCst) {
+                let body = "Windows Firewall needs one change. Click Fix phone and camera access in the Wyze Tunnel tray menu, then Yes.";
+                let _ = app.notification().builder().title("Wyze Tunnel isn't private yet").body(body).show();
+            }
+            FIREWALL_BLOCKED.store(blocked, Ordering::SeqCst);
         }
     });
 }
@@ -805,6 +815,16 @@ fn main() {
                 if tick.is_multiple_of(4) && vm::needs_sdk() != full_shown {
                     full_shown = !full_shown;
                     let _ = if full_shown { menu.insert(&full, 5) } else { menu.remove(&full) };
+                }
+                #[cfg(windows)]
+                if vm::firewall_fix_requested() {
+                    let app = handle.clone();
+                    std::thread::spawn(move || {
+                        if let Ok(res) = app.path().resource_dir() {
+                            vm::fix_firewall(&res);
+                        }
+                        check_firewall(app);
+                    });
                 }
                 #[cfg(windows)]
                 if FIREWALL_BLOCKED.load(Ordering::SeqCst) != firewall_shown {

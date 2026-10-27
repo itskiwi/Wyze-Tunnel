@@ -289,3 +289,37 @@ def test_reel_of_the_last_day(tmp_path, monkeypatch):
     detect.reel("front")
     assert len(calls) == 1  # reused for 10 minutes
     assert detect.reel("back") is None
+
+
+def test_tracker_skips_things_that_never_move():
+    tracker, bush = detect.Tracker(), ("person", 0.7, (100, 100, 40, 80))
+    sway = [("person", 0.7, (100 + dx, 100, 40, 80)) for dx in (0, 4, -3, 5, -2)]  # a branch rocking in place
+    assert [tracker.update([o], t) for t, o in enumerate(sway)] == [[]] * 5
+    assert tracker.update([bush], 6) == []
+    walker = [("person", 0.7, (300 + 40 * i, 120, 40, 80)) for i in range(3)]
+    assert [len(tracker.update([o, bush], 10 + t)) for t, o in enumerate(walker)] == [0, 1, 1]
+    assert len(tracker.tracks) == 2  # the walker kept one track, the bush its own
+
+
+def test_tracker_counts_sure_hits_and_people_walking_closer():
+    tracker = detect.Tracker()
+    assert tracker.update([("person", 0.9, (0, 0, 40, 80))], 0) == [("person", 0.9, (0, 0, 40, 80))]
+    closer = [("dog", 0.7, (200, 200, 30 + 20 * i, 30 + 20 * i)) for i in range(2)]
+    assert [len(tracker.update([o], t)) for t, o in enumerate(closer)] == [0, 1]
+    tracker.update([], 100)
+    assert tracker.tracks == []  # lost after LOST_AFTER
+
+
+def test_watcher_ignores_a_still_false_person():
+    seen = []
+    watcher = detect.Watcher("yard", "Yard", lambda *args: seen.append(args))
+    frame = np.zeros((detect.HEIGHT, detect.WIDTH, 3), np.uint8)
+    for _ in range(5):
+        watcher.check(FakeModel([(15, 0.7)]), frame)
+    assert seen == [] and detect.search() == []
+
+
+def test_tracker_keeps_up_with_a_quick_walker():
+    tracker = detect.Tracker()
+    run = [("person", 0.6, (20 + 150 * i, 100, 40, 80)) for i in range(3)]  # nearly two body lengths a keyframe
+    assert [len(tracker.update([o], t)) for t, o in enumerate(run)] == [0, 1, 1]

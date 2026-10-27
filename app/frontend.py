@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, automations, backup, camera_settings, config, detect, devices, event_archive, floorplan, go2rtc, guests, homekit, integrations, lockdown, masks, network, passkeys, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, visitors, weather, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, automations, backup, camera_settings, config, detect, devices, event_archive, floorplan, go2rtc, guests, hearing, homekit, integrations, lockdown, masks, network, passkeys, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, visitors, weather, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.diagnostics import build_report
@@ -589,6 +589,15 @@ def create_app():
             users = mtx.get("authInternalUsers")
         return lockdown.checks(pocket.Away.status()["public"], WbAuth.enabled, users)
 
+    @app.route("/health/fix-firewall", methods=["POST"])
+    @owner_only
+    def fix_firewall():
+        # The Windows tray watches for this file and asks for the firewall prompt (one Yes click).
+        if not (update := os.getenv("WT_UPDATE_FILE")):
+            return {"asked": False}
+        Path(update).with_name("fix-firewall").touch()
+        return {"asked": True}
+
     @app.route("/health/tailscale-only", methods=["POST"])
     @owner_only
     def set_tailscale_only():
@@ -614,6 +623,29 @@ def create_app():
             return {"error": "Unknown camera"}, 404
         tamper.reset(cam_name)
         return {"status": "saved"}
+
+    @app.route("/camera")
+    @auth_required
+    def camera_page():
+        """One camera full screen: live video, controls, settings and today's events. ?cam=<uri>"""
+        cam_name = request.args.get("cam", "")
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        if not (camera := cams.get(cam_name)):
+            return redirect("live")
+        order = [uri for uri, cam in cams.items() if cam.get("enabled") or uri == cam_name]  # swipe sideways for the next one
+        at = order.index(cam_name)
+        return render_template(
+            "camera.html",
+            cam_uri=cam_name,
+            camera=camera,
+            prev_cam=order[at - 1] if len(order) > 1 else "",
+            next_cam=order[(at + 1) % len(order)] if len(order) > 1 else "",
+            guest=web_ui.current_guest(),
+            webrtc=bool(config.BRIDGE_IP),
+            video_format=request.cookies.get("video", "webrtc").lower(),
+            playback=PLAYBACK_ENABLED,
+            version=config.VERSION,
+        )
 
     @app.route("/camera-settings")
     @owner_only
@@ -997,9 +1029,26 @@ def create_app():
             # Anyone who knows an ntfy.sh topic can read it, so suggest one nobody can guess.
             suggested_topic=f"wyze-tunnel-{secrets.token_hex(6)}",
             tamper_on=tamper.enabled(),
+            listen_cams=[(uri, wyze_api.display_name(s.camera)) for uri, s in wb.streams.streams.items()
+                         if isinstance(s, WyzeStream) and not s.options.substream and not s.camera.is_battery],
+            listening=hearing.load_settings().get("cams", []),
+            can_listen=hearing.np is not None,
             api=WbAuth.api,
             version=config.VERSION,
         )
+
+    @app.route("/alerts/listen", methods=["POST"])
+    @auth_required
+    def alerts_listen():
+        """Pick the cameras that listen for smoke alarms and breaking glass, then restart cameras so it takes effect."""
+        if web_ui.current_guest():
+            return {"error": "Only the owner can change this."}, 403
+        try:
+            cams = hearing.save_settings((request.get_json(silent=True) or {}).get("cams"), list(wb.streams.streams))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        Thread(target=wb.restart, daemon=True).start()
+        return {"status": "saved", "cams": cams}
 
     @app.route("/account", methods=["GET", "POST"])
     @auth_required
@@ -1336,6 +1385,9 @@ def create_app():
             max_gb_choices=recording.MAX_GB_CHOICES,
             min_free_gb=recording.MIN_FREE // 1024**3,
             default_keep=recording.DEFAULT_KEEP_DAYS,
+            event_choices=recording.EVENT_CHOICES,
+            default_event=recording.DEFAULT_EVENT_DAYS,
+            shrink_encoder=recording.shrink_encoder(),
             disk=recording.disk_use(),
             cloud=recording.load_cloud(),
             folder_example=backup.FOLDER_EXAMPLE,
@@ -1380,6 +1432,12 @@ def create_app():
     @owner_only
     def history_delete(eid: str):
         return ({"status": "deleted"}, 200) if event_archive.delete(eid) else ({"error": "Not found"}, 404)
+
+    @app.route("/history/<string:eid>/keep", methods=["POST"])
+    @owner_only
+    def history_keep(eid: str):
+        kept = bool((request.get_json(silent=True) or {}).get("kept", True))
+        return ({"kept": kept}, 200) if event_archive.keep(eid, kept) else ({"error": "Not found"}, 404)
 
     @app.route("/history/clear", methods=["POST"])
     @owner_only
