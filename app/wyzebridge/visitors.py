@@ -12,7 +12,7 @@ KEEP = 200
 
 
 def load() -> list[dict]:
-    """Newest first: [{"uri", "name", "ts", "pic"}]."""
+    """Newest first: [{"uri", "name", "ts", "pic", "transcript"?}]."""
     try:
         with open(VISITORS_FILE) as f:
             return json.load(f)
@@ -36,3 +36,13 @@ def add(uri: str, name: str, ts: int) -> dict:
     with open(VISITORS_FILE, "w") as f:
         json.dump(log[:KEEP], f)
     return visit
+
+
+def set_transcript(uri: str, ts: int, text: str) -> None:
+    """Add what was said at the door to that ring's entry."""
+    log = load()
+    for visit in log:
+        if visit["uri"] == uri and visit["ts"] == ts:
+            visit["transcript"] = text
+    with open(VISITORS_FILE, "w") as f:
+        json.dump(log, f)

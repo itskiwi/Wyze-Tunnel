@@ -227,6 +227,29 @@ jobs:
           print("listening ok")
           '@ | & "$n\python\python.exe" -
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      # Doorbell transcripts on Windows: Windows' own voice says a sentence, whisper.cpp writes it down in its child process.
+      - name: Doorbell transcripts work in the Windows bundle
+        shell: pwsh
+        run: |
+          $n = "$PWD\bundle\wyze-tunnel"; $d = "$PWD\transcript-data"
+          New-Item -ItemType Directory -Force $d | Out-Null; 'paths: {}' | Set-Content "$d\mediamtx.yml"
+          Add-Type -AssemblyName System.Speech
+          $voice = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $voice.SetOutputToWaveFile("$d\speech.wav"); $voice.Speak("Hello, I have a package for you."); $voice.Dispose()
+          $env:PATH = "$n\bin;$env:PATH"; $env:TOKEN_PATH = "$d\"; $env:IMG_DIR = "$d\img\"; $env:MEDIAMTX_CONFIG = "$d\mediamtx.yml"
+          @'
+          import os, subprocess
+          from wyzebridge import transcripts
+          assert transcripts.available(), "pywhispercpp isn't in the bundle"
+          wav = os.path.join(os.environ["TOKEN_PATH"], "speech.wav")
+          raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", wav, "-ac", "1", "-ar", "16000", "-f", "s16le", "-"], capture_output=True, check=True).stdout
+          assert transcripts.loud_enough(raw), "the speech counted as silence"
+          text = transcripts.transcribe(raw)
+          print("heard:", text)
+          assert "package" in text.lower(), "whisper.cpp didn't hear the sentence"
+          print("transcripts ok")
+          '@ | & "$n\python\python.exe" -
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       # Saved sign-ins are sealed with the real DPAPI, and plain ones from older versions still open and get sealed.
       - name: Secrets are encrypted on Windows
         shell: pwsh

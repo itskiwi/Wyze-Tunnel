@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, automations, backup, camera_settings, config, detect, devices, event_archive, floorplan, go2rtc, guests, hearing, homekit, integrations, lockdown, masks, network, passkeys, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, visitors, weather, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, automations, backup, camera_settings, config, detect, devices, event_archive, floorplan, go2rtc, guests, hearing, homekit, integrations, lockdown, masks, network, passkeys, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, transcripts, visitors, weather, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.diagnostics import build_report
@@ -1033,6 +1033,8 @@ def create_app():
                          if isinstance(s, WyzeStream) and not s.options.substream and not s.camera.is_battery],
             listening=hearing.load_settings().get("cams", []),
             can_listen=hearing.np is not None,
+            transcripts_on=transcripts.enabled(),
+            can_transcribe=transcripts.available(),
             api=WbAuth.api,
             version=config.VERSION,
         )
@@ -1049,6 +1051,19 @@ def create_app():
             return {"error": str(ex)}, 400
         Thread(target=wb.restart, daemon=True).start()
         return {"status": "saved", "cams": cams}
+    @app.route("/alerts/transcripts", methods=["POST"])
+    @auth_required
+    def alerts_transcripts():
+        """Doorbell transcripts on or off. On needs {"agreed": true}; doorbells restart so their sound is on."""
+        if web_ui.current_guest():
+            return {"error": "Only the owner can change this."}, 403
+        data = request.get_json(silent=True) or {}
+        try:
+            on = transcripts.set_enabled(data.get("on"), data.get("agreed"))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        Thread(target=wb.restart, daemon=True).start()
+        return {"status": "saved", "on": on}
 
     @app.route("/account", methods=["GET", "POST"])
     @auth_required

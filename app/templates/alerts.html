@@ -101,6 +101,18 @@
                 <span id="tamperStatus" class="text-sm text-zinc-400" role="status">Checked every few minutes while a camera streams. If you move a camera on purpose, press "This is the new normal" on Camera health.</span></span>
         </label>
         {% endif %}
+        {% if not current_guest() and can_transcribe %}
+        {# Saved on its own, and only after the owner confirms the warning. #}
+        <div class="mt-3 flex items-start gap-3">
+            <input id="transcriptsOn" type="checkbox" class="mt-1 h-4 w-4 accent-emerald-500" aria-describedby="transcriptsStatus" {{ 'checked' if transcripts_on }} />
+            <div><label for="transcriptsOn" class="block">Write down what's said at the doorbell</label>
+                <span id="transcriptsStatus" class="text-sm text-zinc-400" role="status">After a ring, the doorbell listens for 20 seconds and this computer turns what it hears into text, shown with the visitor. Only the text is kept. Off unless you turn it on.</span>
+                <label id="transcriptsAgree" class="mt-2 flex items-start gap-2 rounded-lg border border-zinc-800 p-3 text-sm text-amber-300 {{ 'hidden' if transcripts_on }}">
+                    <input type="checkbox" class="mt-0.5 h-4 w-4 accent-accent" />
+                    <span>Recording what people say can need everyone's consent where you live, and many places require a visible notice. I've checked that this is allowed here and will tell visitors.</span>
+                </label></div>
+        </div>
+        {% endif %}
         <label class="mt-3 flex items-start gap-3">
             <input type="checkbox" name="summary" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.summary }} />
             <span><span class="block">A morning summary of last night</span>
@@ -143,6 +155,15 @@
         const r = await fetch("alerts/listen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cams }) })
             .then((x) => x.json()).catch((err) => ({ error: err.message }));
         document.getElementById("listenStatus").textContent = r.error || (cams.length ? "Saved. Cameras restart to start listening; the sound model (15 MB) downloads once." : "Off.");
+    });
+    const transcriptsOn = document.getElementById("transcriptsOn");
+    transcriptsOn?.addEventListener("change", async () => {
+        const agree = document.querySelector("#transcriptsAgree input");
+        document.getElementById("transcriptsAgree").classList.remove("hidden");
+        const r = await fetch("alerts/transcripts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: transcriptsOn.checked, agreed: agree.checked }) })
+            .then((x) => x.json()).catch((err) => ({ error: err.message }));
+        document.getElementById("transcriptsStatus").textContent = r.error || (r.on ? "On. The speech model (142 MB) downloads after the first ring." : "Off.");
+        if (r.error) transcriptsOn.checked = !transcriptsOn.checked;
     });
     const form = document.getElementById("alerts");
     const status = document.getElementById("status");

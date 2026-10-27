@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 from threading import Thread
 
-from wyzebridge import config, detect, devices, guests, hearing, integrations, lockdown, phone_cams, phrases, pocket, recording, sd_copy, tamper, timelapse, webhooks
+from wyzebridge import config, detect, devices, guests, hearing, integrations, lockdown, phone_cams, phrases, pocket, recording, sd_copy, tamper, timelapse, transcripts, webhooks
 from wyzebridge.auth import STREAM_AUTH, WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream
 from wyzebridge.go2rtc import lan_controls, tutk_available
@@ -93,8 +93,8 @@ class WyzeBridge(Thread):
             listen = hearing.wanted(cam.name_uri) and not cam.is_battery  # always streaming would drain a battery
             options = WyzeStreamOptions(
                 quality=env_cam("quality", cam.name_uri),
-                # Listening for alarms needs the camera's sound, all the time.
-                audio=bool(env_cam("enable_audio", cam.name_uri)) or listen,
+                # Listening for alarms, and doorbell transcripts, need the camera's sound.
+                audio=bool(env_cam("enable_audio", cam.name_uri)) or listen or (cam.is_doorbell and transcripts.enabled()),
                 # Spotting needs a recording to play hits from, so switching it on records the camera too.
                 record=bool(env_cam("record", cam.name_uri)) or recording.wanted(cam.name_uri) or detect.wanted(cam.name_uri),
                 # Battery cams connect only while someone watches, so they don't drain.

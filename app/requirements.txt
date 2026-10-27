@@ -16,3 +16,5 @@ opencv-python-headless==4.10.*; platform_machine != "armv7l"
 h5py==3.*; platform_machine != "armv7l"
 # Runs the AI models on the graphics chip or CPU. The Windows bundle swaps in onnxruntime-directml for any DirectX 12 GPU.
 onnxruntime==1.24.*; platform_machine != "armv7l"
+# Doorbell transcripts (off unless switched on). No wheels for 32-bit ARM or Intel Macs.
+pywhispercpp==1.5.*; platform_machine != "armv7l" and not (sys_platform == "darwin" and platform_machine == "x86_64")

@@ -28,6 +28,9 @@ Wyze Tunnel builds on other people's work. Thank you to these projects.
   https://github.com/tensorflow/models/tree/master/research/audioset/yamnet
 - **h5py** (BSD-3-Clause). Reads the YAMNet weights. https://www.h5py.org
 - **ONNX Runtime** and its **DirectML** build (MIT, Microsoft). Runs the AI models on the graphics chip or CPU. https://github.com/microsoft/onnxruntime
+- **whisper.cpp** by Georgi Gerganov and contributors (MIT), through **pywhispercpp** by Abdeladim Sadiki (MIT).
+  Turns doorbell sound into text when doorbell transcripts are on; its `base.en` model (OpenAI Whisper, MIT)
+  downloads on first use. https://github.com/ggml-org/whisper.cpp https://github.com/absadiki/pywhispercpp
 - **Frigate** (MIT). Search reads its events API; no Frigate code is included. https://frigate.video
 - **Font Awesome Free** 6.1.1 by Fonticons (icons CC BY 4.0, fonts SIL OFL 1.1, code MIT). Bundled in
   `app/static/fontawesome` so the web UI works without internet. https://fontawesome.com
