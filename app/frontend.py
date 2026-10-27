@@ -1660,12 +1660,19 @@ def create_app():
     @app.route("/api/detections")
     @auth_required
     def detections():
-        """What was spotted, newest first. Filter with ?label=person&cam=front-door; page with ?before=<ts>."""
+        """What was spotted, newest first. Filter with ?label=person&cam=front-door; page with ?before=<ts>.
+
+        ?q=red truck ranks by how well each picture matches the words instead (each hit gets a 0-1 `match`).
+        """
         try:
             before = float(request.args.get("before") or 0)
         except ValueError:
             return {"error": "before should be a Unix time"}, 400
-        hits = detect.search(request.args.get("label", ""), request.args.get("cam", ""), before)
+        label, cam = request.args.get("label", ""), request.args.get("cam", "")
+        if words := request.args.get("q", "").strip()[:200]:
+            hits = detect.search_words(words, label, cam)
+        else:
+            hits = detect.search(label, cam, before)
         for hit in hits:
             hit["thumb"] = f"detections/{hit['id']}.jpg"
             if hit["source"] == "frigate":
@@ -1674,6 +1681,12 @@ def create_app():
                 start = datetime.fromtimestamp(hit["ts"] - 5, timezone.utc).isoformat()
                 hit["clip"] = f"recordings/{quote_plus(hit['cam'])}/play?start={quote_plus(start)}&duration=30"
         return {"labels": detect.labels(), "detections": hits}
+
+    @app.route("/api/ai/status")
+    @auth_required
+    def ai_status():
+        """Where the AI models run and whether each is ready, so pages can say "still learning"."""
+        return {"device": detect.ai.device(), "models": {"search": detect.clip.status()}}
 
     @app.route("/detections/reel.mp4")
     @auth_required

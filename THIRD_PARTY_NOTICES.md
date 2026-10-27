@@ -23,6 +23,9 @@ Wyze Tunnel builds on other people's work. Thank you to these projects.
 - **YOLOX** by Megvii (Apache-2.0). Its YOLOX-S model downloads only if "Stronger" detection is picked.
   https://github.com/Megvii-BaseDetection/YOLOX
 - **OpenCV** (Apache-2.0). Runs the detection model. https://opencv.org
+- **CLIP** ViT-B/32 by OpenAI (MIT), as the ONNX export by Xenova (Apache-2.0). Downloaded on first use for word search
+  and Visits. https://github.com/openai/CLIP, https://huggingface.co/Xenova/clip-vit-base-patch32
+- **Tokenizers** by Hugging Face (Apache-2.0). Reads search words for CLIP. https://github.com/huggingface/tokenizers
 - **ONNX Runtime** and its **DirectML** build (MIT, Microsoft). Runs the AI models on the graphics chip or CPU. https://github.com/microsoft/onnxruntime
 - **Frigate** (MIT). Search reads its events API; no Frigate code is included. https://frigate.video
 - **Font Awesome Free** 6.1.1 by Fonticons (icons CC BY 4.0, fonts SIL OFL 1.1, code MIT). Bundled in

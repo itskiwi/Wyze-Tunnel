@@ -323,3 +323,69 @@ def test_tracker_keeps_up_with_a_quick_walker():
     tracker = detect.Tracker()
     run = [("person", 0.6, (20 + 150 * i, 100, 40, 80)) for i in range(3)]  # nearly two body lengths a keyframe
     assert [len(tracker.update([o], t)) for t, o in enumerate(run)] == [0, 1, 1]
+
+
+def fake_vec(*hot):
+    vec = np.zeros(512, np.float32)
+    vec[list(hot)] = 1
+    return (vec / np.linalg.norm(vec)).tobytes()
+
+
+def test_visits_follow_the_same_look_across_cameras():
+    t = 1_800_000_000
+    looks = [("front", "person", t, 0), ("drive", "person", t + 60, 0), ("drive", "person", t + 90, 1), ("back", "person", t + 120, 0)]
+    looks += [("drive", "car", t + 30, 2), ("front", "person", t + 2000, 0)]  # a car; the same look much later
+    ids = [detect.add(cam, label, 0.9, ts) for cam, label, ts, _ in looks]
+    with detect._db() as con:
+        for det_id, (*_, look) in zip(ids, looks):
+            con.execute("INSERT INTO vecs (id, frame, crop) VALUES (?, ?, ?)", (det_id, fake_vec(look), fake_vec(look)))
+    visits = detect.visits(t - 1)
+    assert [(v["label"], [c["uri"] for c in v["cams"]]) for v in visits] == [
+        ("person", ["front", "drive", "back"]),
+        ("car", ["drive"]),
+        ("person", ["drive"]),  # someone else
+        ("person", ["front"]),
+    ]
+    assert visits[0]["start"] == t and visits[0]["end"] == t + 120 and visits[0]["cams"][1]["start"] == t + 60
+
+
+def test_word_search_ranks_by_match(monkeypatch):
+    from wyzebridge import clip
+
+    t = 1_800_000_000
+    ids = [detect.add("front", "car", 0.9, t + i) for i in range(2)]
+    with detect._db() as con:
+        for det_id, look in zip(ids, (3, 4)):
+            con.execute("INSERT INTO vecs (id, frame, crop) VALUES (?, ?, ?)", (det_id, fake_vec(look), None))
+    detect.add("front", "dog", 0.9, t + 5)  # not indexed yet
+    monkeypatch.setattr(clip, "_load", lambda: True)
+    monkeypatch.setattr(clip, "text_vec", lambda words: np.frombuffer(fake_vec(4), np.float32))
+    hits = detect.search_words("red truck")
+    assert [h["id"] for h in hits] == [2] and hits[0]["match"] == 1.0
+    frontend, client = make_client()
+    body = client.get("/api/detections?api=key&q=red+truck").json
+    assert [h["id"] for h in body["detections"]] == [2] and body["detections"][0]["thumb"] == "detections/2.jpg"
+    assert set(client.get("/api/ai/status?api=key").json) == {"device", "models"}
+
+
+def test_clip_preprocessing_shape_and_crop():
+    from wyzebridge import clip
+
+    frame = np.zeros((detect.HEIGHT, detect.WIDTH, 3), np.uint8)
+    assert clip._pixels(frame).shape == (1, 3, 224, 224)
+    assert clip.crop(frame, (10, 10, 50, 100)).shape == (125, 64, 3)
+    assert clip.crop(frame, (700, 400, 2, 2)) is frame  # off the picture: use the whole frame
+    assert clip.match(0.1) == 0 and clip.match(0.5) == 1
+
+
+@pytest.mark.skipif(not os.getenv("CI"), reason="downloads the 150 MB search model")
+def test_clip_real_model_matches_words_to_pictures(tmp_path, monkeypatch):
+    from wyzebridge import ai, clip
+
+    monkeypatch.setattr(ai, "MODEL_DIR", tmp_path)
+    assert clip._load(), "the search model didn't download or load"
+    red, blue = np.zeros((360, 640, 3), np.uint8), np.zeros((360, 640, 3), np.uint8)
+    red[..., 2], blue[..., 0] = 255, 255  # BGR
+    words = clip.text_vec("a plain red picture")
+    assert clip.image_vec(red) @ words > clip.image_vec(blue) @ words
+    assert clip.image_vec(red).shape == (512,)

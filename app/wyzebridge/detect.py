@@ -26,7 +26,7 @@ try:
 except (ImportError, RuntimeError):
     cv2 = None
 
-from wyzebridge import ai
+from wyzebridge import ai, clip
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.config import IMG_PATH, TOKEN_PATH
 from wyzebridge.ffmpeg import parse_timedelta
@@ -102,6 +102,7 @@ def _db() -> sqlite3.Connection:
         " ts REAL, source TEXT, ext_id TEXT UNIQUE)"
     )
     con.execute("CREATE INDEX IF NOT EXISTS detections_ts ON detections (ts)")
+    con.execute("CREATE TABLE IF NOT EXISTS vecs (id INTEGER PRIMARY KEY, frame BLOB, crop BLOB)")
     return con
 
 
@@ -124,6 +125,7 @@ def add(
             (time.time() - KEEP.total_seconds(),),
         ):
             (THUMB_DIR / f"{row['id']}.jpg").unlink(missing_ok=True)
+        con.execute("DELETE FROM vecs WHERE id IN (SELECT id FROM detections WHERE ts < ?)", (time.time() - KEEP.total_seconds(),))
         con.execute("DELETE FROM detections WHERE ts < ?", (time.time() - KEEP.total_seconds(),))
         return cur.lastrowid if cur.rowcount else None
 
@@ -144,6 +146,55 @@ def search(label: str = "", cam: str = "", before: float = 0, limit: int = 120) 
     with _db_lock, _db() as con:
         rows = con.execute(query + " ORDER BY ts DESC LIMIT ?", (*args, limit)).fetchall()
     return [dict(r) for r in rows]
+
+
+def search_words(words: str, label: str = "", cam: str = "", limit: int = 60) -> list[dict]:
+    """Hits that look like the words ("red truck"), best match first; [] until the search model is ready."""
+    rows = search(label, cam, limit=2000)
+    with _db_lock, _db() as con:
+        vecs = {r[0]: r[1] for r in con.execute("SELECT id, frame FROM vecs")}
+    return clip.rank(words, rows, vecs)[:limit]
+
+
+VISIT_GAP = 300  # the same person seen again within 5 minutes, on any camera, is one visit
+KINDS = {"person": "person", "dog": "animal", "cat": "animal", **{v: "vehicle" for v in VEHICLES}}
+
+
+def visits(since: float) -> list[dict]:
+    """People, vehicles and animals followed across cameras by how they look, oldest first.
+
+    [{id, label, start, end, cams: [{uri, start, end, detection, thumb}]}]; the visit id is its first detection's.
+    Only hits the search model has seen count: without it, the events list groups by time instead.
+    """
+    with _db_lock, _db() as con:
+        rows = con.execute(
+            "SELECT d.id, d.cam, d.label, d.ts, v.crop FROM detections d JOIN vecs v ON v.id = d.id"
+            " WHERE d.ts >= ? AND v.crop IS NOT NULL ORDER BY d.ts",
+            (since,),
+        ).fetchall()
+    out: list[dict] = []
+    for row in rows:
+        if not (kind := KINDS.get(row["label"])):
+            continue
+        visit = next(
+            (
+                v
+                for v in reversed(out)
+                if v["kind"] == kind and row["ts"] - v["end"] <= VISIT_GAP and any(clip.same(row["crop"], c) for c in v["crops"])
+            ),
+            None,
+        )
+        if not visit:
+            visit = {"id": row["id"], "label": row["label"], "kind": kind, "start": row["ts"], "end": row["ts"], "cams": [], "crops": []}
+            out.append(visit)
+        visit["end"], visit["crops"] = row["ts"], (visit["crops"] + [row["crop"]])[-5:]
+        if visit["cams"] and visit["cams"][-1]["uri"] == row["cam"]:
+            visit["cams"][-1]["end"] = row["ts"]
+        else:
+            visit["cams"].append({"uri": row["cam"], "start": row["ts"], "end": row["ts"], "detection": row["id"], "thumb": f"detections/{row['id']}.jpg"})
+    for visit in out:
+        del visit["kind"], visit["crops"]
+    return out
 
 
 def get(det_id: int) -> dict | None:
@@ -524,6 +575,7 @@ class Watcher(Thread):
                     soft_glow(frame, boxes[label]) if label in boxes else frame,
                     [cv2.IMWRITE_JPEG_QUALITY, 80],
                 )
+                clip.add(det_id, frame, boxes.get(label))
                 logger.info(f"[DETECT] {label.capitalize()} on {self.uri} ({score:.0%})")
                 if self.on_detect:
                     self.on_detect(self.uri, self.cam_name, label, det_id, now)
@@ -536,6 +588,8 @@ class Watcher(Thread):
 
 def watch(uri: str, name: str, on_detect=None) -> None:
     """Start watching a camera once; calling again after a bridge restart is a no-op."""
+    if not _watchers:
+        clip.start(_db)
     if uri in _watchers and not _watchers[uri].stop_flag.is_set():
         return
     _watchers[uri] = Watcher(uri, name, on_detect)

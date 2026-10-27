@@ -36,25 +36,31 @@ def device() -> str:
     return "gpu" if gpu_ok() else "cpu" if ort else ""
 
 
-def fetch(url: str, file: str, size: int) -> Path | None:
-    """Download a model file once, checking its exact size (a short file is a broken download)."""
+def fetch(url: str, file: str, size: int = 0) -> Path | None:
+    """Download a model file once. With a size, a file of any other size is a broken download; without one
+    (a host that doesn't publish sizes), the half-written .part file is never mistaken for the model."""
     path = MODEL_DIR / file
     with _lock:
-        if path.exists() and path.stat().st_size == size:
+        if path.exists() and (path.stat().st_size == size or not size):
             return path
         MODEL_DIR.mkdir(parents=True, exist_ok=True)
+        part = path.with_suffix(".part")
         logger.info(f"[AI] Downloading a model: {file}")
         try:
-            resp = requests.get(url, timeout=60)
-            resp.raise_for_status()
-        except requests.RequestException as ex:
+            with requests.get(url, timeout=60, stream=True) as resp:
+                resp.raise_for_status()
+                with open(part, "wb") as f:
+                    for chunk in resp.iter_content(1 << 20):
+                        f.write(chunk)
+        except (requests.RequestException, OSError) as ex:
             logger.error(f"[AI] Couldn't download {file}: {ex}")
+            part.unlink(missing_ok=True)
             return None
-        if len(resp.content) != size:
-            logger.error(f"[AI] {file} downloaded {len(resp.content)} bytes, not {size}; trying again later")
+        if size and part.stat().st_size != size or not part.stat().st_size:
+            logger.error(f"[AI] {file} downloaded {part.stat().st_size} bytes, not {size}; trying again later")
+            part.unlink(missing_ok=True)
             return None
-        path.with_suffix(".part").write_bytes(resp.content)
-        path.with_suffix(".part").replace(path)
+        part.replace(path)
     return path
 
 
