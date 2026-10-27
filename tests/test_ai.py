@@ -65,11 +65,13 @@ def test_gpu_that_wont_load_falls_back(tmp_path, monkeypatch):
 
 def test_short_download_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr(ai, "MODEL_DIR", tmp_path)
-    resp = mock.Mock(content=b"abc", raise_for_status=lambda: None)
+    resp = mock.MagicMock(iter_content=lambda n: [b"ab", b"c"])
+    resp.__enter__.return_value = resp
     with mock.patch.object(ai.requests, "get", return_value=resp):
         assert ai.fetch("http://x/m.onnx", "m.onnx", 10) is None
         assert ai.fetch("http://x/m.onnx", "m.onnx", 3) == tmp_path / "m.onnx"
-    assert not (tmp_path / "m.part").exists()
+        assert ai.fetch("http://x/n.onnx", "n.onnx") == tmp_path / "n.onnx"  # size unknown
+    assert not list(tmp_path.glob("*.part"))
 
 
 def test_ai_gpu_false_keeps_the_cpu(monkeypatch):
