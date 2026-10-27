@@ -289,12 +289,6 @@ def group(events: list[dict], gap: int = REPEAT_GAP, visit_gap: int = VISIT_GAP)
     return sorted(groups, key=lambda g: g["last"], reverse=True)
 
 
-def counts(since: int) -> dict:
-    """How many events of each type since a time, for the Live page's summary."""
-    with _db() as db:
-        return dict(db.execute("SELECT type, COUNT(*) FROM events WHERE ts>=? GROUP BY type", (since,)).fetchall())
-
-
 def media_file(eid: str, kind: str) -> Path | None:
     """The saved picture ("img") or clip ("clip") of an event, or None. Only ever inside the archive's media folder."""
     if kind not in ("img", "clip") or not ID_RE.fullmatch(eid):

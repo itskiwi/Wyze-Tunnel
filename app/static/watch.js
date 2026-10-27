@@ -8,8 +8,7 @@
   const ORDER = [...NOTABLE, "motion"];
   const NAMES = { person: ["person", "people"], package: ["package", "packages"], vehicle: ["car", "cars"], pet: ["pet", "pets"],
     "rang the doorbell": ["doorbell ring", "doorbell rings"], motion: ["motion alert", "motion alerts"] };
-  const VISIT_GAP = 180; // seconds between sightings on different cameras that still count as one visit
-  let events = [], span = 7200, at = null; // at is the rewind time, null while live
+  let events = [], groups = [], span = 7200, at = null; // at is the rewind time, null while live
   let pinned = null;
   try { pinned = localStorage.getItem("watchPin"); } catch { }
 
@@ -144,7 +143,7 @@
     settle();
   }));
 
-  // Playback: a recording from the rewind time, or a visit's saved clips one after another.
+  // Playback: a recording or event clip from the rewind time.
   const dialog = $("#rwPlayer"), video = $("video", dialog);
   let queue = [];
   function playNext() {
@@ -168,48 +167,13 @@
     else if (ev && ev.clip) play([{ src: `history/media/${ev.id}/clip`, label: `${c.name}, ${clock(ev.ts)}` }]);
   });
 
-  // shortcut: visits are grouped here from the last 200 events; move to the shared event_archive grouping when it lands.
-  function visits() {
-    const seen = events.filter((e) => (e.type === "person" || e.type === "rang the doorbell") && byName.has(e.device)).reverse();
-    const out = [];
-    let cur = [];
-    for (const e of seen) {
-      if (cur.length && e.ts - cur[cur.length - 1].ts > VISIT_GAP) { out.push(cur); cur = []; }
-      cur.push(e);
-    }
-    if (cur.length) out.push(cur);
-    return out.filter((v) => new Set(v.map((e) => e.device)).size > 1).reverse();
-  }
-
+  // The latest visit today (one person or car across cameras, grouped by event_archive) as the Events tab's card.
   function drawVisit() {
-    const box = $("#visit"), v = visits()[0];
-    box.classList.toggle("hidden", !v || v[0].ts < midnight());
-    if (box.classList.contains("hidden")) return;
-    const steps = [];
-    for (const e of v) {
-      const last = steps[steps.length - 1];
-      if (last && last.device === e.device) { last.end = e.ts; last.evs.push(e); }
-      else steps.push({ device: e.device, start: e.ts, end: e.ts, evs: [e] });
-    }
-    const mins = Math.max(1, Math.round((v[v.length - 1].ts - v[0].ts) / 60));
-    $(".visit-kicker", box).textContent = `One visit, ${new Set(v.map((e) => e.device)).size} cameras, ${ago(v[0].ts)}`;
-    $("[data-title]", box).textContent = `From ${steps[0].device} to ${steps[steps.length - 1].device} in ${mins} min`;
-    $(".visit-steps", box).replaceChildren(...steps.map((s) => {
-      const li = document.createElement("li"), frame = document.createElement("span"), text = document.createElement("span"), time = document.createElement("time");
-      frame.className = "pic";
-      const src = pic(s.evs.find((e) => e.img));
-      if (src) { const im = new Image(); im.alt = ""; im.src = src; frame.append(im); }
-      const small = document.createElement("small");
-      small.textContent = sentence(s.evs[0].text) + (s.end - s.start >= 20 ? `, there ${Math.round((s.end - s.start) / 60) || 1} min` : "");
-      text.append(s.device, small);
-      time.textContent = clock(s.start);
-      li.append(frame, text, time);
-      return li;
-    }));
-    const clips = v.filter((e) => e.clip).map((e) => ({ src: `history/media/${e.id}/clip`, label: `${e.device}, ${clock(e.ts)}` }));
-    const btn = $("[data-play]", box);
-    btn.classList.toggle("hidden", !clips.length);
-    btn.onclick = () => play(clips);
+    const box = $("#visit"), v = groups.find((g) => Object.keys(g.cameras).length > 1 && g.first >= midnight());
+    box.classList.toggle("hidden", !v);
+    if (!v) return box.replaceChildren();
+    const byId = Object.fromEntries(events.map((e) => [e.id, e]));
+    box.replaceChildren(WTEvents.visit(v, byId, { owner: box.dataset.owner === "1" }));
   }
 
   function drawQuiet(counts) {
@@ -237,12 +201,12 @@
   }));
 
   function load() {
-    // shortcut: the newest 200 events of the last day; a very busy day loses its oldest marks on the 24h view.
-    Promise.all([
-      fetch(`history/events?since=${Math.floor(now() - 86400)}&limit=200`).then((r) => r.ok ? r.json() : Promise.reject()),
-      fetch(`history/counts?since=${midnight()}`).then((r) => r.ok ? r.json() : {}),
-    ]).then(([data, counts]) => {
+    const tz = new Date().getTimezoneOffset(), get = (q) => fetch(`history/events?${q}&tz=${tz}`).then((r) => r.ok ? r.json() : Promise.reject());
+    // shortcut: the newest 300 events of the last day; a very busy day loses its oldest marks on the 24h view.
+    Promise.all([get(`since=${Math.floor(now() - 86400)}&limit=300`), get(`since=${midnight()}&limit=1`)]).then(([data, today]) => {
       events = data.events;
+      groups = data.groups;
+      const counts = today.counts;
       story();
       spotlight();
       drawLane();

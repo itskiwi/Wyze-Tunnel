@@ -127,12 +127,7 @@
             </div>
             <p class="mt-2 text-xs text-zinc-500" id="rwHint">Drag along the line to rewind every camera at once. Tap a picture to play from there.</p>
         </div>
-        <div class="surface watch-card hidden p-4" id="visit">
-            <p class="visit-kicker"></p>
-            <h2 class="font-display text-xl font-extrabold text-zinc-50" data-title></h2>
-            <ol class="visit-steps"></ol>
-            <button type="button" class="btn btn-primary mt-3 hidden w-full justify-center" data-play><i class="fas fa-play"></i> Play the whole visit</button>
-        </div>
+        <div class="watch-card hidden" id="visit" data-owner="{{ 0 if guest else 1 }}"></div>
         <div class="surface watch-card hidden p-4" id="quiet">
             <h2 class="font-display text-lg font-extrabold text-zinc-50">Since midnight</h2>
             <ul class="quiet-list"></ul>
@@ -527,7 +522,8 @@
     }
 </script>
 <script src="static/site.js?v={{ version }}"></script>
-{% if watching %}<script src="static/watch.js?v={{ version }}"></script>{% endif %}
+{% if watching %}<script src="static/events.js?v={{ version }}"></script>
+<script src="static/watch.js?v={{ version }}"></script>{% endif %}
 {# Always: it also holds push-to-talk #}
 <script src="static/webrtc.js?v={{ version }}"></script>
 {% if show_video and not ((webrtc and video_format == "webrtc") or video_format =="kvs") %}

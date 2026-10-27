@@ -540,7 +540,7 @@ body.ev-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .ev-row, .ev-day { transition: none; } }
 .ev-page [hidden], .ev-pickbar[hidden], .ev-player [hidden] { display: none !important; }
 /* Live: monitoring view. The camera that saw something last goes first and full width, with rewind and visits right under it. */
-:root { --ev-person: #8b5cf6; --ev-package: #ea7a1a; --ev-vehicle: #0ea5e9; --ev-pet: #14b8a6; --ev-ring: #e11d48; --ev-other: rgb(var(--zinc-500)); }
+:root { --ev-person: var(--k-person); --ev-package: var(--k-package); --ev-vehicle: var(--k-vehicle); --ev-pet: var(--k-pet); --ev-ring: var(--k-alarm); --ev-other: rgb(var(--zinc-500)); }  /* same colors as the Events tab */
 .cameras > .camera.spotlight { order: -2; grid-column: 1 / -1; }
 .cameras > .watch-panel { order: -1; grid-column: 1 / -1; }
 .watch-card { margin-top: .875rem; }
@@ -567,7 +567,7 @@ body.ev-open { overflow: hidden; }
 .rw-ticks i[data-type="person"], .rw-ticks i[data-type="package"], .rw-ticks i[data-type="vehicle"], .rw-ticks i[data-type="rang the doorbell"] { height: 20px; }
 [data-type="person"] { --ev: var(--ev-person); } [data-type="package"] { --ev: var(--ev-package); } [data-type="vehicle"] { --ev: var(--ev-vehicle); }
 [data-type="pet"] { --ev: var(--ev-pet); } [data-type="rang the doorbell"] { --ev: var(--ev-ring); }
-.rw-ticks i[data-type], .quiet-list i[data-type], .visit-kicker { background: var(--ev, var(--ev-other)); }
+.rw-ticks i[data-type], .quiet-list i[data-type] { background: var(--ev, var(--ev-other)); }
 .rw-head { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: rgb(var(--zinc-50)); border-radius: 2px; pointer-events: none; }
 .rw-head span { position: absolute; top: calc(100% + 2px); left: 50%; transform: translateX(-50%); white-space: nowrap; font: 600 11px "Geist Mono", ui-monospace, monospace;
   background: rgb(var(--zinc-50)); color: rgb(var(--zinc-950)); padding: 1px 6px; border-radius: 6px; }
@@ -575,16 +575,6 @@ body.ev-open { overflow: hidden; }
 .rw-lane.at-live .rw-head span { background: rgb(var(--accent)); color: rgb(var(--on-accent)); }
 .rw-axis { display: flex; justify-content: space-between; margin-top: 1.5rem; font: 10.5px "Geist Mono", ui-monospace, monospace; color: rgb(var(--zinc-500)); }
 
-.visit-kicker { display: inline-block; --ev: var(--ev-person); color: #fff; font: 600 11px "Geist Mono", ui-monospace, monospace; letter-spacing: .04em;
-  text-transform: uppercase; padding: 2px 8px; border-radius: 7px; margin-bottom: .4rem; }
-.visit-steps { list-style: none; padding: 0; margin-top: .8rem; display: grid; gap: .6rem; counter-reset: step; }
-.visit-steps li { display: grid; grid-template-columns: 4.25rem 1fr auto; gap: .75rem; align-items: center; font-size: .875rem; color: rgb(var(--zinc-50)); }
-.visit-steps .pic { position: relative; aspect-ratio: 16 / 10; border-radius: .6rem; overflow: hidden; background: rgb(var(--zinc-800)); }
-.visit-steps .pic img { width: 100%; height: 100%; object-fit: cover; }
-.visit-steps .pic::before { counter-increment: step; content: counter(step); position: absolute; left: 4px; top: 4px; width: 18px; height: 18px; border-radius: 9px;
-  display: grid; place-items: center; font-size: 10px; font-weight: 700; color: #fff; background: var(--ev-person); }
-.visit-steps small { display: block; color: rgb(var(--zinc-400)); font-size: .78rem; }
-.visit-steps time { font: 12px "Geist Mono", ui-monospace, monospace; color: rgb(var(--zinc-400)); }
 .quiet-list { list-style: none; padding: 0; margin-top: .6rem; display: grid; gap: .5rem; font-size: .875rem; color: rgb(var(--zinc-400)); }
 .quiet-list a { display: flex; align-items: center; gap: .6rem; }
 .quiet-list a:hover b { text-decoration: underline; }
