@@ -93,6 +93,9 @@ mod vm {
         false // the VM's own updater waits for viewers
     }
     pub fn quit() {}
+    pub fn store_app() -> bool {
+        false
+    }
     pub fn open_url(url: &str) {
         let _ = cmd("open").arg(url).spawn();
     }
@@ -337,6 +340,18 @@ mod vm {
         let n = fs::read_to_string(data().join("viewers")).unwrap_or_default();
         !wsl() && n.trim().parse::<u32>().is_ok_and(|n| n > 0)
     }
+    /// Installed from the Microsoft Store (MSIX): the Store updates the app, and its startup task starts it at sign-in.
+    pub fn store_app() -> bool {
+        use windows_sys::Win32::Storage::Packaging::Appx::GetCurrentPackageFullName;
+        let mut len = 0u32;
+        unsafe { GetCurrentPackageFullName(&mut len, std::ptr::null_mut()) != 15700 } // APPMODEL_ERROR_NO_PACKAGE
+    }
+    /// The Store closes the app to update it; this has Windows start it again afterwards.
+    pub fn restart_after_update() {
+        use windows_sys::Win32::System::Recovery::RegisterApplicationRestart;
+        let args: Vec<u16> = "--hidden".encode_utf16().chain([0]).collect();
+        unsafe { RegisterApplicationRestart(args.as_ptr(), 0) };
+    }
     /// Opens the default browser. explorer.exe garbles links with a query string and opens Documents instead.
     pub fn open_url(url: &str) {
         use std::os::windows::ffi::OsStrExt;
@@ -406,12 +421,22 @@ fn check_firewall(app: AppHandle) {
     });
 }
 
+/// The Store version starts from its package's startup task, which can't be turned on from here.
+fn enable_autostart(app: &AppHandle) {
+    if !vm::store_app() {
+        let _ = app.autolaunch().enable();
+    }
+}
+
 fn bridge_up() -> bool {
     TcpStream::connect_timeout(&SocketAddr::from(([127, 0, 0, 1], PORT)), Duration::from_secs(1)).is_ok()
 }
 
 /// Tag of the newest desktop release, if it differs from this build.
 fn newer_release() -> Option<String> {
+    if vm::store_app() {
+        return None; // the Store updates it
+    }
     // shortcut: curl ships with macOS and Windows 10+, so no HTTP crate; treats any different tag as newer.
     // Bridge releases (v*) share the repo, so look for the newest desktop-v* tag.
     let out = cmd("curl").args(["-fsSL", "https://api.github.com/repos/itskiwi/Wyze-Tunnel/releases?per_page=30"]).output().ok()?;
@@ -572,7 +597,7 @@ fn run_installer(app: &AppHandle, res: &Path, full: bool) -> Result<i32, String>
             vm::stop(); // hand the ports over from the native bridge to the WSL one
         }
         STOPPED.store(false, Ordering::SeqCst);
-        let _ = app.autolaunch().enable();
+        enable_autostart(app);
         #[cfg(windows)]
         check_firewall(app.clone());
     }
@@ -669,6 +694,10 @@ fn main() {
                 })
                 .build(app)?;
 
+            #[cfg(windows)]
+            if vm::store_app() {
+                vm::restart_after_update();
+            }
             if !std::env::args().any(|a| a == "--hidden") {
                 open_window(app.handle());
             }
@@ -710,7 +739,7 @@ fn main() {
                     (latest, desktop) = (latest_bridge(), newer_release()); // every 6 hours
                     if vm::installed() {
                         // No off switch in the app, so re-assert it in case a cleanup or update dropped it.
-                        let _ = handle.autolaunch().enable();
+                        enable_autostart(&handle);
                     }
                     #[cfg(windows)]
                     check_firewall(handle.clone());
