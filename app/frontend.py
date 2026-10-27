@@ -245,6 +245,7 @@ def create_app():
                 video_format=video_format.lower(),
                 autoplay=autoplay,
                 weather_on=weather.enabled(),
+                mode=webhooks.ALERTS.get("mode") or "schedule",
             )
         )
 
@@ -1302,6 +1303,12 @@ def create_app():
             return int(a[key]) if a.get(key, "").isdigit() else 0
 
         return event_archive.search(a.get("device", "")[:100], a.get("type", "")[:30], num("since"), num("until"), a.get("q", "")[:100], num("before"), num("limit") or 60)
+
+    @app.route("/history/counts")
+    @auth_required
+    def history_counts():
+        since = request.args.get("since", "")
+        return event_archive.counts(int(since) if since.isdigit() else 0)
 
     @app.route("/history/media/<string:eid>/<string:kind>")
     @auth_required
