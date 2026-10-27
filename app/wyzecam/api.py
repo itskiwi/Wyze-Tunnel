@@ -249,6 +249,7 @@ def get_camera_list(auth_info: WyzeCredential) -> list[WyzeCamera]:
                 parent_enr=parent_enr,
                 parent_mac=parent_mac,
                 thumbnail=thumbnail,
+                online={0: False, 1: True}.get(device.get("conn_state")),
             )
         )
     return result
