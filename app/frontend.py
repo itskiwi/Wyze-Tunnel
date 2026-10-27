@@ -589,6 +589,15 @@ def create_app():
             users = mtx.get("authInternalUsers")
         return lockdown.checks(pocket.Away.status()["public"], WbAuth.enabled, users)
 
+    @app.route("/health/fix-firewall", methods=["POST"])
+    @owner_only
+    def fix_firewall():
+        # The Windows tray watches for this file and asks for the firewall prompt (one Yes click).
+        if not (update := os.getenv("WT_UPDATE_FILE")):
+            return {"asked": False}
+        Path(update).with_name("fix-firewall").touch()
+        return {"asked": True}
+
     @app.route("/health/tailscale-only", methods=["POST"])
     @owner_only
     def set_tailscale_only():

@@ -129,3 +129,24 @@ def test_wyze_sign_in_cache_round_trips_sealed(tmp_path, monkeypatch):
             raise AssertionError("should come from the cache")
 
     assert Api().get_cameras() == ["secret-camera-key"]
+
+
+def test_firewall_open_to_any_address_is_caught(strict, monkeypatch):
+    from types import SimpleNamespace
+
+    for out, expected in (("open\r\n", True), ("", False)):
+        monkeypatch.setattr(strict, "_fw", (0.0, False))
+        with mock.patch.object(strict.subprocess, "run", return_value=SimpleNamespace(stdout=out)) as run:
+            assert strict.firewall_too_open() is expected
+            assert strict.firewall_too_open() is expected  # cached: one PowerShell call a minute
+        assert run.call_count == 1 and "-Program" in run.call_args.args[0][-1]
+
+
+def test_fix_it_asks_the_tray(setup, tmp_path, monkeypatch):  # noqa: F811
+    client, _, _ = setup
+    owner = basic("owner", "ownerpass")
+    monkeypatch.delenv("WT_UPDATE_FILE", raising=False)
+    assert client.post("/health/fix-firewall", headers=owner).json == {"asked": False}
+    monkeypatch.setenv("WT_UPDATE_FILE", str(tmp_path / "update-now"))
+    assert client.post("/health/fix-firewall", headers=owner).json == {"asked": True}
+    assert (tmp_path / "fix-firewall").exists()
