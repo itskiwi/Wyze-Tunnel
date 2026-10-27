@@ -62,12 +62,12 @@ def local_ipv4s() -> set[str]:
     return ips
 
 
-def on_local_network(ip: str) -> bool:
-    """Whether go2rtc's LAN discovery can reach this camera."""
-    # shortcut: compares /16, since routers use /24 to /22 and Python can't read the mask on Windows.
-    # A second site on the same /16 just tries LAN first, as before, then falls back to webrtc.
-    nets = {a.rsplit(".", 2)[0] for a in local_ipv4s() if not a.startswith(("169.254.", "127."))}
-    return ip.rsplit(".", 2)[0] in nets
+def on_local_network(ip: str, octets: int = 3) -> bool:
+    """Whether go2rtc's LAN discovery can reach this camera: same /24 (octets=3), or same /16 (octets=2)."""
+    # shortcut: Python can't read the mask on Windows; home routers use /24 to /22, so a /24 miss inside the
+    # same /16 is either a second site (another 192.168.x home) or a bigger LAN, and gets LAN after the cloud.
+    nets = {a.rsplit(".", 4 - octets)[0] for a in local_ipv4s() if not a.startswith(("169.254.", "127."))}
+    return ip.rsplit(".", 4 - octets)[0] in nets
 
 
 def source_chain(cam: WyzeCamera) -> list[str]:
@@ -89,12 +89,14 @@ def source_chain(cam: WyzeCamera) -> list[str]:
         chain.append("tutk")
     if go2rtc_available():
         # Without the Wyze SDK, a camera at another site would fail LAN discovery before reaching the cloud stream.
-        reachable = tutk or on_local_network(cam.ip or "")
-        if cam.ip and cam.dtls and not cam.parent_dtls and not cam.cloud_only and reachable:
+        lan = bool(cam.ip and cam.dtls and not cam.parent_dtls and not cam.cloud_only)
+        if lan and (tutk or on_local_network(cam.ip)):
             chain.append("lan")
         # shortcut: the Pro models (cloud_only) follow IDisposable's get_streams path untested here; SOURCE_<MODEL> overrides.
         if cam.webrtc_support:
             chain.append("webrtc")
+        if lan and "lan" not in chain and on_local_network(cam.ip, 2):
+            chain.append("lan")
     return chain
 
 
