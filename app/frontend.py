@@ -187,6 +187,7 @@ def create_app():
             cameras={uri: cam for uri, cam in cams.items() if cam.get("enabled")},
             events=list(EVENT_LOG),
             visits=visitors.load()[:6],
+            power_cuts=web_ui.power_cuts(),
             steps=[] if guest else web_ui.setup_steps(cams),
             motion_on=bool(config.MOTION or webhooks.ALERTS.get("motion")),
             api="" if guest else WbAuth.api,

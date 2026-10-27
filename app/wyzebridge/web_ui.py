@@ -352,3 +352,15 @@ def boa_snapshot(stream: Stream) -> Optional[dict]:
     stream.send_cmd("take_photo")
     if boa_info := stream.get_info("boa_info"):
         return boa_info.get("last_photo")
+
+
+def power_cuts(days: int = 7) -> list[dict]:
+    """Times this PC lost power, from the last week. The Windows tray writes them next to WT_UPDATE_FILE."""
+    if not (flag := os.getenv("WT_UPDATE_FILE")):
+        return []
+    try:
+        cuts = json.loads(Path(flag).with_name("power-cuts.json").read_text())
+    except (OSError, ValueError):
+        return []
+    since = time() - days * 86400
+    return [{"from": c["from"], "to": c["to"]} for c in cuts if isinstance(c, dict) and isinstance(c.get("from"), int) and isinstance(c.get("to"), int) and c["to"] > since]

@@ -351,6 +351,52 @@ mod vm {
         let n = fs::read_to_string(data().join("needs-sdk")).unwrap_or_default();
         n.trim().parse::<u32>().is_ok_and(|n| n > 0)
     }
+    /// The newest doorbell ring the bridge logged (wyzebridge/visitors.py): its time, camera and picture.
+    pub fn last_ring() -> Option<(u64, String, Option<PathBuf>)> {
+        let log: serde_json::Value = serde_json::from_str(&fs::read_to_string(data().join(r"tokens\visitors.json")).ok()?).ok()?;
+        let ring = log.get(0)?;
+        let pic = ring["pic"].as_str().map(|p| data().join(r"img\visitors").join(p)).filter(|p| p.exists());
+        Some((ring["ts"].as_u64()?, ring["name"].as_str()?.to_string(), pic))
+    }
+    fn now() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+    }
+    /// The tray's last sign of life. Quitting removes it, so a later power cut isn't counted as Wyze Tunnel's.
+    pub fn heartbeat(alive: bool) {
+        let file = data().join("heartbeat");
+        let _ = if alive { fs::write(file, now().to_string()) } else { fs::remove_file(file) };
+    }
+    /// When this PC lost power while Wyze Tunnel ran: (last heartbeat, now). Kept in power-cuts.json next to
+    /// WT_UPDATE_FILE, newest first, for the web UI's Home page.
+    pub fn power_cut() -> Option<(u64, u64)> {
+        let (last, now) = (fs::read_to_string(data().join("heartbeat")).ok()?.trim().parse::<u64>().ok()?, now());
+        if now < last + 120 {
+            return None;
+        }
+        // Windows logs Kernel-Power 41 at boot after a shutdown it didn't do. No crash code and no held power
+        // button means the power went (or the plug was pulled). The System log is readable without admin.
+        let query = format!(
+            "/q:*[System[Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41 and TimeCreated[timediff(@SystemTime) <= {}]] \
+             and EventData[Data[@Name='BugcheckCode']='0' and Data[@Name='PowerButtonTimestamp']='0']]",
+            (now - last) * 1000
+        );
+        let out = cmd("wevtutil").args(["qe", "System", &query, "/c:1", "/f:text"]).output().ok()?;
+        if !out.status.success() || out.stdout.trim_ascii().is_empty() {
+            return None;
+        }
+        let file = data().join("power-cuts.json");
+        let mut cuts: Vec<serde_json::Value> = fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        cuts.insert(0, serde_json::json!({ "from": last, "to": now }));
+        cuts.truncate(20);
+        let _ = fs::write(file, serde_json::Value::from(cuts).to_string());
+        Some((last, now))
+    }
+    /// The battery's charge while this PC runs on one (a laptop unplugged, or a desktop on a USB UPS).
+    pub fn on_battery() -> Option<u8> {
+        use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+        let mut s: SYSTEM_POWER_STATUS = unsafe { std::mem::zeroed() };
+        (unsafe { GetSystemPowerStatus(&mut s) } != 0 && s.ACLineStatus == 0).then_some(s.BatteryLifePercent)
+    }
     fn firewall_script(res: &Path, arg: &str) -> Command {
         let mut c = cmd("powershell.exe");
         c.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]).arg(res.join("windows/install-native.ps1")).arg(arg);
@@ -404,6 +450,50 @@ fn check_firewall(app: AppHandle) {
             FIREWALL_BLOCKED.store(vm::firewall_blocked(&res), Ordering::SeqCst);
         }
     });
+}
+
+/// A Windows toast with the visitor's picture for each doorbell ring; clicking it opens the web UI.
+#[cfg(windows)]
+fn watch_doorbell(app: AppHandle) {
+    use tauri_winrt_notification::Toast;
+    std::thread::spawn(move || {
+        let mut seen = vm::last_ring().map_or(0, |r| r.0);
+        let mut _shown = None; // kept alive so a click on the toast still reaches on_activated
+        loop {
+            std::thread::sleep(Duration::from_secs(2));
+            let Some((ts, name, pic)) = vm::last_ring().filter(|r| r.0 > seen) else { continue };
+            seen = ts;
+            let age = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()).saturating_sub(ts);
+            if age > 600 {
+                continue; // the bridge catching up after a restart, not someone at the door now
+            }
+            let app2 = app.clone();
+            let mut toast = Toast::new(&app.config().identifier)
+                .title("Someone's at the door")
+                .text1(&format!("{name} rang the doorbell."))
+                .on_activated(move |_| {
+                    let app3 = app2.clone();
+                    let _ = app2.run_on_main_thread(move || open_web(&app3));
+                    Ok(())
+                });
+            if let Some(pic) = &pic {
+                toast = toast.hero(pic, "Doorbell picture");
+            }
+            let _ = toast.show();
+            _shown = Some(toast);
+        }
+    });
+}
+
+/// After a restart: says how long Wyze Tunnel was off when the PC lost power, instead of leaving a mystery gap.
+#[cfg(windows)]
+fn explain_power_cut(app: &AppHandle) {
+    if let Some((from, to)) = vm::power_cut() {
+        let m = (to - from) / 60;
+        let off = if m < 120 { format!("{m} minutes") } else { format!("{} hours", m / 60) };
+        let body = format!("Wyze Tunnel was off for about {off}, so nothing was recorded then. Home shows when.");
+        let _ = app.notification().builder().title("This PC lost power").body(body).show();
+    }
 }
 
 fn bridge_up() -> bool {
@@ -662,6 +752,8 @@ fn main() {
                         });
                     }
                     "quit" => {
+                        #[cfg(windows)]
+                        vm::heartbeat(false);
                         vm::quit();
                         app.exit(0)
                     }
@@ -673,85 +765,108 @@ fn main() {
                 open_window(app.handle());
             }
 
+            #[cfg(windows)]
+            watch_doorbell(app.handle().clone());
+
             let handle = app.handle().clone();
             let mut last_update = Instant::now();
+            #[cfg(windows)]
+            let mut battery = None::<u8>;
             // Update states, like the web UI's: available, updating, then a notification once the version changes.
             let (mut version, mut latest, mut desktop) = (String::new(), None::<String>, None::<String>);
             let mut updating: Option<Instant> = None;
             let mut shown = String::new();
             let mut tick = 0u32;
-            std::thread::spawn(move || loop {
-                let daily = last_update.elapsed() > Duration::from_secs(24 * 3600) && !vm::watching();
-                if (UPDATE_NOW.swap(false, Ordering::SeqCst) || vm::update_requested() || daily) && vm::installed() {
-                    last_update = Instant::now();
-                    updating = Some(Instant::now());
-                    let _ = update.set_text("Updating…");
-                    let _ = update.set_enabled(false);
-                    if !vm::self_update() {
-                        reinstall(&handle, false); // native Windows: a no-op when nothing is newer
-                    }
-                }
-                if tick.is_multiple_of(4) || updating.is_some() {
-                    let v = vm::version();
-                    if !v.is_empty() && v != version {
-                        if !version.is_empty() {
-                            let n = handle.notification().builder().title("Wyze Tunnel updated").body(format!("Now running v{v}."));
-                            let _ = n.show();
+            std::thread::spawn(move || {
+                #[cfg(windows)]
+                explain_power_cut(&handle);
+                loop {
+                    let daily = last_update.elapsed() > Duration::from_secs(24 * 3600) && !vm::watching();
+                    if (UPDATE_NOW.swap(false, Ordering::SeqCst) || vm::update_requested() || daily) && vm::installed() {
+                        last_update = Instant::now();
+                        updating = Some(Instant::now());
+                        let _ = update.set_text("Updating…");
+                        let _ = update.set_enabled(false);
+                        if !vm::self_update() {
+                            reinstall(&handle, false); // native Windows: a no-op when nothing is newer
                         }
-                        version = v;
-                        updating = None;
                     }
-                    // A Linux update that found nothing newer (or rolled back) never changes the version.
-                    if updating.is_some_and(|t| t.elapsed() > Duration::from_secs(300)) {
-                        updating = None;
+                    if tick.is_multiple_of(4) || updating.is_some() {
+                        let v = vm::version();
+                        if !v.is_empty() && v != version {
+                            if !version.is_empty() {
+                                let n = handle.notification().builder().title("Wyze Tunnel updated").body(format!("Now running v{v}."));
+                                let _ = n.show();
+                            }
+                            version = v;
+                            updating = None;
+                        }
+                        // A Linux update that found nothing newer (or rolled back) never changes the version.
+                        if updating.is_some_and(|t| t.elapsed() > Duration::from_secs(300)) {
+                            updating = None;
+                        }
                     }
-                }
-                if tick.is_multiple_of(4 * 60 * 6) {
-                    (latest, desktop) = (latest_bridge(), newer_release()); // every 6 hours
-                    if vm::installed() {
-                        // No off switch in the app, so re-assert it in case a cleanup or update dropped it.
-                        let _ = handle.autolaunch().enable();
+                    if tick.is_multiple_of(4 * 60 * 6) {
+                        (latest, desktop) = (latest_bridge(), newer_release()); // every 6 hours
+                        if vm::installed() {
+                            // No off switch in the app, so re-assert it in case a cleanup or update dropped it.
+                            let _ = handle.autolaunch().enable();
+                        }
+                        #[cfg(windows)]
+                        check_firewall(handle.clone());
                     }
                     #[cfg(windows)]
-                    check_firewall(handle.clone());
+                    if tick.is_multiple_of(4) && vm::needs_sdk() != full_shown {
+                        full_shown = !full_shown;
+                        let _ = if full_shown { menu.insert(&full, 5) } else { menu.remove(&full) };
+                    }
+                    #[cfg(windows)]
+                    if FIREWALL_BLOCKED.load(Ordering::SeqCst) != firewall_shown {
+                        firewall_shown = !firewall_shown;
+                        let _ = if firewall_shown { menu.insert(&firewall, 5) } else { menu.remove(&firewall) };
+                    }
+                    tick = tick.wrapping_add(1);
+                    let text = match (&updating, &desktop, &latest) {
+                        (Some(_), ..) => "Updating…".to_string(),
+                        (_, Some(tag), _) => format!("Update available ({tag})"),
+                        (_, _, Some(l)) if !version.is_empty() && *l != version => format!("Update available (v{l})"),
+                        _ => "Check for updates".to_string(),
+                    };
+                    if text != shown {
+                        let _ = update.set_text(&text);
+                        let _ = update.set_enabled(updating.is_none());
+                        shown = text;
+                    }
+                    let busy = BUSY.load(Ordering::SeqCst);
+                    let stopped = STOPPED.load(Ordering::SeqCst);
+                    let installed = busy || vm::installed();
+                    if !busy && !stopped && installed {
+                        vm::ensure_running();
+                    }
+                    let state = match (busy, bridge_up(), stopped, installed) {
+                        (true, ..) => "updating",
+                        (_, true, ..) => "running",
+                        (_, _, true, _) => "stopped",
+                        (.., false) => "not set up",
+                        _ => "starting",
+                    };
+                    let _ = tray.set_tooltip(Some(format!("Wyze Tunnel: {state}")));
+                    #[cfg(windows)]
+                    {
+                        vm::heartbeat(true);
+                        let now = vm::on_battery();
+                        if now.is_some() != battery.is_some() {
+                            let (title, body) = match now {
+                                Some(p) if p <= 100 => ("This PC is on battery", format!("The power is out or unplugged. Cameras keep recording while the battery lasts ({p}% left).")),
+                                Some(_) => ("This PC is on battery", "The power is out or unplugged. Cameras keep recording while the battery lasts.".to_string()),
+                                None => ("Power is back", "This PC is plugged in again.".to_string()),
+                            };
+                            let _ = handle.notification().builder().title(title).body(body).show();
+                        }
+                        battery = now;
+                    }
+                    std::thread::sleep(Duration::from_secs(15));
                 }
-                #[cfg(windows)]
-                if tick.is_multiple_of(4) && vm::needs_sdk() != full_shown {
-                    full_shown = !full_shown;
-                    let _ = if full_shown { menu.insert(&full, 5) } else { menu.remove(&full) };
-                }
-                #[cfg(windows)]
-                if FIREWALL_BLOCKED.load(Ordering::SeqCst) != firewall_shown {
-                    firewall_shown = !firewall_shown;
-                    let _ = if firewall_shown { menu.insert(&firewall, 5) } else { menu.remove(&firewall) };
-                }
-                tick = tick.wrapping_add(1);
-                let text = match (&updating, &desktop, &latest) {
-                    (Some(_), ..) => "Updating…".to_string(),
-                    (_, Some(tag), _) => format!("Update available ({tag})"),
-                    (_, _, Some(l)) if !version.is_empty() && *l != version => format!("Update available (v{l})"),
-                    _ => "Check for updates".to_string(),
-                };
-                if text != shown {
-                    let _ = update.set_text(&text);
-                    let _ = update.set_enabled(updating.is_none());
-                    shown = text;
-                }
-                let busy = BUSY.load(Ordering::SeqCst);
-                let stopped = STOPPED.load(Ordering::SeqCst);
-                let installed = busy || vm::installed();
-                if !busy && !stopped && installed {
-                    vm::ensure_running();
-                }
-                let state = match (busy, bridge_up(), stopped, installed) {
-                    (true, ..) => "updating",
-                    (_, true, ..) => "running",
-                    (_, _, true, _) => "stopped",
-                    (.., false) => "not set up",
-                    _ => "starting",
-                };
-                let _ = tray.set_tooltip(Some(format!("Wyze Tunnel: {state}")));
-                std::thread::sleep(Duration::from_secs(15));
             });
             Ok(())
         })
