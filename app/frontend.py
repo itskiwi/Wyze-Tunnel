@@ -1459,12 +1459,6 @@ def create_app():
 
         return event_archive.search(a.get("device", "")[:100], a.get("type", "")[:30], num("since"), num("until"), a.get("q", "")[:100], num("before"), num("limit") or 60, tz_offset())
 
-    @app.route("/history/counts")
-    @auth_required
-    def history_counts():
-        since = request.args.get("since", "")
-        return event_archive.counts(int(since) if since.isdigit() else 0)
-
     @app.route("/history/media/<string:eid>/<string:kind>")
     @auth_required
     def history_media(eid: str, kind: str):
