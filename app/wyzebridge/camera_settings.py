@@ -42,6 +42,14 @@ WRITABLE = {
 }
 ONOFF = {"1": "on", "on": "on", "true": "on", "2": "off", "off": "off", "false": "off", "3": "auto", "auto": "auto"}
 
+# What the Live page's control sheet highlights. Flips are left out for the same reason as above.
+SHEET = ("quality", "night_vision", "status_light", "osd_timestamp", "motion_tagging", "motion_detection", "sound_detection",
+         "notifications", "motion_sensitivity", "sound_sensitivity")
+PAN_SHEET = ("motion_tracking", "pan_cruise")
+SENSITIVITY = {"motion_sensitivity", "sound_sensitivity"}  # 1-100, kept as a number
+SHEET_SECS = 60
+SHEET_CACHE: dict[str, dict] = {}
+
 CACHE: dict[str, dict] = {}  # uri: {"ts": float, "values": {setting: value}}
 LOCK = Lock()  # one command run at a time: cameras share a single command queue
 
@@ -50,7 +58,7 @@ def normalize(key: str, value) -> str | None:
     if isinstance(value, bool) or not isinstance(value, (str, int)):
         return None  # e.g. a bitrate answer that came back as a dict
     text = str(value).strip().lower()
-    return text if key in {"bitrate", "quality", "hor_flip", "ver_flip"} else ONOFF.get(text, text)
+    return text if key in {"bitrate", "quality", "hor_flip", "ver_flip", *SENSITIVITY} else ONOFF.get(text, text)
 
 
 def targets(streams: dict) -> dict:
@@ -67,6 +75,28 @@ def read_cam(uri: str, stream, send, sleep=time.sleep) -> dict:
             values[key] = val
         sleep(PAUSE)
     CACHE[uri] = {"ts": time.time(), "values": values}
+    return values
+
+
+def current(uri: str, stream, send, sleep=time.sleep) -> dict:
+    """The control sheet's settings for one camera. Quality is ours; the rest are only read while it streams."""
+    entry = SHEET_CACHE.get(uri)
+    if entry and time.time() - entry["ts"] < SHEET_SECS:
+        return entry["values"]
+    keys = SHEET + (PAN_SHEET if stream.camera.is_pan_cam else ())
+    values = {}
+    if not stream.connected or LOCK.locked():
+        keys = ("quality",)  # never wake a camera, and don't queue behind a grid refresh
+    for key in keys:
+        if key != "quality" and not stream.connected:
+            break
+        resp = send(uri, key, "")
+        if resp.get("status") == "success" and (val := normalize(key, resp.get("value"))) is not None:
+            values[key] = val
+        if key != "quality":
+            sleep(PAUSE)
+    if len(keys) > 1:
+        SHEET_CACHE[uri] = {"ts": time.time(), "values": values}
     return values
 
 
