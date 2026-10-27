@@ -3,7 +3,7 @@ from collections import deque
 from threading import Thread
 from typing import Any
 
-from wyzebridge import automations, event_archive, phrases, visitors
+from wyzebridge import automations, event_archive, phrases, recording, visitors
 from wyzebridge.config import MOTION_INT, MOTION_START
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import update_preview
@@ -85,6 +85,7 @@ class WyzeEvents:
                 stream.motion = self.last_ts
                 logger.info(f"[MOTION] {msg} ({name})")
                 EVENT_LOG.appendleft(entry)
+                recording.mark(stream.uri, self.last_ts)
                 if event_id:  # Wyze deletes its copies after 14 days; ours stay. A thread: the downloads take seconds.
                     Thread(target=event_archive.save_event, args=(self.api, event_id, entry, img, entry["clip"]), daemon=True).start()
                 sound = entry.get("label") in SOUND_LABELS

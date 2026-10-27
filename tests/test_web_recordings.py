@@ -149,9 +149,9 @@ def test_recording_switches_save_and_restart_cameras(tmp_path, monkeypatch):
     with mock.patch.object(frontend, "Thread") as thread:
         assert client.post("/recordings/settings", json={"cams": ["front", "gone"], "keep_days": 3}).json == {"status": "saved"}
     assert thread.call_args.kwargs["target"] == bridge.return_value.restart
-    assert recording.wanted("front") and not recording.wanted("back") and recording.keep() == "259200s"
+    assert recording.wanted("front") and not recording.wanted("back") and recording.keep() == "0s" and recording.keep_days() == (3, 30)
     recording.save_settings({"all": True}, ["front", "back"])
-    assert recording.wanted("back") and recording.keep() == "604800s"  # 7 days by default
+    assert recording.wanted("back") and recording.keep_days() == (7, 30)  # 7 days by default
 
 
 def test_disk_use_counts_clips(tmp_path, monkeypatch):
