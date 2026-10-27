@@ -492,3 +492,32 @@ body.ev-open { overflow: hidden; }
 @media (min-width: 768px) {
   .cameras > .camera.spotlight figure { aspect-ratio: auto; height: min(56.25vw, 62vh); }
 }
+
+/* Events v3: answers, worth a look, visits, folded usual events */
+.ev-sec { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 6px 4px 0; font: 800 15px Nunito, ui-rounded, system-ui, sans-serif; color: rgb(var(--zinc-50)); }
+.ev-sec small { font: 500 12px "Geist Mono", ui-monospace, monospace; color: rgb(var(--zinc-500)); }
+#odd, #visits { display: grid; gap: 8px; }
+.ev-stackgap { display: grid; gap: 10px; }
+.ev-odd { box-shadow: var(--shadow), inset 0 0 0 1.5px var(--k-person); }
+.ev-why { display: flex; gap: 6px; align-items: baseline; font-size: 12.5px; font-weight: 600; line-height: 1.35; color: var(--k-person); white-space: normal; }
+.ev-why i { font-size: 11px; }
+.ev-visit { width: 100%; display: grid; gap: 10px; padding: 12px; text-align: left; color: rgb(var(--zinc-50)); border-radius: 22px; }
+.ev-visit:hover { background: rgb(var(--zinc-800)); }
+.ev-vhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ev-vhead b { font: 800 15px Nunito, ui-rounded, system-ui, sans-serif; }
+.ev-path { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
+.ev-stop { display: grid; gap: 4px; min-width: 0; }
+.ev-stop small { font: 700 12px Nunito, ui-rounded, system-ui, sans-serif; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ev-stop small i { display: block; font: 500 11px "Geist Mono", ui-monospace, monospace; color: rgb(var(--zinc-500)); font-style: normal; }
+.ev-usual { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border-radius: 16px; text-align: left;
+  background: rgb(var(--zinc-800)); color: rgb(var(--zinc-300)); font-size: 13.5px; }
+.ev-usual i { color: rgb(var(--zinc-500)); }
+.ev-answer { padding: 12px; display: grid; gap: 10px; }
+.ev-q { display: flex; align-items: center; gap: 10px; padding-left: 4px; font-weight: 600; color: rgb(var(--zinc-100)); }
+.ev-q > i { color: rgb(var(--accent)); }
+.ev-q span { flex: 1; min-width: 0; }
+.ev-q .round-btn { width: 32px; height: 32px; font-size: 12px; }
+.ev-ans { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; align-items: center; text-align: left; color: rgb(var(--zinc-50)); }
+.ev-ans:disabled { grid-template-columns: 1fr; cursor: default; }
+.ev-ans .ev-said { font: 700 15.5px/1.35 Nunito, ui-rounded, system-ui, sans-serif; }
+#answer[hidden], #odd[hidden], #visits[hidden], .ev-sec[hidden], .ev-usual[hidden] { display: none !important; }

@@ -1,4 +1,5 @@
 import os
+import re
 import secrets
 import subprocess
 import time
@@ -1353,6 +1354,11 @@ def create_app():
     def history_page():
         return render_template("history.html", api=WbAuth.api, version=config.VERSION)
 
+    def tz_offset() -> int | None:
+        """The browser's ?tz= (minutes behind UTC, as getTimezoneOffset gives it), so days and hours match the screen."""
+        tz = request.args.get("tz", "")
+        return int(tz) if re.fullmatch(r"-?\d{1,4}", tz) and abs(int(tz)) <= 14 * 60 else None
+
     @app.route("/history/events")
     @auth_required
     def history_events():
@@ -1361,7 +1367,7 @@ def create_app():
         def num(key: str) -> int:
             return int(a[key]) if a.get(key, "").isdigit() else 0
 
-        return event_archive.search(a.get("device", "")[:100], a.get("type", "")[:30], num("since"), num("until"), a.get("q", "")[:100], num("before"), num("limit") or 60)
+        return event_archive.search(a.get("device", "")[:100], a.get("type", "")[:30], num("since"), num("until"), a.get("q", "")[:100], num("before"), num("limit") or 60, tz_offset())
 
     @app.route("/history/counts")
     @auth_required
@@ -1380,6 +1386,11 @@ def create_app():
     @owner_only
     def history_delete(eid: str):
         return ({"status": "deleted"}, 200) if event_archive.delete(eid) else ({"error": "Not found"}, 404)
+
+    @app.route("/history/ask")
+    @auth_required
+    def history_ask():
+        return event_archive.ask(request.args.get("q", "")[:200], tz=tz_offset())
 
     @app.route("/history/<string:eid>/keep", methods=["POST"])
     @owner_only

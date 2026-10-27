@@ -1,5 +1,6 @@
 """Keeps every camera event's picture and clip (Wyze deletes its own after 14 days), plus sensor history, for the History page."""
 
+import calendar
 import hashlib
 import mmap
 import struct
@@ -29,6 +30,13 @@ NEW_COLS = {"uri": "TEXT", "tags": "TEXT", "dur": "INTEGER", "kept": "INTEGER DE
 REPEAT_GAP = 20 * 60  # the same camera and kind again within this folds into one group
 VISIT_GAP = 90  # a person or vehicle on another camera this soon after is the same visit
 VISIT_KINDS = ("person", "vehicle")
+BASELINE_DAYS = 30
+BASELINE_MIN_DAYS = 7
+# kinds worth lifting when they've never happened at that camera and hour, and how to say so
+UNUSUAL_KINDS = {"person": "Nobody has been", "vehicle": "No vehicle has been", "package": "No package has been left",
+                 "contact": "{device} hasn't opened", "glass": "No breaking glass",
+                 "gunshot": "No loud bang"}
+ALWAYS_SHOW = ("smoke", "co", "glass", "gunshot", "rang the doorbell", "package")  # never folded away as usual
 
 
 def _db() -> sqlite3.Connection:
@@ -185,7 +193,7 @@ def clear() -> None:
             _remove(db, row["id"])
 
 
-def search(device: str = "", kind: str = "", since: int = 0, until: int = 0, q: str = "", before: int = 0, limit: int = 60) -> dict:
+def search(device: str = "", kind: str = "", since: int = 0, until: int = 0, q: str = "", before: int = 0, limit: int = 60, tz: int | None = None) -> dict:
     """Newest first. before is the ts of the last row already shown, for the next page.
     counts (per kind) and times (every event's ts, for the day bars and the 24 hour strip) ignore the kind and paging, so the chips show what else is there."""
     where, args = ["1=1"], []
@@ -214,7 +222,50 @@ def search(device: str = "", kind: str = "", since: int = 0, until: int = 0, q: 
         devices = [r[0] for r in db.execute("SELECT DISTINCT device FROM events ORDER BY device")]
         types = [r[0] for r in db.execute("SELECT DISTINCT type FROM events ORDER BY type")]
     events = [dict(r) | {"tags": (r["tags"] or "").split(",") if r["tags"] else [], "kept": bool(r["kept"])} for r in rows]
-    return {"events": events, "groups": group(events), "counts": counts, "times": times, "devices": devices, "types": types}
+    groups = group(events)
+    if since:
+        judge(groups, since, tz=tz)
+    return {"events": events, "groups": groups, "counts": counts, "times": times, "devices": devices, "types": types}
+
+
+def _local(ts: float, tz: int | None = None) -> time.struct_time:
+    """Local time: the browser's when it sent its offset (JavaScript getTimezoneOffset, minutes), else the bridge's."""
+    return time.localtime(ts) if tz is None else time.gmtime(ts - tz * 60)
+
+
+def _hours(ts: float, tz: int | None = None) -> float:
+    t = _local(ts, tz)
+    return t.tm_hour + t.tm_min / 60
+
+
+def judge(groups: list[dict], before: int, days: int = BASELINE_DAYS, tz: int | None = None) -> None:
+    """Mark groups against the same camera, kind and time of day over the days before `before` (the day shown):
+    "why" (a sentence) when it has never happened then and it's the kind people act on, "usual" when it happens most days.
+    Needs a week of history; until then nothing is marked."""
+    with _db() as db:
+        oldest = db.execute("SELECT MIN(ts) FROM events").fetchone()[0]
+        if not oldest or before - oldest < BASELINE_MIN_DAYS * 86400:
+            return
+        rows = db.execute("SELECT ts, device, type FROM events WHERE ts>=? AND ts<?", (before - days * 86400, before)).fetchall()
+    span = min(days, round((before - oldest) / 86400))
+    seen: dict[tuple, set] = {}
+    active: dict[str, set] = {}
+    for ts, device, kind in rows:
+        day = time.strftime("%Y%m%d", _local(ts, tz))
+        seen.setdefault((device, kind), set()).add((day, _hours(ts, tz)))
+        active.setdefault(device, set()).add(day)
+    for g in groups:
+        device, hour = next(iter(g["cameras"])), _hours(g["first"], tz)
+        if len(active.get(device, ())) < BASELINE_MIN_DAYS:
+            continue  # a new or quiet camera: too little to say what's normal
+        # within an hour either side of the time of day, wrapping round midnight
+        days_seen = {d for d, h in seen.get((device, g["kind"]), ()) if min(abs(h - hour), 24 - abs(h - hour)) <= 1}
+        if not days_seen and g["kind"] in UNUSUAL_KINDS:
+            what = UNUSUAL_KINDS[g["kind"]]
+            where = "" if "{device}" in what else f" at {device}"
+            g["why"] = f"{what.format(device=device)}{where} at this time of day in the last {span} days."
+        elif len(days_seen) >= max(4, span / 3) and g["kind"] not in ALWAYS_SHOW:
+            g["usual"] = True
 
 
 def group(events: list[dict], gap: int = REPEAT_GAP, visit_gap: int = VISIT_GAP) -> list[dict]:
@@ -250,3 +301,75 @@ def media_file(eid: str, kind: str) -> Path | None:
         row = db.execute(f"SELECT {kind} FROM events WHERE id=?", (eid,)).fetchone()
     path = ARCHIVE_DIR / "media" / (row[0] if row and row[0] else "")
     return path if row and row[0] and path.is_file() else None
+
+
+# "Just ask": plain questions answered from the archive, no model. Longest phrases first so "doorbell" wins over "door".
+ASK_KINDS = [
+    ("rang the doorbell", ("doorbell", "ring", "rang")), ("package", ("package", "parcel", "delivery", "delivered", "box", "amazon", "mail")),
+    ("vehicle", ("vehicle", "car", "truck", "van", "drove", "drive")), ("pet", ("pet", "dog", "cat", "animal")),
+    ("barking", ("bark",)), ("contact", ("door", "opened", "open")),
+    ("person", ("person", "someone", "somebody", "anyone", "anybody", "people", "visitor", "who", "man", "woman", "kid")),
+]
+ASK_WORDS = ("did", "was", "were", "is", "are", "has", "have", "any", "when", "how", "who", "what")
+
+
+def is_question(q: str) -> bool:
+    words = re.findall(r"[a-z']+", q.lower())
+    return q.strip().endswith("?") or bool(words and words[0] in ASK_WORDS)
+
+
+def _window(q: str, now: float, tz: int | None = None) -> tuple[int, int, str]:
+    """The time a question is about, from its words: (since, until, how to say it)."""
+    t = _local(now, tz)
+
+    def day(n: int) -> int:  # midnight n days from today; mktime keeps it right across DST
+        if tz is None:
+            return int(time.mktime((t.tm_year, t.tm_mon, t.tm_mday + n, 0, 0, 0, 0, 0, -1)))
+        return int(calendar.timegm((t.tm_year, t.tm_mon, t.tm_mday + n, 0, 0, 0, 0, 0, 0))) + tz * 60
+
+    today = day(0)
+    if "last night" in q:
+        return day(-1) + 18 * 3600, today + 6 * 3600, "last night"
+    if "yesterday" in q:
+        return day(-1), today, "yesterday"
+    if "this morning" in q:
+        return today, today + 12 * 3600, "this morning"
+    if "tonight" in q or "this evening" in q:
+        return today + 17 * 3600, day(1), "this evening"
+    if "today" in q:
+        return today, day(1), "today"
+    if "week" in q:
+        return day(-6), day(1), "this week"
+    return day(-6), day(1), "in the last week"
+
+
+def ask(q: str, now: float | None = None, tz: int | None = None) -> dict:
+    """Answer a question like "did a package come today?" or "when did the car leave?" with a sentence and the events behind it."""
+    now = time.time() if now is None else now
+    text = " " + re.sub(r"[^a-z0-9' ]", " ", q.lower()) + " "
+    with _db() as db:
+        devices = [r[0] for r in db.execute("SELECT DISTINCT device FROM events")]
+    device = max((d for d in devices if f" {d.lower()} " in text), key=len, default="")
+    if device:
+        text = text.replace(f" {device.lower()} ", " ")
+    kind = next((k for k, words in ASK_KINDS if any(re.search(rf"\b{w}", text) for w in words)), "")
+    since, until, when = _window(text, now, tz)
+    got = search(device, kind, since, until, limit=200, tz=tz)
+    events, groups = got["events"], got["groups"]
+    thing = {"rang the doorbell": "doorbell rings", "contact": "door openings", "": "events"}.get(kind, f"{kind} events")
+    at = f" at {device}" if device else ""
+    if not events:
+        answer = f"No, no {thing}{at} {when}." if kind or device else f"Nothing {when}."
+    else:
+        latest = events[0]
+        said = f"{latest['text'].rstrip('.')} at {time.strftime('%I:%M %p', _local(latest['ts'], tz)).lstrip('0')}"
+        if when not in ("today", "this morning", "this evening"):
+            said += time.strftime(" on %A", _local(latest["ts"], tz))
+        words = re.findall(r"[a-z]+", text)
+        if words[:2] == ["how", "many"] or words[:2] == ["how", "often"]:
+            answer = f"{len(events)} {thing}{at} {when}. The latest: {said}."
+        elif words[:1] == ["when"]:
+            answer = f"{said}." if len(events) == 1 else f"{said}, the latest of {len(events)} {when}."
+        else:
+            answer = f"Yes. {said}." if len(events) == 1 else f"Yes, {len(events)} {thing} {when}. The latest: {said}."
+    return {"answer": answer, "kind": kind, "device": device, "since": since, "until": until, "events": events[:50], "groups": groups[:20]}

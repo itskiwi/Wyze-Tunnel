@@ -252,3 +252,48 @@ def test_live_monitoring_view_by_role(setup, monkeypatch):
     assert 'id="rewind"' in family and 'id="watchMode"' not in family  # family sees the mode but can't change it
     watcher = client.get("/live", headers=basic("Sam", guests.add_guest("Sam", 24, "owner"))).text
     assert 'id="rewind"' not in watcher and "static/watch.js" not in watcher
+
+
+def at(day, hour, minute=0):
+    """A local time `day` days from a fixed Wednesday noon."""
+    import time
+
+    return int(time.mktime((2026, 10, 21 + day, hour, minute, 0, 0, 0, -1)))
+
+
+def test_judge_lifts_the_unusual_and_folds_the_usual(archive):
+    api = FakeApi()
+    for d in range(-20, 0):  # three weeks of the mail truck at noon and a cat at night
+        archive.save_event(api, f"v{d}", ENTRY | {"name": "Driveway", "ts": at(d, 12), "label": "vehicle"}, None, None)
+        archive.save_event(api, f"c{d}", ENTRY | {"name": "Yard", "ts": at(d, 23, 30), "label": "pet"}, None, None)
+        archive.save_event(api, f"g{d}", ENTRY | {"name": "Back Gate", "ts": at(d, 16), "label": "pet"}, None, None)
+    archive.save_event(api, "p0", ENTRY | {"name": "Back Gate", "ts": at(0, 3), "label": "person"}, None, None)
+    archive.save_event(api, "v0", ENTRY | {"name": "Driveway", "ts": at(0, 12, 20), "label": "vehicle"}, None, None)
+    archive.save_event(api, "c0", ENTRY | {"name": "Yard", "ts": at(0, 0, 10), "label": "pet"}, None, None)  # wraps round midnight
+    archive.save_event(api, "x0", ENTRY | {"name": "Driveway", "ts": at(0, 3, 5), "label": "vehicle"}, None, None)
+    groups = {g["first"]: g for g in archive.search(since=at(0, 0), until=at(1, 0))["groups"]}
+    assert groups[at(0, 3)]["why"] == "Nobody has been at Back Gate at this time of day in the last 20 days."
+    assert groups[at(0, 12, 20)].get("usual") and groups[at(0, 0, 10)].get("usual")
+    assert groups[at(0, 3, 5)]["why"].startswith("No vehicle has been at Driveway at this time")
+    archive.save_event(api, "q0", ENTRY | {"name": "Shed", "ts": at(0, 9), "label": "person"}, None, None)
+    assert "why" not in next(g for g in archive.search(since=at(0, 0), until=at(1, 0))["groups"] if "Shed" in g["cameras"])  # a camera with no history
+    # under a week of history marks nothing
+    assert not any("why" in g or "usual" in g for g in archive.search(since=at(-15, 0), until=at(-14, 0))["groups"])
+
+
+def test_ask_answers_plain_questions(archive):
+    api = FakeApi()
+    archive.save_event(api, "a", ENTRY | {"name": "Front Porch", "ts": at(0, 10, 1), "label": "package", "text": "Package left at the front porch"}, None, None)
+    archive.save_event(api, "b", ENTRY | {"name": "Driveway", "ts": at(-1, 17, 7), "label": "vehicle", "text": "A car left the driveway"}, None, None)
+    archive.save_event(api, "c", ENTRY | {"name": "Driveway", "ts": at(0, 8), "label": "vehicle", "text": "A car pulled in"}, None, None)
+    now = at(0, 22)
+    got = archive.ask("Did a package come today?", now)
+    assert got["answer"] == "Yes. Package left at the front porch at 10:01 AM." and got["kind"] == "package" and len(got["events"]) == 1
+    assert archive.ask("did anyone ring the doorbell last night", now)["answer"] == "No, no doorbell rings last night."
+    assert archive.ask("When did the car leave yesterday?", now)["answer"] == "A car left the driveway at 5:07 PM on Tuesday."
+    got = archive.ask("how many cars at the driveway this week?", now)
+    assert got["device"] == "Driveway" and got["answer"].startswith("2 vehicle events at Driveway this week. The latest: A car pulled in at 8:00 AM")
+    assert archive.ask("anything yesterday?", now)["answer"] == "Yes. A car left the driveway at 5:07 PM on Tuesday."
+    assert archive.ask("anything this morning at the garage?", now)["answer"].startswith("Yes, 2 events this morning")
+    assert archive.ask("did a package come today", now + 3600 * 3, tz=0)["since"] % 86400 == 0  # UTC midnight
+    assert archive.is_question("when did the car leave") and archive.is_question("package?") and not archive.is_question("driveway")

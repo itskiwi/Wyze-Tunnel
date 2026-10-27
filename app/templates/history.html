@@ -13,10 +13,12 @@
 
 <div class="ev-page">
     <form id="filters" class="ev-bar" role="search">
-        <label class="ev-search"><i class="fas fa-magnifying-glass" aria-hidden="true"></i><span class="sr-only">Search events</span>
-            <input type="search" name="q" maxlength="100" placeholder="Search, like &quot;package&quot; or a camera" autocomplete="off" /></label>
+        <label class="ev-search"><i class="fas fa-magnifying-glass" aria-hidden="true"></i><span class="sr-only">Ask or search events</span>
+            <input type="search" name="q" maxlength="100" placeholder="Ask or search, like &quot;did a package come today?&quot;" autocomplete="off" /></label>
         <label><span class="sr-only">Camera</span><select name="device" class="field ev-cams"><option value="">All cameras</option></select></label>
     </form>
+
+    <section id="answer" class="surface ev-answer" aria-live="polite" hidden></section>
 
     <div class="ev-week">
         <button type="button" id="older" class="round-btn" title="Earlier week"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
@@ -36,6 +38,10 @@
     </section>
 
     <div id="chips" class="ev-chips" role="group" aria-label="Kind of event"></div>
+    <div id="odd" hidden><h3 class="ev-sec">Worth a look<small id="oddCount"></small></h3><div id="oddList" class="ev-stackgap"></div></div>
+    <div id="visits" hidden><h3 class="ev-sec">Visits<small>cameras in order</small></h3><div id="visitList" class="ev-stackgap"></div></div>
+    <h3 id="restHead" class="ev-sec" hidden>Everything else<small id="restCount"></small></h3>
+    <button type="button" id="usual" class="ev-usual" hidden></button>
     <div id="list"></div>
     <p id="empty" class="ev-empty" hidden></p>
     <button id="more" type="button" class="btn mx-auto mt-5" hidden>Show more</button>
@@ -53,7 +59,10 @@
 {% block javascript %}
 <script src="static/events.js?v={{ version }}"></script>
 <script>
-    const { kind, weight, row, play, clock, span, h, icon } = WTEvents;
+    const { kind, weight, row, visit, play, clock, span, thumb, h, icon } = WTEvents;
+    const ASK_WORDS = ["did", "was", "were", "is", "are", "has", "have", "any", "anything", "anyone", "when", "how", "who", "what"];
+    const isQuestion = (q) => q.trim().endsWith("?") || ASK_WORDS.includes(q.trim().toLowerCase().split(/\s+/)[0]);
+    let showUsual = false;
     const OWNER = {{ 'false' if current_guest() else 'true' }};
     const $ = (id) => document.getElementById(id);
     const form = $("filters"), list = $("list"), DAY = 86400;
@@ -76,8 +85,9 @@
 
     function params(extra) {
         const p = new URLSearchParams();
-        for (const [k, v] of new FormData(form)) if (v) p.set(k, v);
+        for (const [k, v] of new FormData(form)) if (v && !(k === "q" && isQuestion(v))) p.set(k, v);
         for (const [k, v] of Object.entries(extra)) if (v) p.set(k, v);
+        p.set("tz", new Date().getTimezoneOffset());
         return p;
     }
 
@@ -178,9 +188,41 @@
         $("playAll").replaceChildren(icon("fa-film"), `Play ${isToday ? "today" : "this day"} · ${mins} min`);
         $("playAll").onclick = () => play(clips, 0, { auto: true, owner: OWNER, onChange: render, onDelete: drop });
 
+        // worth a look and visits get their own sections; the usual stuff folds away
+        const opts = { owner: OWNER, onChange: render, onDelete: drop };
+        const odd = data.groups.filter((g) => g.why), visits = data.groups.filter((g) => !g.why && Object.keys(g.cameras).length > 1);
+        const usual = data.groups.filter((g) => g.usual && !g.why && Object.keys(g.cameras).length < 2);
+        const rest = data.groups.filter((g) => !odd.includes(g) && !visits.includes(g) && (showUsual || !usual.includes(g)));
+        const wire = (g) => {
+            const r = row(g, byId, seen);
+            r.classList.toggle("is-picked", g.ids.every((id) => picked.has(id)));
+            r.onclick = () => picking ? pick(g, r) : openGroup(g, byId);
+            return r;
+        };
+        $("odd").hidden = !odd.length;
+        $("oddCount").textContent = `${odd.length} unusual`;
+        $("oddList").replaceChildren(...odd.map((g) => {
+            if (Object.keys(g.cameras).length > 1) return visit(g, byId, opts);
+            const box = h("div", "surface ev-group ev-odd");
+            box.append(wire(g));
+            return box;
+        }));
+        $("visits").hidden = !visits.length;
+        $("visitList").replaceChildren(...visits.map((g) => visit(g, byId, opts)));
+        const sections = odd.length || visits.length;
+        const restCount = data.groups.filter((g) => !odd.includes(g) && !visits.includes(g)).reduce((a, g) => a + g.count, 0);
+        $("restHead").hidden = !sections || !restCount;
+        $("restCount").textContent = `${restCount} event${restCount === 1 ? "" : "s"}`;
+        const usualCount = usual.reduce((a, g) => a + g.count, 0);
+        $("usual").hidden = !usual.length;
+        const like = [...new Set(usual.map((g) => `${kind(g.kind)[0].toLowerCase()} at ${Object.keys(g.cameras)[0]} around ${clock(g.first).replace(/:\d\d/, "")}`))].slice(0, 2);
+        $("usual").replaceChildren(icon(showUsual ? "fa-down-left-and-up-right-to-center" : "fa-up-right-and-down-left-from-center"),
+            h("span", "", showUsual ? `Hide the ${usualCount} usual events` : `${usualCount} usual event${usualCount === 1 ? "" : "s"} folded, like ${like.join(" and ")}. Show them`));
+        $("usual").onclick = () => { showUsual = !showUsual; render(); };
+
         // the list, by hour
         const hours = new Map();
-        for (const g of data.groups) {
+        for (const g of rest) {
             const d = new Date(g.last * 1000), key = d.getHours();
             if (!hours.has(key)) hours.set(key, []);
             hours.get(key).push(g);
@@ -190,12 +232,7 @@
             const head = h("h3", "ev-hour", new Date(2000, 0, 1, hr).toLocaleTimeString([], { hour: "numeric" }));
             head.append(h("small", "", `${n} event${n === 1 ? "" : "s"}`));
             const box = h("div", "surface ev-group");
-            box.append(...gs.map((g) => {
-                const r = row(g, byId, seen);
-                r.classList.toggle("is-picked", g.ids.every((id) => picked.has(id)));
-                r.onclick = () => picking ? pick(g, r) : openGroup(g, byId);
-                return r;
-            }));
+            box.append(...gs.map(wire));
             return [head, box];
         }));
         const empty = $("empty");
@@ -226,9 +263,39 @@
         $("pickCount").textContent = picked.size ? `${picked.size} picked` : "Tap events to pick them";
     }
 
+    async function ask(q) {
+        const box = $("answer");
+        const resp = await fetch("history/ask?" + new URLSearchParams({ q, tz: new Date().getTimezoneOffset() }));
+        if (!resp.ok) return;
+        const got = await resp.json(), byId = Object.fromEntries(got.events.map((e) => [e.id, e]));
+        const pics = got.events.filter((e) => e.clip || e.img).reverse();
+        const card = h("button", "ev-ans");
+        card.type = "button";
+        if (pics.length) card.append(thumb(pics.at(-1)));
+        const text = h("span", "ev-meta");
+        text.append(h("span", "ev-said", got.answer));
+        if (pics.length) text.append(h("small", "ev-time", `From ${got.events.length} event${got.events.length === 1 ? "" : "s"} · tap to play`));
+        card.append(text);
+        card.disabled = !pics.length;
+        card.onclick = () => play(pics, pics.length - 1, { owner: OWNER, onChange: render, onDelete: drop });
+        const head = h("p", "ev-q");
+        head.append(icon("fa-wand-magic-sparkles"), h("span", "", q));
+        const close = Object.assign(h("button", "round-btn"), { type: "button", title: "Clear the question" });
+        close.append(icon("fa-xmark"));
+        close.onclick = () => { box.hidden = true; form.q.value = ""; loadWeek(); load(false); };
+        head.append(close);
+        box.replaceChildren(head, card);
+        box.hidden = false;
+    }
+
     let timer;
-    form.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => { loadWeek(); load(false); }, 300); });
-    form.addEventListener("submit", (e) => e.preventDefault());
+    form.addEventListener("input", () => {
+        clearTimeout(timer);
+        if (isQuestion(form.q.value)) return;  // a question is asked on Enter, not filtered letter by letter
+        $("answer").hidden = true;
+        timer = setTimeout(() => { loadWeek(); load(false); }, 300);
+    });
+    form.addEventListener("submit", (e) => { e.preventDefault(); if (isQuestion(form.q.value)) ask(form.q.value); });
     $("more").onclick = () => load(true);
     $("older").onclick = () => { weekEnd = addDays(weekEnd, -7); day = weekEnd; loadWeek(); load(false); };
     $("newer").onclick = () => { weekEnd = addDays(weekEnd, 7) > today ? today : addDays(weekEnd, 7); day = weekEnd; loadWeek(); load(false); };
