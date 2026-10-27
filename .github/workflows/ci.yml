@@ -197,6 +197,32 @@ jobs:
           print("detection ok")
           '@ | & "$n\python\python.exe" -
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      # Smoke alarm listening on Windows: h5py reads the downloaded YAMNet weights, ffmpeg's audio pipes through.
+      - name: Sound listening works in the Windows bundle
+        shell: pwsh
+        run: |
+          $n = "$PWD\bundle\wyze-tunnel"; $d = "$PWD\listen-data"
+          New-Item -ItemType Directory -Force $d | Out-Null; 'paths: {}' | Set-Content "$d\mediamtx.yml"
+          $env:PATH = "$n\bin;$env:PATH"; $env:TOKEN_PATH = "$d\"; $env:IMG_DIR = "$d\img\"; $env:MEDIAMTX_CONFIG = "$d\mediamtx.yml"
+          @'
+          import subprocess
+          import numpy as np
+          from wyzebridge import hearing
+          model = hearing.load_model()
+          assert model, "the sound model didn't load"
+          cmd = hearing.Listener("ci", "CI", None).ffmpeg_cmd()
+          # A smoke alarm's 3.2 kHz beep, half a second on and half off.
+          beep = "sine=frequency=3200:sample_rate=48000,volume='lt(mod(t,1),0.5)':eval=frame"
+          cmd = cmd[:cmd.index("-i")] + ["-f", "lavfi", "-i", beep, "-t", "1"] + cmd[cmd.index("-map"):]
+          cmd.remove("-rtsp_transport"); cmd.remove("tcp")
+          raw = subprocess.run(cmd, capture_output=True, check=True).stdout
+          wave = np.frombuffer(raw[: hearing.PATCH * 2], "<i2") / 32768.0
+          scores = model.scores(wave)
+          print("smoke alarm score", scores[393], "top", np.argsort(-scores)[:5])
+          assert scores.shape == (521,) and scores[393] > 0.1, "the beep wasn't heard as an alarm"
+          print("listening ok")
+          '@ | & "$n\python\python.exe" -
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       # Saved sign-ins are sealed with the real DPAPI, and plain ones from older versions still open and get sealed.
       - name: Secrets are encrypted on Windows
         shell: pwsh

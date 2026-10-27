@@ -23,6 +23,10 @@ Wyze Tunnel builds on other people's work. Thank you to these projects.
 - **YOLOX** by Megvii (Apache-2.0). Its YOLOX-S model downloads only if "Stronger" detection is picked.
   https://github.com/Megvii-BaseDetection/YOLOX
 - **OpenCV** (Apache-2.0). Runs the detection model. https://opencv.org
+- **YAMNet** by Google (Apache-2.0). Its weights (`yamnet.h5`) download on first use when a camera listens
+  for smoke alarms and breaking glass; the network is rebuilt in NumPy following `yamnet.py` and `features.py`.
+  https://github.com/tensorflow/models/tree/master/research/audioset/yamnet
+- **h5py** (BSD-3-Clause). Reads the YAMNet weights. https://www.h5py.org
 - **Frigate** (MIT). Search reads its events API; no Frigate code is included. https://frigate.video
 - **Font Awesome Free** 6.1.1 by Fonticons (icons CC BY 4.0, fonts SIL OFL 1.1, code MIT). Bundled in
   `app/static/fontawesome` so the web UI works without internet. https://fontawesome.com

@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 from threading import Thread
 
-from wyzebridge import config, detect, devices, guests, integrations, lockdown, phone_cams, phrases, pocket, recording, sd_copy, tamper, timelapse, webhooks
+from wyzebridge import config, detect, devices, guests, hearing, integrations, lockdown, phone_cams, phrases, pocket, recording, sd_copy, tamper, timelapse, webhooks
 from wyzebridge.auth import STREAM_AUTH, WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream
 from wyzebridge.go2rtc import lan_controls, tutk_available
@@ -84,19 +84,21 @@ class WyzeBridge(Thread):
         WyzeStream.user = self.api.get_user()
         WyzeStream.api = self.api
 
-        watching = set()
+        watching, listening = set(), set()
         needs_sdk = 0
         for cam in self.api.filtered_cams():
             logger.info(f"[+] Adding {cam.nickname} [{cam.product_model}]")
             if config.SNAPSHOT_TYPE == "api":
                 self.api.save_thumbnail(cam.name_uri)
+            listen = hearing.wanted(cam.name_uri) and not cam.is_battery  # always streaming would drain a battery
             options = WyzeStreamOptions(
                 quality=env_cam("quality", cam.name_uri),
-                audio=bool(env_cam("enable_audio", cam.name_uri)),
+                # Listening for alarms needs the camera's sound, all the time.
+                audio=bool(env_cam("enable_audio", cam.name_uri)) or listen,
                 # Spotting needs a recording to play hits from, so switching it on records the camera too.
                 record=bool(env_cam("record", cam.name_uri)) or recording.wanted(cam.name_uri) or detect.wanted(cam.name_uri),
                 # Battery cams connect only while someone watches, so they don't drain.
-                reconnect=is_livestream(cam.name_uri) or (not config.ON_DEMAND and not cam.is_battery),
+                reconnect=is_livestream(cam.name_uri) or (not config.ON_DEMAND and not cam.is_battery) or listen,
             )
             self.add_substream(cam, options)
             stream = WyzeStream(cam, options)
@@ -112,9 +114,13 @@ class WyzeBridge(Thread):
             if detect.wanted(cam.name_uri):
                 detect.watch(stream.uri, display_name(cam), on_detect)
                 watching.add(stream.uri)
+            if listen:
+                hearing.listen(stream.uri, display_name(cam), on_hear)
+                listening.add(stream.uri)
             self.streams.add(stream)
             needs_sdk += not cam.cloud_only and not lan_controls(cam, stream.sources)
         detect.stop_all(keep=frozenset(watching))  # cameras switched off since the last start
+        hearing.stop_all(keep=frozenset(listening))
         for phone in phone_cams.list_cams():
             self.add_phone_path(phone["uri"])
         # The Windows tray offers the WSL setup only while a camera needs the Wyze SDK (away from home, old firmware).
@@ -156,6 +162,7 @@ class WyzeBridge(Thread):
         if self.streams:
             self.streams.stop_all()
         detect.stop_all()
+        hearing.stop_all()
         self.mtx.stop()
         WyzeStream.go2rtc.stop()
         logger.info("👋 goodbye!")
@@ -179,6 +186,13 @@ def on_detect(uri: str, name: str, label: str, det_id: int | None, ts: float, st
         elif place in phrases.OUTDOOR and not event.get("cleared"):
             event["cleared"] = int(ts)
             webhooks.send_webhook("cleared", uri, phrases.describe("cleared", name, place), title=name)
+
+
+def on_hear(uri: str, name: str, label: str, ts: float) -> None:
+    """A smoke alarm or breaking glass heard by a camera's microphone. Same alerts as Wyze's Cam Plus sound events."""
+    text = phrases.describe(label, name, phrases.place_of(uri, name))
+    EVENT_LOG.appendleft({"uri": uri, "name": name, "ts": int(ts), "img": None, "label": label, "text": text})
+    webhooks.send_webhook(label, uri, text, title=f"{webhooks.URGENT[label]}: {name}" if label in webhooks.URGENT else name)
 
 
 if __name__ == "__main__":

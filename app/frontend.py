@@ -22,7 +22,7 @@ import requests
 import yaml
 from werkzeug.exceptions import NotFound
 from wyze_bridge import WyzeBridge
-from wyzebridge import api_v1, automations, backup, camera_settings, config, detect, devices, event_archive, floorplan, go2rtc, guests, homekit, integrations, lockdown, masks, network, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, visitors, weather, web_ui, webhooks, wyze_api
+from wyzebridge import api_v1, automations, backup, camera_settings, config, detect, devices, event_archive, floorplan, go2rtc, guests, hearing, homekit, integrations, lockdown, masks, network, phone_cams, phrases, pocket, privacy, recording, sd_copy, sd_playback, shares, street_watch, tamper, timelapse, visitors, weather, web_ui, webhooks, wyze_api
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.diagnostics import build_report
@@ -996,9 +996,26 @@ def create_app():
             # Anyone who knows an ntfy.sh topic can read it, so suggest one nobody can guess.
             suggested_topic=f"wyze-tunnel-{secrets.token_hex(6)}",
             tamper_on=tamper.enabled(),
+            listen_cams=[(uri, wyze_api.display_name(s.camera)) for uri, s in wb.streams.streams.items()
+                         if isinstance(s, WyzeStream) and not s.options.substream and not s.camera.is_battery],
+            listening=hearing.load_settings().get("cams", []),
+            can_listen=hearing.np is not None,
             api=WbAuth.api,
             version=config.VERSION,
         )
+
+    @app.route("/alerts/listen", methods=["POST"])
+    @auth_required
+    def alerts_listen():
+        """Pick the cameras that listen for smoke alarms and breaking glass, then restart cameras so it takes effect."""
+        if web_ui.current_guest():
+            return {"error": "Only the owner can change this."}, 403
+        try:
+            cams = hearing.save_settings((request.get_json(silent=True) or {}).get("cams"), list(wb.streams.streams))
+        except ValueError as ex:
+            return {"error": str(ex)}, 400
+        Thread(target=wb.restart, daemon=True).start()
+        return {"status": "saved", "cams": cams}
 
     @app.route("/account", methods=["GET", "POST"])
     @auth_required

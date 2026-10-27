@@ -10,3 +10,5 @@ xxtea==3.3.*
 segno==1.6.*
 # Built-in people/car/animal spotting; there are no wheels for 32-bit ARM, so it is off there.
 opencv-python-headless==4.10.*; platform_machine != "armv7l"
+# Reads the sound model (YAMNet) that listens for smoke alarms and breaking glass.
+h5py==3.*; platform_machine != "armv7l"
