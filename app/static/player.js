@@ -13,7 +13,7 @@
     `<button type="button" class="vp-btn ${cls}" aria-label="${label}" title="${label}">${ICON(icon)}</button>`;
 
   function enhance(video) {
-    if (video.vp) { return }
+    if (video.vp || video.hasAttribute("data-bare")) { return }  // the camera page draws its own controls
     // Live camera tiles are picture-first and have no timeline; recordings get the full bar.
     const live = !!video.dataset.cam;
     let box = video.parentElement;
@@ -249,7 +249,7 @@
 
   // Downloads what the camera shows right now, named after the camera and the time.
   function savePhoto(video) {
-    const name = video.closest(".camera")?.querySelector(".card-header-title .truncate")?.textContent || video.dataset.cam;
+    const name = video.closest(".camera")?.querySelector(".card-header-title .truncate")?.textContent || video.dataset.name || video.dataset.cam;
     const stamp = new Date().toLocaleString([], { dateStyle: "medium", timeStyle: "short" }).replace(/[\\/:*?"<>|]/g, ".");
     const save = (href) => Object.assign(document.createElement("a"), { href, download: `${name} ${stamp}.jpg` }).click();
     if (video.readyState < 2 || !video.videoWidth) {  // not playing yet: the latest snapshot is the best we have
@@ -275,6 +275,7 @@
   ["play", "pause", "emptied"].forEach((e) => document.addEventListener(e, keepAwake, true));
   document.addEventListener("visibilitychange", keepAwake);  // the browser drops the lock when the tab is hidden
 
+  window.savePhoto = savePhoto;
   const run = () => document.querySelectorAll("video").forEach(enhance);
   document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", run) : run();
 })();

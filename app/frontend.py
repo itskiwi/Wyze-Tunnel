@@ -615,6 +615,29 @@ def create_app():
         tamper.reset(cam_name)
         return {"status": "saved"}
 
+    @app.route("/camera")
+    @auth_required
+    def camera_page():
+        """One camera full screen: live video, controls, settings and today's events. ?cam=<uri>"""
+        cam_name = request.args.get("cam", "")
+        cams = web_ui.all_cams(wb.streams, wb.api.total_cams)["cameras"]
+        if not (camera := cams.get(cam_name)):
+            return redirect("live")
+        order = [uri for uri, cam in cams.items() if cam.get("enabled") or uri == cam_name]  # swipe sideways for the next one
+        at = order.index(cam_name)
+        return render_template(
+            "camera.html",
+            cam_uri=cam_name,
+            camera=camera,
+            prev_cam=order[at - 1] if len(order) > 1 else "",
+            next_cam=order[(at + 1) % len(order)] if len(order) > 1 else "",
+            guest=web_ui.current_guest(),
+            webrtc=bool(config.BRIDGE_IP),
+            video_format=request.cookies.get("video", "webrtc").lower(),
+            playback=PLAYBACK_ENABLED,
+            version=config.VERSION,
+        )
+
     @app.route("/camera-settings")
     @owner_only
     def camera_settings_page():

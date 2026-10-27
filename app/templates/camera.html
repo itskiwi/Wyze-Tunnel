@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% set watch_only = guest and not guest.family %}
+{% set hide_nav = True %}
+{% set is_webrtc = webrtc and (video_format == "webrtc" or camera.webrtc and video_format == "kvs") %}
+{% block title %}{{ camera.nickname }} · {% endblock %}
+{% block content %}
+{# One camera full screen. The video fills the page, controls float on it and fade, and one sheet pulls up for today, settings and rewind. #}
+<div id="cp" class="cp" data-poster="{{ camera.img_url or '' }}" data-cam="{{ cam_uri }}" data-name="{{ camera.nickname }}" data-playback="{{ 1 if playback else '' }}"
+    data-control="{{ '' if watch_only else 1 }}" data-prev="{{ prev_cam }}" data-next="{{ next_cam }}"
+    data-format="{{ 'kvs' if video_format == 'kvs' else 'webrtc' }}" data-net="{{ camera.net_mode or '' }}">
+    <video id="cpLive" class="cp-video {{ 'webrtc' if is_webrtc else 'hls' }}" data-cam="{{ cam_uri }}" data-name="{{ camera.nickname }}" data-bare
+        {% if not is_webrtc %}data-src="{{ camera.hls_page_url }}stream.m3u8"{% endif %}
+        muted playsinline autoplay poster="{{ camera.img_url or 'static/loading.svg' }}"></video>
+    <video id="cpPast" class="cp-video" data-bare playsinline hidden></video>
+    <p id="cpNote" class="cp-note" hidden></p>
+
+    <div class="cp-ui">
+        <div class="cp-scrim"></div>
+        <header class="cp-head">
+            <a class="cp-glass" href="live" aria-label="Back to Live"><i class="fas fa-chevron-left"></i></a>
+            <div class="cp-title">
+                <h1>{{ camera.nickname }}</h1>
+                <p id="cpStatus"><i></i><span>Connecting…</span></p>
+            </div>
+            {% if not watch_only %}<button type="button" class="cp-glass" data-sheet="full" aria-label="All settings"><i class="fas fa-sliders"></i></button>{% endif %}
+        </header>
+        <div class="cp-rail">
+            {% if camera.webrtc and not watch_only %}
+            <button type="button" class="cp-glass cp-talk talk" data-cam="{{ cam_uri }}" aria-label="Hold to talk through {{ camera.nickname }}"><i class="fas fa-microphone"></i></button>
+            <span class="cp-label">Talk</span>
+            {% endif %}
+            <button type="button" class="cp-glass" id="cpMute" aria-label="Turn sound on"><i class="fas fa-volume-xmark"></i></button>
+            <button type="button" class="cp-glass" id="cpSnap" aria-label="Save a photo"><i class="fas fa-camera"></i></button>
+            <button type="button" class="cp-glass" id="cpFull" aria-label="Full screen"><i class="fas fa-expand"></i></button>
+        </div>
+        <button type="button" class="cp-golive" id="cpGoLive" hidden>Back to live</button>
+    </div>
+
+    <section class="cp-sheet" id="cpSheet" aria-label="Today and settings">
+        <div class="cp-grab" id="cpGrab">
+            <div class="cp-sum"><b id="cpQuiet">Today</b><span id="cpCount"></span></div>
+            <div class="cp-readout"><b id="cpClock"></b><span id="cpWhat">Live. Drag the line to go back.</span></div>
+        </div>
+        <div class="cp-rw">
+            <div class="cp-track-wrap" id="cpRail" aria-label="Today. Drag to go back in time."><div class="cp-track" id="cpTrack"></div></div>
+            <div class="cp-playhead"></div>
+        </div>
+        <div class="cp-body">
+            {% if not watch_only %}
+            <div class="cp-tiles">
+                <button type="button" class="cp-tile" data-set="night_vision" data-cycle="auto,on,off"><span class="cp-ic"><i class="fas fa-moon"></i></span><span><b>Night vision</b><span data-value>…</span></span></button>
+                <button type="button" class="cp-tile" data-set="motion_detection" data-cycle="on,off"><span class="cp-ic"><i class="fas fa-person-running"></i></span><span><b>Detection</b><span data-value>…</span></span></button>
+                <button type="button" class="cp-tile" data-set="notifications" data-cycle="on,off"><span class="cp-ic"><i class="fas fa-bell"></i></span><span><b>Wyze alerts</b><span data-value>…</span></span></button>
+                <button type="button" class="cp-tile" data-set="status_light" data-cycle="on,off"><span class="cp-ic"><i class="fas fa-circle-dot"></i></span><span><b>Status light</b><span data-value>…</span></span></button>
+            </div>
+            <label class="cp-siren" id="cpSiren"><span data-text>Slide to sound the siren</span>
+                <span class="cp-knob"><i class="fas fa-bell"></i></span>
+                <input type="range" id="cpSirenRange" min="0" max="100" value="0" aria-label="Slide to sound the siren">
+            </label>
+            {% endif %}
+
+            <h2 class="cp-h2">Today</h2>
+            <ul class="cp-feed" id="cpFeed"><li class="cp-empty">Loading today's events…</li></ul>
+
+            {% if not watch_only %}
+            <h2 class="cp-h2">All settings</h2>
+            <div class="cp-group">
+                <div class="cp-row"><span><b>Quality</b><span>SD uses less data</span></span>
+                    <span class="seg" data-set="quality"><button type="button" data-v="hd">HD</button><button type="button" data-v="sd">SD</button></span></div>
+                <div class="cp-row"><span><b>Night vision</b></span>
+                    <span class="seg" data-set="night_vision"><button type="button" data-v="on">On</button><button type="button" data-v="off">Off</button><button type="button" data-v="auto">Auto</button></span></div>
+                <div class="cp-row"><span><b>Timestamp on video</b></span><button type="button" class="cp-switch" role="switch" data-set="osd_timestamp" aria-label="Timestamp on video"></button></div>
+                <div class="cp-row"><span><b>Motion box</b><span>Outlines what moved</span></span><button type="button" class="cp-switch" role="switch" data-set="motion_tagging" aria-label="Motion box"></button></div>
+                <div class="cp-row"><span><b>Wyze motion detection</b></span><button type="button" class="cp-switch" role="switch" data-set="motion_detection" aria-label="Wyze motion detection"></button></div>
+                <div class="cp-row"><span><b>Motion sensitivity</b><span data-exact="motion_sensitivity"></span></span>
+                    <span class="seg" data-set="motion_sensitivity"><button type="button" data-v="20">Low</button><button type="button" data-v="50">Med</button><button type="button" data-v="80">High</button></span></div>
+                <div class="cp-row"><span><b>Wyze sound detection</b></span><button type="button" class="cp-switch" role="switch" data-set="sound_detection" aria-label="Wyze sound detection"></button></div>
+                <div class="cp-row"><span><b>Sound sensitivity</b><span data-exact="sound_sensitivity"></span></span>
+                    <span class="seg" data-set="sound_sensitivity"><button type="button" data-v="20">Low</button><button type="button" data-v="50">Med</button><button type="button" data-v="80">High</button></span></div>
+                <div class="cp-row"><span><b>Wyze app alerts</b></span><button type="button" class="cp-switch" role="switch" data-set="notifications" aria-label="Wyze app alerts"></button></div>
+                <div class="cp-row"><span><b>Status light</b></span><button type="button" class="cp-switch" role="switch" data-set="status_light" aria-label="Status light"></button></div>
+                {% if camera.is_pan_cam %}
+                <div class="cp-row"><span><b>Follow motion</b></span><button type="button" class="cp-switch" role="switch" data-set="motion_tracking" aria-label="Follow motion"></button></div>
+                <div class="cp-row"><span><b>Patrol</b></span><button type="button" class="cp-switch" role="switch" data-set="pan_cruise" aria-label="Patrol"></button></div>
+                {% endif %}
+                <div class="cp-row"><span><b>Mirror image</b></span><button type="button" class="cp-switch" role="switch" data-set="hor_flip" aria-label="Mirror image"></button></div>
+                <div class="cp-row"><span><b>Upside down</b></span><button type="button" class="cp-switch" role="switch" data-set="ver_flip" aria-label="Upside down"></button></div>
+            </div>
+            <p class="cp-fine" id="cpFresh">A striped switch means the camera hasn't told us its setting yet. Settings are only read while the camera is streaming.</p>
+            {% endif %}
+        </div>
+    </section>
+</div>
+{% endblock %}
+{% block javascript %}
+<script src="static/webrtc.js?v={{ version }}"></script>
+{% if not is_webrtc %}<script src="static/hls.min.js?v={{ version }}"></script>{% endif %}
+<script src="static/camera.js?v={{ version }}"></script>
+{% endblock %}
