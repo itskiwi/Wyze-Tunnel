@@ -69,3 +69,17 @@ def test_live_page_preview_switch(setup, monkeypatch, cookies, checked):
     html = client.get("/live", headers={"Authorization": "Basic dTpw"}).text
     on = re.findall(r'data-action="(snapshot|live|autoplay)" role="radio" aria-checked="true"', html)
     assert on == [checked]
+
+
+def test_camera_page(setup, monkeypatch):
+    from wyzebridge import web_ui
+
+    client, _, _ = setup
+    cams = {u: {"nickname": u.title(), "enabled": u != "off", "connected": True, "webrtc": True, "hls_page_url": "x/"} for u in ("front", "off", "back", "side")}
+    monkeypatch.setattr(web_ui, "all_cams", lambda *_: {"enabled": 3, "available": 4, "total": 4, "cameras": cams})
+    auth = {"Authorization": "Basic dTpw"}
+    html = client.get("/camera?cam=back", headers=auth).text
+    assert 'data-cam="back"' in html and "<h1>Back</h1>" in html
+    assert 'data-prev="front"' in html and 'data-next="side"' in html  # the camera that's off is skipped
+    assert 'data-control="1"' in html and "cp-talk" in html
+    assert client.get("/camera?cam=nope", headers=auth).headers["Location"].endswith("live")
