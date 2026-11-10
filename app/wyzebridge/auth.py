@@ -6,6 +6,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Optional
 
+from flask import has_request_context, request
 from werkzeug.security import check_password_hash, generate_password_hash
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.config import TOKEN_PATH
@@ -13,19 +14,36 @@ from wyzebridge import vault
 from wyzebridge.logging import logger
 
 _recent_ok: dict[bytes, float] = {}
+_misses: dict[str, tuple[int, float]] = {}  # address -> (wrong passwords in a row, paused until)
+MISSES, PAUSE = 10, 30
 
 
 def check_password(hashed: str, password: str) -> bool:
     """check_password_hash is slow on purpose (scrypt, ~0.1 s of CPU). Browsers send the password with every picture
-    and API call, so a page with ten pictures queued a second of hashing. Recent successes are remembered; failures never are."""
+    and API call, so a page with ten pictures queued a second of hashing. Recent successes are remembered; failures never are.
+    Every 10 wrong passwords in a row from one address pause that address for 30 seconds, so guessing is hopeless
+    and can't keep the CPU busy. Other addresses, such as a signed-in phone, never wait."""
     key = sha256(f"{hashed}\0{password}".encode()).digest()
-    if _recent_ok.get(key, 0) > time.time():
+    now = time.time()
+    who = (request.remote_addr or "") if has_request_context() else ""
+    count, until = _misses.get(who, (0, 0))
+    if until > now:  # before the memory of successes, or a paused guesser could test passwords against it at full speed
+        return False
+    if _recent_ok.get(key, 0) > now:
+        _misses.pop(who, None)
         return True
     if not check_password_hash(hashed, password):
+        if len(_misses) > 1000:
+            _misses.clear()
+        count += 1
+        _misses[who] = (count, now + PAUSE if count % MISSES == 0 else 0)
+        if count % MISSES == 0:
+            logger.warning(f"[AUTH] {count} wrong passwords in a row from {who or 'this computer'}; pausing it for {PAUSE} seconds")
         return False
+    _misses.pop(who, None)
     if len(_recent_ok) > 100:
         _recent_ok.clear()
-    _recent_ok[key] = time.time() + 600
+    _recent_ok[key] = now + 600
     return True
 
 
