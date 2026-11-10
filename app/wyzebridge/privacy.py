@@ -6,6 +6,7 @@ from typing import Optional
 from wyzebridge.config import TOKEN_PATH
 from wyzebridge.logging import logger
 from wyzebridge.webhooks import in_quiet_hours
+from wyzebridge import safe_file
 
 PRIVACY_FILE = TOKEN_PATH + "privacy.json"
 # Battery saver: the same kind of window, but the camera only stops streaming in Wyze Tunnel, so it can sleep.
@@ -33,7 +34,7 @@ def save_privacy(form: dict, macs: set[str], path: str = "") -> dict:
             if cams:
                 raise ValueError("Set a start and end time, like 22:00 to 07:00.") from None
     settings = {"cams": sorted(cams), **times}
-    with open(path or PRIVACY_FILE, "w") as f:
+    with safe_file.writing(path or PRIVACY_FILE) as f:
         json.dump(settings, f)
     return settings
 

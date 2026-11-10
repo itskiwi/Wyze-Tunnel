@@ -10,6 +10,7 @@ from typing import Optional
 from wyzebridge.config import TOKEN_PATH
 from wyzebridge.logging import logger
 from wyzecam.api_models import clean_name
+from wyzebridge import safe_file
 
 PHONES_FILE = TOKEN_PATH + "phone_cams.json"
 MAX_PHONES = 10
@@ -28,7 +29,7 @@ def _save(cams: list[dict]) -> None:
     # Holds each phone's link secret, so only the bridge's user can read it.
     path = Path(PHONES_FILE)
     path.touch(mode=0o600)
-    path.write_text(json.dumps({"cams": cams}))
+    safe_file.write_text(path, json.dumps({"cams": cams}))
 
 
 def list_cams() -> list[dict]:

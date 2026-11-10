@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 
 from wyzebridge.logging import logger
+from wyzebridge import safe_file
 
 MAGIC = b"WTDPAPI1"
 
@@ -80,9 +81,8 @@ def read_text(path) -> str:
 
 
 def write_bytes(path, data: bytes) -> None:
-    path = Path(path)
-    path.touch(mode=0o600)
-    path.write_bytes(seal(data))
+    with safe_file.writing(path, "wb", perms=0o600) as f:
+        f.write(seal(data))
 
 
 def write_text(path, text: str) -> None:

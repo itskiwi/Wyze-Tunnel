@@ -25,6 +25,7 @@ from wyzebridge.bridge_utils import env_cam
 from wyzebridge.config import TOKEN_PATH
 from wyzebridge.detect import MODEL_DIR
 from wyzebridge.logging import logger
+from wyzebridge import safe_file
 
 SETTINGS_FILE = TOKEN_PATH + "listen.json"
 MODEL_URL = "https://storage.googleapis.com/audioset/yamnet.h5"
@@ -63,7 +64,7 @@ def save_settings(cams, uris: list[str]) -> list[str]:
     if cams and np is None:
         raise ValueError("Listening needs NumPy, which isn't available on this device")
     cams = [c for c in cams if c in uris]
-    with open(SETTINGS_FILE, "w") as f:
+    with safe_file.writing(SETTINGS_FILE) as f:
         json.dump({"cams": cams}, f)
     return cams
 

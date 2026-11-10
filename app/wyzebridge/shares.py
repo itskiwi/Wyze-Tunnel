@@ -8,6 +8,7 @@ import time
 from typing import Optional
 
 from wyzebridge.config import TOKEN_PATH
+from wyzebridge import safe_file
 
 SHARES_FILE = TOKEN_PATH + "shares.json"
 SHARE_HOURS = 24
@@ -23,7 +24,7 @@ def _load() -> dict:
 
 
 def _save(shares: dict) -> None:
-    with open(SHARES_FILE, "w") as f:
+    with safe_file.writing(SHARES_FILE) as f:
         json.dump(shares, f)
 
 

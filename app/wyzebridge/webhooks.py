@@ -10,6 +10,7 @@ from wyzebridge import integrations
 from wyzebridge.bridge_utils import env_cam
 from wyzebridge.config import TOKEN_PATH, VERSION
 from wyzebridge.logging import logger
+from wyzebridge import safe_file
 
 ALERTS_FILE = TOKEN_PATH + "alerts.json"
 # Sound tags from Wyze's cloud (Cam Plus). Glass break is on unless switched off; the rest are opt-in.
@@ -80,7 +81,7 @@ def set_lock_alert(minutes) -> int:
 
 
 def _write_alerts(settings: dict) -> None:
-    with open(ALERTS_FILE, "w") as f:
+    with safe_file.writing(ALERTS_FILE) as f:
         json.dump(settings, f)
     ALERTS.clear()
     ALERTS.update(settings)

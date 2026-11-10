@@ -4,6 +4,7 @@ import json
 
 from wyzebridge.config import TOKEN_PATH
 from wyzebridge.detect import HEAT_H, HEAT_W
+from wyzebridge import safe_file
 
 MASKS_FILE = TOKEN_PATH + "masks.json"
 
@@ -24,7 +25,7 @@ def save_mask(uri: str, cells) -> list[int]:
     masks[uri] = sorted(set(cells))
     if not masks[uri]:
         del masks[uri]
-    with open(MASKS_FILE, "w") as f:
+    with safe_file.writing(MASKS_FILE) as f:
         json.dump(masks, f)
     return masks.get(uri, [])
 

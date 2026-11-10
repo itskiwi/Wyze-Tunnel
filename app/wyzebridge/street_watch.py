@@ -13,6 +13,7 @@ from wyzebridge.config import TOKEN_PATH
 from wyzebridge.logging import logger
 from wyzebridge.privacy import load_privacy
 from wyzebridge.webhooks import in_quiet_hours
+from wyzebridge import safe_file
 
 STREET_FILE = TOKEN_PATH + "street_watch.json"
 MAX_WINDOW = 3600  # a request covers at most 1 hour
@@ -40,7 +41,7 @@ def _load() -> dict:
 
 def _save(data: dict, event: str) -> None:
     data["log"].append({"ts": int(time.time()), "text": event})
-    with open(STREET_FILE, "w") as f:
+    with safe_file.writing(STREET_FILE) as f:
         json.dump(data, f)
     logger.info(f"[STREET] {event}")
 

@@ -8,6 +8,7 @@ from threading import Lock
 import segno
 import yaml
 from wyzebridge.config import TOKEN_PATH
+from wyzebridge import safe_file
 
 HOMEKIT_FILE = TOKEN_PATH + "homekit.json"
 # Apple rejects these setup codes (same list as go2rtc's).
@@ -28,7 +29,7 @@ def _save(data: dict) -> None:
     # Holds each camera's HomeKit private key, so only the bridge's user can read it.
     path = Path(HOMEKIT_FILE)
     path.touch(mode=0o600)
-    path.write_text(json.dumps(data))
+    safe_file.write_text(path, json.dumps(data))
 
 
 def stream_id(uri: str) -> str:

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from wyzebridge.config import TOKEN_PATH
+from wyzebridge import safe_file
 
 IMAGE_FILE = Path(TOKEN_PATH, "floorplan.img")
 PINS_FILE = TOKEN_PATH + "floorplan.json"
@@ -40,6 +41,6 @@ def save_pins(pins, uris: list[str]) -> dict[str, list[float]]:
     for uri, pos in pins.items():
         if uri in uris and isinstance(pos, list) and len(pos) == 2 and all(isinstance(v, (int, float)) for v in pos):
             clean[uri] = [round(min(max(float(v), 0), 100), 2) for v in pos]
-    with open(PINS_FILE, "w") as f:
+    with safe_file.writing(PINS_FILE) as f:
         json.dump(clean, f)
     return clean

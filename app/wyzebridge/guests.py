@@ -8,6 +8,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from wyzebridge.config import TOKEN_PATH
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import MtxInterface
+from wyzebridge import safe_file
 
 GUESTS_FILE = TOKEN_PATH + "guests.json"
 GUEST_HOURS = (1, 24, 72, 168, 0)  # 0: a family login, full access, never ends
@@ -24,7 +25,7 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
-    with open(GUESTS_FILE, "w") as f:
+    with safe_file.writing(GUESTS_FILE) as f:
         json.dump(data, f)
 
 

@@ -31,6 +31,7 @@ from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.config import IMG_PATH, TOKEN_PATH
 from wyzebridge.ffmpeg import parse_timedelta
 from wyzebridge.logging import logger
+from wyzebridge import safe_file
 
 FRIGATE_URL = env_bool("FRIGATE_URL", style="original").rstrip("/")
 SETTINGS_FILE = TOKEN_PATH + "detect.json"
@@ -180,7 +181,7 @@ def save_settings(form: dict, uris: list[str]) -> dict:
     if not isinstance(cams, list) or not all(isinstance(c, str) for c in cams):
         raise ValueError("Pick cameras from the list")
     settings = {"cams": [c for c in cams if c in uris], "frigate_url": url, "model": model}
-    with open(SETTINGS_FILE, "w") as f:
+    with safe_file.writing(SETTINGS_FILE) as f:
         json.dump(settings, f)
     return settings
 
@@ -412,7 +413,7 @@ def save_zone(uri: str, ignore) -> list[int]:
     zones[uri] = sorted(set(ignore))
     if not zones[uri]:
         del zones[uri]
-    with open(ZONES_FILE, "w") as f:
+    with safe_file.writing(ZONES_FILE) as f:
         json.dump(zones, f)
     return zones.get(uri, [])
 
@@ -437,7 +438,7 @@ def heat_grid(uri: str) -> list[int]:
 
 
 def save_heat() -> None:
-    with _heat_lock, open(HEAT_FILE, "w") as f:
+    with _heat_lock, safe_file.writing(HEAT_FILE) as f:
         json.dump(HEAT, f)
 
 
