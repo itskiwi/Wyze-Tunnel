@@ -253,14 +253,14 @@
                 + (m.count > 1 ? ` \u00b7 ${m.count} times between ${time(m.first)} and ${time(m.ts)}` : "")
                 + (m.cleared ? ` \u00b7 cleared by ${time(m.cleared)}` : "");
             const link = row.querySelector("a"), records = recording.includes(m.uri);
+            // Wyze's own links need the bridge's Wyze login, so they go through its proxy; saved events are already ours.
+            const proxied = (url) => url.startsWith("https://") ? `wyze-clip?u=${encodeURIComponent(url)}` : url;
             // Not recorded here? Wyze's own cloud clip still shows what happened, even when the camera is offline now.
             link.href = records ? `recordings?cam=${encodeURIComponent(m.uri)}&t=${m.first}`
-                : m.clip ? `wyze-clip?u=${encodeURIComponent(m.clip)}` : `live#${encodeURIComponent(m.uri)}`;
+                : m.clip ? proxied(m.clip) : `live#${encodeURIComponent(m.uri)}`;
             row.querySelector("[data-action]").textContent = records ? "Play the clip" : m.clip ? "Play Wyze's clip" : "See the camera";
             const thumb = row.querySelector("[data-thumb]");
             if (m.count > 1) thumb.classList.add("shadow-[5px_-5px_0_-1px_rgb(var(--zinc-700))]", "!overflow-visible");
-            // Wyze's event pictures need the bridge's Wyze login, so they go through its proxy.
-            const proxied = (url) => url.startsWith("https://") ? `wyze-clip?u=${encodeURIComponent(url)}` : url;
             if (m.label === "package" && records) {
                 // Package card: the porch a little before the drop-off, next to the package left there.
                 const shot = (offset) => `recordings/${encodeURIComponent(m.uri)}/thumb?start=${encodeURIComponent(new Date((m.first + offset) * 1000).toISOString())}`;
@@ -268,7 +268,11 @@
                     const fig = document.createElement("figure");
                     const img = Object.assign(document.createElement("img"), { src, alt: `${m.name}, ${caption.toLowerCase()}`, loading: "lazy" });
                     img.className = "h-full w-full object-cover";
-                    img.onerror = () => fallback && !img.src.endsWith(fallback) ? img.src = fallback : fig.remove();
+                    img.onerror = () => {
+                        if (fallback && !img.src.endsWith(fallback)) return img.src = fallback;
+                        fig.remove();
+                        if (!thumb.children.length) thumb.classList.remove("pkg");  // no pictures at all: a plain row, not a wide gap
+                    };
                     fig.append(img, Object.assign(document.createElement("figcaption"), { textContent: caption }));
                     return fig;
                 };

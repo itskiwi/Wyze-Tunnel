@@ -107,7 +107,7 @@
     {# Sits right under the big camera (see .spotlight in site.css) #}
     <section id="rewind" class="watch-panel fs-display-none" aria-label="Rewind and visits">
         <div class="surface p-4">
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
                 <h2 class="font-display text-lg font-extrabold text-zinc-50">Rewind the house</h2>
                 <div class="seg ml-auto" role="radiogroup" aria-label="How far back">
                     {% for secs, label in [(1800, '30m'), (7200, '2h'), (86400, '24h')] %}

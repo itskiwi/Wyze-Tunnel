@@ -111,10 +111,12 @@ def test_first_check_fills_the_timeline_without_alerts(monkeypatch):
     log = wyze_events.deque([{"uri": "front", "ts": 300, "label": "person"}], maxlen=3)  # a newer local detection
     monkeypatch.setattr(wyze_events, "EVENT_LOG", log)
     monkeypatch.setattr(wyze_events, "display_name", lambda c: c.nickname)
-    with mock.patch.object(wyze_events, "send_webhook") as hook:
+    monkeypatch.setattr(wyze_events, "Thread", lambda target, daemon: SimpleNamespace(start=target))
+    with mock.patch.object(wyze_events, "send_webhook") as hook, mock.patch.object(wyze_events.event_archive, "save_event") as save:
         events = wyze_events.WyzeEvents({"front": stream})
         events.check_motion()
     assert api.get_events.call_args.kwargs == {"history": 86400}
+    assert [c.args[1] for c in save.call_args_list] == ["a", "b"]  # missed events are saved too, oldest first
     assert [e["ts"] for e in log] == [300, 200, 100]  # newest first, unknown cam skipped
     assert log[1]["label"] == "rang the doorbell" and log[2]["label"] == "person"
     assert (events.last_ts, events.last_check) == (200, 5.0)  # next poll picks up after the backfill

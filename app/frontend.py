@@ -197,7 +197,7 @@ def create_app():
         return render_template(
             "home.html",
             cameras={uri: cam for uri, cam in cams.items() if cam.get("enabled")},
-            events=list(EVENT_LOG),
+            events=event_archive.fill(list(EVENT_LOG), int(time.time()) - 2 * 86400),
             visits=visitors.load()[:6],
             steps=[] if guest else web_ui.setup_steps(cams),
             motion_on=bool(config.MOTION or webhooks.ALERTS.get("motion")),
