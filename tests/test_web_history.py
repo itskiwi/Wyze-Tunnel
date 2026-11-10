@@ -290,3 +290,21 @@ def test_ask_answers_plain_questions(archive):
     assert archive.ask("anything this morning at the garage?", now)["answer"].startswith("Yes, 2 events this morning")
     assert archive.ask("did a package come today", now + 3600 * 3, tz=0)["since"] % 86400 == 0  # UTC midnight
     assert archive.is_question("when did the car leave") and archive.is_question("package?") and not archive.is_question("driveway")
+
+
+def test_home_timeline_adds_saved_events_the_live_log_lost(tmp_path, monkeypatch):
+    from wyzebridge import event_archive
+
+    monkeypatch.setattr(event_archive, "ARCHIVE_DIR", tmp_path)
+    entry = {"uri": "front", "name": "Front Door", "ts": 100, "text": "A person at Front Door", "label": "person", "tags": ["person"]}
+    api = mock.Mock()
+    api.get_media.side_effect = requests.RequestException
+    event_archive.save_event(api, "e1", entry, None, None)
+    event_archive.save_event(api, "e2", entry | {"ts": 300, "label": None, "text": "Motion at Front Door"}, None, None)
+    log = [{"uri": "front", "name": "Front Door", "ts": 300, "text": "Motion at Front Door", "cleared": 310}, {"uri": "front", "ts": 200, "label": "pet"}]
+
+    events = event_archive.fill(log, since=50)
+    assert [e["ts"] for e in events] == [300, 200, 100]  # newest first, the event already in the log once
+    assert events[0]["cleared"] == 310  # the live entry wins: it has the details the archive doesn't keep
+    assert events[2] == {"uri": "front", "name": "Front Door", "ts": 100, "text": "A person at Front Door", "img": None, "clip": None, "label": "person"}
+    assert event_archive.fill(log, since=150) == log

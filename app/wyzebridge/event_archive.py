@@ -230,6 +230,20 @@ def search(device: str = "", kind: str = "", since: int = 0, until: int = 0, q: 
     return {"events": events, "groups": groups, "counts": counts, "times": times, "devices": devices, "types": types}
 
 
+def fill(log: list[dict], since: int) -> list[dict]:
+    """Home's timeline: the live log plus the saved camera events it no longer holds (it is short, and starts empty
+    after a restart), newest first, so Home counts the same day as Live and Events."""
+    have = {(e.get("uri"), e["ts"]) for e in log}
+    with _db() as db:
+        rows = db.execute("SELECT id, ts, device, type, text, img, clip, uri FROM events WHERE ts>=? AND uri IS NOT NULL ORDER BY ts DESC LIMIT 300", (since,)).fetchall()
+    saved = [
+        {"uri": r["uri"], "name": r["device"], "ts": r["ts"], "text": r["text"], "img": r["img"] and f"history/media/{r['id']}/img",
+         "clip": r["clip"] and f"history/media/{r['id']}/clip"} | ({} if r["type"] == "motion" else {"label": r["type"]})
+        for r in rows if (r["uri"], r["ts"]) not in have
+    ]
+    return sorted(log + saved, key=lambda e: -e["ts"])
+
+
 def _local(ts: float, tz: int | None = None) -> time.struct_time:
     """Local time: the browser's when it sent its offset (JavaScript getTimezoneOffset, minutes), else the bridge's."""
     return time.localtime(ts) if tz is None else time.gmtime(ts - tz * 60)

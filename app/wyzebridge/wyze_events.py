@@ -135,12 +135,16 @@ class WyzeEvents:
         """After a restart, fill the timeline with the last day of Wyze events. Timeline only: no alerts for old events."""
         self.last_check, resp = self.api.get_events(self.enabled_cams(), history=86400)
         streams = {s.camera.mac: s for s in self.streams.values() if not s.options.substream}
+        missed = []  # what happened while the bridge was off belongs in the saved events too
         for event in resp:  # newest first, and older than anything already logged
             mac, files, ring, tags = self.parse(event)
             if len(EVENT_LOG) >= EVENT_LOG.maxlen:
                 break
             if stream := streams.get(mac):
-                EVENT_LOG.append(self.log_entry(stream, int(event["event_ts"] / 1000), files, ring, tags))
+                EVENT_LOG.append(entry := self.log_entry(stream, int(event["event_ts"] / 1000), files, ring, tags))
+                missed.append((self.api, str(event["event_id"]), entry, entry["img"], entry["clip"]))
+        # One thread, oldest first: the downloads take seconds each, and already saved events are skipped.
+        Thread(target=lambda: [event_archive.save_event(*args) for args in reversed(missed)], daemon=True).start()
         if resp:
             self.last_ts = int(resp[0]["event_ts"] / 1000)
             logger.info(f"[MOTION] Loaded {len(resp)} Wyze events from the last day into the timeline")
