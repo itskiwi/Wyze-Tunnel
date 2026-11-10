@@ -191,7 +191,8 @@ ol:has(> .num-step) { counter-reset: step; }
 /* Page changes: the new page slides in like an app screen while the top bar and tab bar hold still.
    Only where the browser supports it (Chrome, Edge, Safari 18.2+) and motion is welcome; elsewhere pages just load. */
 @media (prefers-reduced-motion: no-preference) { @view-transition { navigation: auto; } }
-#topbar { view-transition-name: topbar; }
+/* view-transition-name makes the top bar a stacking context, which traps the More sheet inside it: lift the bar above page content (the tab bar, later in the page, still wins the tie) */
+#topbar { view-transition-name: topbar; position: relative; z-index: 40; }
 .tabbar { view-transition-name: tabbar; }
 ::view-transition-old(root) { animation: .16s ease both vt-out; }
 ::view-transition-new(root) { animation: .32s cubic-bezier(.2, .9, .3, 1) both fade; }
