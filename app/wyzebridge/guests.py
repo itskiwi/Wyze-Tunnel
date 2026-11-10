@@ -4,7 +4,8 @@ import secrets
 import time
 from typing import Optional
 
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import generate_password_hash
+from wyzebridge.auth import check_password
 from wyzebridge.config import TOKEN_PATH
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import MtxInterface
@@ -73,7 +74,7 @@ def remove_guest(name: str) -> None:
 def check_guest(username: str, password: str) -> Optional[dict]:
     """The guest or family member, if the login is right and hasn't ended."""
     for g in _load()["guests"]:
-        if g["name"] == username and _active(g) and check_password_hash(g["hash"], password):
+        if g["name"] == username and _active(g) and check_password(g["hash"], password):
             return {"guest": g["name"], "expires": g["expires"], "family": g["expires"] == 0}
 
 

@@ -1,15 +1,32 @@
 import os
 import secrets
+import time
 from base64 import urlsafe_b64encode
 from hashlib import sha256
 from pathlib import Path
 from typing import Optional
 
-from werkzeug.security import generate_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.config import TOKEN_PATH
 from wyzebridge import vault
 from wyzebridge.logging import logger
+
+_recent_ok: dict[bytes, float] = {}
+
+
+def check_password(hashed: str, password: str) -> bool:
+    """check_password_hash is slow on purpose (scrypt, ~0.1 s of CPU). Browsers send the password with every picture
+    and API call, so a page with ten pictures queued a second of hashing. Recent successes are remembered; failures never are."""
+    key = sha256(f"{hashed}\0{password}".encode()).digest()
+    if _recent_ok.get(key, 0) > time.time():
+        return True
+    if not check_password_hash(hashed, password):
+        return False
+    if len(_recent_ok) > 100:
+        _recent_ok.clear()
+    _recent_ok[key] = time.time() + 600
+    return True
 
 
 def get_secret(name: str, default: str = "") -> str:

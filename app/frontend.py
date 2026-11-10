@@ -112,6 +112,17 @@ def create_app():
         resp.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet, noimageindex, noai, noimageai"
         return resp
 
+    @app.after_request
+    def cache_static(resp):
+        # Pages link scripts and styles with ?v=<version>, so the phone keeps them until the next update
+        # instead of asking again on every page switch. Fonts practically never change.
+        if resp.status_code == 200 and request.path.startswith("/static/"):
+            if request.args.get("v"):
+                resp.headers["Cache-Control"] = "private, max-age=31536000, immutable"
+            elif request.path.endswith(".woff2"):
+                resp.headers["Cache-Control"] = "private, max-age=604800"
+        return resp
+
     @app.route("/robots.txt")
     def robots_txt():
         return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
@@ -470,12 +481,18 @@ def create_app():
             return make_response(render_template("webrtc.html", webrtc=webrtc))
         return webrtc
 
+    def send_picture(img_file: str, max_age=None):
+        if small := web_ui.phone_picture(img_file):
+            return send_from_directory(config.IMG_PATH + "phone", small, max_age=max_age)
+        return send_from_directory(config.IMG_PATH, img_file, max_age=max_age)
+
     @app.route("/snapshot/<string:img_file>")
     @auth_required
     def rtsp_snapshot(img_file: str):
         """Use ffmpeg to take a snapshot from the rtsp stream."""
         if wb.streams.get_rtsp_snap(Path(img_file).stem):
-            return send_from_directory(config.IMG_PATH, img_file)
+            # The page asks with a fresh ?<time> each refresh, then shows the same URL: one camera grab, not two.
+            return send_picture(img_file, max_age=60)
         return thumbnail(img_file)
 
     @app.route("/img/<string:img_file>")
@@ -491,7 +508,7 @@ def create_app():
                 created_at = os.path.getmtime(config.IMG_PATH + img_file)
                 if time.time() - created_at > int(exp):
                     raise NotFound
-            return send_from_directory(config.IMG_PATH, img_file)
+            return send_picture(img_file)
         except (NotFound, FileNotFoundError, ValueError):
             return rtsp_snapshot(img_file)
 
@@ -778,7 +795,9 @@ def create_app():
             return {"error": str(ex)}, 502
         if not resp.ok:
             return {"error": "Wyze's clip has expired or isn't ready yet."}, 404
-        return Response(resp.iter_content(64 * 1024), mimetype=resp.headers.get("Content-Type", "video/mp4"))
+        # The same event's picture shows on Home at every visit; it never changes, so don't fetch it from Wyze again.
+        return Response(resp.iter_content(64 * 1024), mimetype=resp.headers.get("Content-Type", "video/mp4"),
+                        headers={"Cache-Control": "private, max-age=86400"})
 
     @app.route("/events")
     def events():

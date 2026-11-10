@@ -10,10 +10,9 @@ from urllib.parse import urlparse
 from flask import g, redirect, request
 from flask import url_for as _url_for
 from flask_httpauth import HTTPBasicAuth
-from werkzeug.security import check_password_hash
 from wyzebridge import config
 from wyzebridge import guests, integrations, passkeys, phrases, pocket, tamper
-from wyzebridge.auth import WbAuth
+from wyzebridge.auth import WbAuth, check_password
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
 from wyzebridge.stream import Stream, StreamManager
@@ -39,7 +38,7 @@ def verify_password(username, password):
     if WbAuth.api and WbAuth.api in (request.args.get("api"), request.headers.get("api")):
         return request.path.startswith(API_ENDPOINTS)
     if username == WbAuth.username:
-        return check_password_hash(WbAuth.hashed_password(), password)
+        return check_password(WbAuth.hashed_password(), password)
     if not username and WbAuth.enabled and passkeys.signed_in(request.cookies.get(passkeys.COOKIE, "")):
         return True
     if not username and (paired := request.cookies.get(pocket.COOKIE)):
@@ -63,7 +62,7 @@ def owner_password() -> bool:
     creds = request.authorization
     if not creds and WbAuth.enabled and passkeys.signed_in(request.cookies.get(passkeys.COOKIE, "")):
         return True
-    return bool(WbAuth.enabled and creds and creds.username == WbAuth.username and check_password_hash(WbAuth.hashed_password(), creds.password or ""))
+    return bool(WbAuth.enabled and creds and creds.username == WbAuth.username and check_password(WbAuth.hashed_password(), creds.password or ""))
 
 
 def bearer_token() -> str:
@@ -193,6 +192,38 @@ def validate_ice(data: str) -> Optional[list[dict]]:
             return [json_data]
     except ValueError:
         return
+
+
+PHONE_WIDTH = 960
+
+
+def phone_picture(img_file: str) -> Optional[str]:
+    """A 960 px wide copy of a camera picture for phones, in IMG_PATH/phone. A 2K snapshot is ~300 KB and a phone
+    shows it a few hundred pixels wide; Home and Live load one per camera, again each time the pictures refresh."""
+    if "Mobile" not in request.user_agent.string or "full" in request.args:
+        return None
+    src, small = Path(config.IMG_PATH, img_file), Path(config.IMG_PATH, "phone", img_file)
+    try:
+        if small.stat().st_mtime >= src.stat().st_mtime:
+            return small.name
+    except OSError:
+        pass
+    try:
+        import cv2  # not on 32-bit ARM: phones get the full picture there
+
+        img = cv2.imread(str(src))
+        if img is None or img.shape[1] <= PHONE_WIDTH:
+            return None
+        img = cv2.resize(img, (PHONE_WIDTH, img.shape[0] * PHONE_WIDTH // img.shape[1]), interpolation=cv2.INTER_AREA)
+        small.parent.mkdir(exist_ok=True)
+        tmp = small.with_name(f"{small.stem}.tmp{small.suffix}")  # two requests at once never see half a file
+        if not cv2.imwrite(str(tmp), img, [cv2.IMWRITE_JPEG_QUALITY, 80]):
+            return None
+        os.replace(tmp, small)
+        return small.name
+    except Exception as ex:
+        logger.debug(f"[WEBUI] phone picture of {img_file}: {ex}")
+        return None
 
 
 def format_stream(name_uri: str) -> dict:
