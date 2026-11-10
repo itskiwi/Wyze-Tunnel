@@ -61,13 +61,13 @@ def test_wrong_passwords_pause_that_address_only(monkeypatch):
         with app.test_request_context(environ_base={"REMOTE_ADDR": addr}):
             return auth.check_password(hashed, password)
 
-    assert check("10.0.0.9", "right")  # this phone is signed in before the guessing starts
+    assert check("192.168.1.9", "right")  # this phone is signed in before the guessing starts
     for _ in range(auth.MISSES):
-        assert not check("10.0.0.7", "guess")
+        assert not check("192.168.1.7", "guess")
     with mock.patch.object(auth, "check_password_hash") as slow:
-        assert not check("10.0.0.7", "right")  # paused: even the right password waits, and nothing is hashed
+        assert not check("192.168.1.7", "right")  # paused: even the right password waits, and nothing is hashed
         slow.assert_not_called()
-    assert check("10.0.0.9", "right") and check("10.0.0.8", "right")  # nobody else waits
+    assert check("192.168.1.9", "right") and check("192.168.1.8", "right")  # nobody else waits
     clock[0] += auth.PAUSE + 1
-    assert check("10.0.0.7", "right")
-    assert "10.0.0.7" not in auth._misses
+    assert check("192.168.1.7", "right")
+    assert "192.168.1.7" not in auth._misses

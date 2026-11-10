@@ -27,6 +27,27 @@ jobs:
       - name: JavaScript tests
         run: for t in tests/js/*.test.js; do node "$t"; done
 
+  screens:
+    name: Screen check (every page, phone and desktop, light and dark)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: app/requirements.txt
+      - run: pip install -r app/requirements.txt
+      - run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+      - name: Open every page with made-up cameras
+        run: |
+          python tests/ui/serve.py > ui-server.log 2>&1 &
+          timeout 60 sh -c 'until curl -fsS -o /dev/null http://127.0.0.1:5055/static/icon.svg; do sleep 1; done'
+          node tests/ui/check.js
+      - name: Server log
+        if: failure()
+        run: cat ui-server.log
+
   home-assistant:
     name: Home Assistant integration
     runs-on: ubuntu-latest
