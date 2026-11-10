@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 
 from wyzebridge.config import IMG_PATH, TOKEN_PATH
+from wyzebridge import safe_file
 
 VISITORS_FILE = TOKEN_PATH + "visitors.json"
 PIC_DIR = Path(IMG_PATH) / "visitors"
@@ -33,7 +34,7 @@ def add(uri: str, name: str, ts: int) -> dict:
     for old in log[KEEP:]:
         if old.get("pic"):
             (PIC_DIR / old["pic"]).unlink(missing_ok=True)
-    with open(VISITORS_FILE, "w") as f:
+    with safe_file.writing(VISITORS_FILE) as f:
         json.dump(log[:KEEP], f)
     return visit
 
@@ -44,5 +45,5 @@ def set_transcript(uri: str, ts: int, text: str) -> None:
     for visit in log:
         if visit["uri"] == uri and visit["ts"] == ts:
             visit["transcript"] = text
-    with open(VISITORS_FILE, "w") as f:
+    with safe_file.writing(VISITORS_FILE) as f:
         json.dump(log, f)

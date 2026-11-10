@@ -21,6 +21,7 @@ from wyzebridge.config import IMG_PATH, TOKEN_PATH
 from wyzebridge.detect import MODEL_DIR
 from wyzebridge.go2rtc import local_ipv4s
 from wyzebridge.logging import logger
+from wyzebridge import safe_file
 
 try:
     import pychromecast
@@ -57,7 +58,7 @@ def save_settings(devices) -> list[str]:
         raise ValueError("Pick devices from the list")
     if devices and not available():
         raise ValueError("Casting isn't available on this device")
-    with open(SETTINGS_FILE, "w") as f:
+    with safe_file.writing(SETTINGS_FILE) as f:
         json.dump({"devices": devices}, f)
     return devices
 

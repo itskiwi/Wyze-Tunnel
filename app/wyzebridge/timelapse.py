@@ -12,6 +12,7 @@ from typing import Callable
 
 from wyzebridge.config import IMG_PATH, TOKEN_PATH
 from wyzebridge.logging import logger
+from wyzebridge import safe_file
 
 SETTINGS_FILE = TOKEN_PATH + "timelapse.json"
 ROOT = Path(IMG_PATH) / "timelapse"
@@ -31,7 +32,7 @@ def save_cams(cams: list, uris: list[str]) -> list[str]:
     if not isinstance(cams, list):
         raise ValueError("Pick cameras from the list")
     picked = [c for c in cams if c in uris]
-    with open(SETTINGS_FILE, "w") as f:
+    with safe_file.writing(SETTINGS_FILE) as f:
         json.dump({"cams": picked}, f)
     return picked
 

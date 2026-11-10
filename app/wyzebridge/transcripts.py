@@ -6,6 +6,7 @@ computer. It runs in a child process, so a crash (say, a CPU too old for its bui
 sound only ever lives in memory: just the text is kept, on the visitor entry.
 """
 
+from wyzebridge import safe_file
 import importlib.util
 import json
 import subprocess
@@ -57,7 +58,7 @@ def set_enabled(on, agreed=False) -> bool:
         raise ValueError("Confirm that recording visitors is allowed where you live first.")
     if on and not available():
         raise ValueError("Transcripts aren't available on this device.")
-    with open(SETTINGS_FILE, "w") as f:
+    with safe_file.writing(SETTINGS_FILE) as f:
         json.dump({"on": on, "agreed_at": int(time.time())} if on else {"on": False}, f)
     return on
 

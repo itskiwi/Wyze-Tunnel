@@ -27,6 +27,7 @@ from wyzebridge.wyze_api import WyzeApi, display_name
 from wyzebridge.wyze_commands import GET_CMDS, PARAMS, SET_CMDS
 from wyzebridge.wyze_control import camera_control, handle_cmd
 from wyzecam import TutkError, WyzeAccount, WyzeCamera, WyzeIOTC, WyzeIOTCSession
+from wyzebridge import safe_file
 
 NET_MODE = {0: "P2P", 1: "RELAY", 2: "LAN"}
 # Commands the Wyze cloud can do when there's no direct (TUTK) connection, and the property each reads.
@@ -443,7 +444,7 @@ class WyzeStream:
             return {"status": "error", "response": "Use hd or sd"}
         qualities = load_qualities()
         qualities[self.uri] = QUALITY_CHOICES[payload]
-        with open(QUALITY_FILE, "w") as f:
+        with safe_file.writing(QUALITY_FILE) as f:
             json.dump(qualities, f)
         self.options.quality = QUALITY_CHOICES[payload]
         self.options.update_quality(self.hq_frame_size)
@@ -462,7 +463,7 @@ class WyzeStream:
         if payload not in NET_MODE_CHOICES:
             return {"status": "error", "response": f"Use one of: {', '.join(NET_MODE_CHOICES)}"}
         modes[self.uri] = NET_MODE_CHOICES[payload]
-        with open(NET_MODES_FILE, "w") as f:
+        with safe_file.writing(NET_MODES_FILE) as f:
             json.dump(modes, f)
         logger.info(f"[CONTROL] SET {self.uri} net_mode={payload}")
         if self.state >= StreamStatus.CONNECTING:

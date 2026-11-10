@@ -10,6 +10,7 @@ from wyzebridge import sd_playback
 from wyzebridge.config import TOKEN_PATH
 from wyzebridge.logging import logger
 from wyzebridge.wyze_stream import WyzeStream
+from wyzebridge import safe_file
 
 SETTINGS_FILE = TOKEN_PATH + "sd_copy.json"
 # shortcut: kept beside the tokens, not under the recordings folder, so the clip trimmer and cloud backup leave them alone.
@@ -41,7 +42,7 @@ def save_settings(form: dict, uris: list[str]) -> dict:
     if not 1 <= max_gb <= 1000:
         raise ValueError("Pick a size between 1 and 1000 GB")
     settings = {"cams": [c for c in cams if c in uris], "from": form["from"], "to": form["to"], "max_gb": max_gb}
-    with open(SETTINGS_FILE, "w") as f:
+    with safe_file.writing(SETTINGS_FILE) as f:
         json.dump(settings, f)
     return settings
 

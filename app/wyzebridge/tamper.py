@@ -22,6 +22,7 @@ except (ImportError, RuntimeError):
 from wyzebridge.config import IMG_PATH, TOKEN_PATH
 from wyzebridge.logging import logger
 from wyzebridge.webhooks import send_webhook
+from wyzebridge import safe_file
 
 SETTINGS_FILE = TOKEN_PATH + "tamper.json"
 SIZE = (64, 36)
@@ -55,7 +56,7 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
-    with open(SETTINGS_FILE, "w") as f:
+    with safe_file.writing(SETTINGS_FILE) as f:
         json.dump(data, f)
 
 

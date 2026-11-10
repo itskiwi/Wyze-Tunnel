@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from threading import Lock
 
 from wyzebridge.config import TOKEN_PATH
+from wyzebridge import safe_file
 
 SNAPSHOT_FILE = TOKEN_PATH + "setting_snapshots.json"
 MAX_SNAPSHOTS = 20
@@ -199,7 +200,7 @@ def save_snapshot(streams: dict) -> dict:
         raise ValueError("Read the cameras first, then save.")
     ts = datetime.now(timezone.utc)
     snap = {"id": ts.strftime("%Y%m%dT%H%M%S%fZ"), "ts": ts.isoformat(timespec="seconds"), "cams": cams}
-    with open(SNAPSHOT_FILE, "w") as f:
+    with safe_file.writing(SNAPSHOT_FILE) as f:
         json.dump((_load() + [snap])[-MAX_SNAPSHOTS:], f)
     return {"id": snap["id"], "ts": snap["ts"], "cams": len(cams)}
 

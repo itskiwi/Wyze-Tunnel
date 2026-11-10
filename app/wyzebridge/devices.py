@@ -31,6 +31,7 @@ from wyzecam.api import (
     validate_resp,
 )
 from wyzecam.api_models import WyzeCredential
+from wyzebridge import safe_file
 
 # com/wyze/sensor/SensorApi.java:28 (thermostat and its room sensors)
 EARTH_API = "https://wyze-earth-service.wyzecam.com/plugin/earth"
@@ -346,7 +347,7 @@ def record_history(devs: list[dict], now: float | None = None) -> None:
         changed = True
     if changed:
         try:
-            with open(HISTORY_FILE, "w") as f:
+            with safe_file.writing(HISTORY_FILE) as f:
                 json.dump(_history, f)
         except OSError as ex:
             logger.warning(f"[DEVICES] Couldn't save the device history: {ex}")
@@ -444,7 +445,7 @@ def save_schedules(dev: dict, entries: Any) -> list[dict]:
     else:
         data.pop(dev["mac"], None)
     try:
-        with open(SCHEDULE_FILE, "w") as f:
+        with safe_file.writing(SCHEDULE_FILE) as f:
             json.dump(data, f)
     except OSError as ex:
         raise ValueError(f"Couldn't save the schedule: {ex}")

@@ -19,6 +19,7 @@ from wyzebridge.config import IMG_PATH, TOKEN_PATH
 from wyzebridge.ffmpeg import parse_timedelta
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import RECORD_PATH
+from wyzebridge import safe_file
 
 SETTINGS_FILE = TOKEN_PATH + "record.json"
 CLOUD_FILE = TOKEN_PATH + "clip_backup.json"
@@ -76,7 +77,7 @@ def save_settings(form: dict, uris: list[str]) -> dict:
         raise ValueError("Pick how long to keep moments from the list")
     settings = {"all": bool(form.get("all")), "cams": [c for c in cams if c in uris], "keep_days": keep, "max_gb": max_gb,
                 "event_days": event_days, "shrink": bool(form.get("shrink")) and bool(shrink_encoder())}
-    with open(SETTINGS_FILE, "w") as f:
+    with safe_file.writing(SETTINGS_FILE) as f:
         json.dump(settings, f)
     return settings
 
@@ -297,7 +298,7 @@ def load_cloud() -> dict:
 
 
 def _write_cloud(settings: dict) -> None:
-    with open(CLOUD_FILE, "w") as f:
+    with safe_file.writing(CLOUD_FILE) as f:
         json.dump(settings, f)
 
 

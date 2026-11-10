@@ -4,6 +4,7 @@ import json
 import re
 
 from wyzebridge.config import TOKEN_PATH
+from wyzebridge import safe_file
 
 PLACES_FILE = TOKEN_PATH + "cam_places.json"
 # What the camera page offers; "" means guess from the camera's name.
@@ -38,7 +39,7 @@ def save_place(uri: str, place: str) -> None:
     places[uri] = place
     if not place:
         places.pop(uri)
-    with open(PLACES_FILE, "w") as f:
+    with safe_file.writing(PLACES_FILE) as f:
         json.dump(places, f)
 
 

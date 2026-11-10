@@ -4,6 +4,7 @@ from platform import machine
 from dotenv import load_dotenv
 from wyzebridge.bridge_utils import env_bool, migrate_path, split_int_str
 from wyzebridge.hass import setup_hass
+from wyzebridge import safe_file
 
 load_dotenv()
 load_dotenv("/.build_date")
@@ -60,6 +61,7 @@ STREAM_AUTH: str = env_bool("STREAM_AUTH", style="original")
 
 makedirs(TOKEN_PATH, exist_ok=True)
 makedirs(IMG_PATH, exist_ok=True)
+safe_file.restore_broken(TOKEN_PATH)  # before any module reads its settings
 
 for key, value in environ.items():
     if key.startswith("WEB_"):

@@ -6,6 +6,7 @@ import requests
 
 from wyzebridge.config import TOKEN_PATH
 from wyzebridge.logging import logger
+from wyzebridge import safe_file
 
 LOCATION_FILE = TOKEN_PATH + "location.json"
 FAHRENHEIT = {"US", "LR", "MM"}
@@ -27,7 +28,7 @@ def load() -> dict:
 
 
 def _save(data: dict) -> None:
-    with open(LOCATION_FILE, "w") as f:
+    with safe_file.writing(LOCATION_FILE) as f:
         json.dump(data, f)
 
 

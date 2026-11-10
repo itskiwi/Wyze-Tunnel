@@ -20,6 +20,7 @@ from wyzebridge import vault
 from wyzebridge.logging import logger
 from wyzecam.api import RateLimitError, WyzeAPIError, post_device, post_upgrade
 from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeCredential, is_min_version
+from wyzebridge import safe_file
 
 
 def cached(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -577,7 +578,7 @@ def load_hidden_cams() -> set[str]:
 
 
 def save_hidden_cams(macs: set[str]) -> None:
-    with open(HIDDEN_CAMS_FILE, "w") as f:
+    with safe_file.writing(HIDDEN_CAMS_FILE) as f:
         json.dump(sorted(macs), f)
 
 
@@ -621,7 +622,7 @@ def save_cam_name(mac: str, name: str) -> None:
         names[mac] = name
     else:
         names.pop(mac, None)
-    with open(CAM_NAMES_FILE, "w") as f:
+    with safe_file.writing(CAM_NAMES_FILE) as f:
         json.dump(names, f)
 
 

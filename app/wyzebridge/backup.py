@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from wyzebridge import detect, hearing, masks, phrases, privacy, recording, timelapse, weather, webhooks, wyze_api, wyze_stream
 from wyzebridge.config import TOKEN_PATH, VERSION
 from wyzebridge.logging import logger
+from wyzebridge import safe_file
 
 AUTO_FILE = TOKEN_PATH + "auto_backup.json"
 AUTO_KEEP = 7  # daily files kept in the folder
@@ -164,7 +165,7 @@ def import_settings(backup: dict) -> list[str]:
             webhooks.set_alert_mode(mode)
     files = _files()
     for name, value in clean.items():
-        with open(files[name], "w") as f:
+        with safe_file.writing(files[name]) as f:
             json.dump(value, f)
     return sorted(settings)
 
@@ -179,7 +180,7 @@ def load_auto() -> dict:
 
 def _write_auto(settings: dict) -> None:
     # Holds the passphrase, so only the bridge's own user may read it.
-    with open(os.open(AUTO_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+    with safe_file.writing(AUTO_FILE, perms=0o600) as f:
         json.dump(settings, f)
 
 
