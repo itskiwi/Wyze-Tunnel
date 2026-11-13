@@ -145,10 +145,16 @@ def url_for(endpoint, **values):
 
 def sse_generator(sse_status: Callable) -> Generator[str, str, str]:
     """Generator to return the status for enabled cameras."""
-    cameras = {}
+    cameras, quiet = {}, 0
     while True:
         if cameras != (cameras := sse_status()):
+            quiet = 0
             yield f"data: {json.dumps(cameras)}\n\n"
+        elif (quiet := quiet + 1) >= 15:
+            # A closed tab is only noticed on a write. Without this, every Live visit left a thread
+            # polling the cameras forever while nothing changed, and they piled up until the page crawled.
+            quiet = 0
+            yield ": still here\n\n"
         sleep(1)
 
 
