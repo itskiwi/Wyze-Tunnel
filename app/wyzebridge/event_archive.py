@@ -18,6 +18,8 @@ ARCHIVE_DIR = Path(TOKEN_PATH, "event_archive")  # kept by "Start over"
 MAX_IMG = 10 * 1024**2
 MAX_CLIP = 150 * 1024**2
 DOWNLOAD_SECONDS = 120
+# Wyze lists a clip with every event, but only uploads it with Cam Plus (or a few seconds after the event): until then it's a 404.
+CLIP_RETRY = 90
 ID_RE = re.compile(r"[0-9a-f]{32}")
 _lock = Lock()  # one writer: the save threads and the prune must not interleave
 _last_poll = 0.0
@@ -79,7 +81,11 @@ def _download(api, url: str | None, dest: Path, max_bytes: int) -> int:
         os.replace(part, dest)
         return size
     except Exception as ex:
-        logger.warning(f"[ARCHIVE] Couldn't save an event {dest.suffix} file: {type(ex).__name__}")
+        code = getattr(getattr(ex, "response", None), "status_code", None)
+        if code == 404:  # Wyze doesn't have it: normal for clips without Cam Plus, so not worth a warning
+            logger.debug(f"[ARCHIVE] Wyze has no event {dest.suffix} file to save")
+        else:
+            logger.warning(f"[ARCHIVE] Couldn't save an event {dest.suffix} file: {type(ex).__name__}{f' {code}' if code else ''}")
         part.unlink(missing_ok=True)
         return 0
 
@@ -107,7 +113,11 @@ def save_event(api, event_id: str, entry: dict, img_url: str | None, clip_url: s
             return False
     media = ARCHIVE_DIR / "media"
     img = f"{eid}.jpg" if (n1 := _download(api, img_url, media / f"{eid}.jpg", MAX_IMG)) else None
-    clip = f"{eid}.mp4" if (n2 := _download(api, clip_url, media / f"{eid}.mp4", MAX_CLIP)) else None
+    n2 = _download(api, clip_url, media / f"{eid}.mp4", MAX_CLIP)
+    if not n2 and clip_url and time.time() - entry["ts"] < CLIP_RETRY:  # a live event: the upload may still be on its way
+        time.sleep(CLIP_RETRY)
+        n2 = _download(api, clip_url, media / f"{eid}.mp4", MAX_CLIP)
+    clip = f"{eid}.mp4" if n2 else None
     kind = entry.get("label") or "motion"
     tags = ",".join(t for t in entry.get("tags") or [kind] if t != "motion")
     row = (eid, int(entry["ts"]), entry["name"], kind, entry["text"], img, clip, n1 + n2, entry.get("uri"), tags, mp4_seconds(media / clip) if clip else 0)

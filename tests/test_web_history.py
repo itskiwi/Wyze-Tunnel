@@ -308,3 +308,19 @@ def test_home_timeline_adds_saved_events_the_live_log_lost(tmp_path, monkeypatch
     assert events[0]["cleared"] == 310  # the live entry wins: it has the details the archive doesn't keep
     assert events[2] == {"uri": "front", "name": "Front Door", "ts": 100, "text": "A person at Front Door", "img": None, "clip": None, "label": "person"}
     assert event_archive.fill(log, since=150) == log
+
+
+def test_missing_wyze_clip_is_quiet_and_live_events_retry_once(archive, monkeypatch, caplog):
+    """Without Cam Plus, Wyze lists a clip it never uploads: a 404 isn't worth a warning every event."""
+    api = FakeApi({"https://x/a.jpg": b"jpg"})
+    sleeps = []
+    monkeypatch.setattr(archive.time, "sleep", sleeps.append)
+    with caplog.at_level("WARNING"):
+        archive.save_event(api, "old", ENTRY, "https://x/a.jpg", "https://x/gone.mp4")
+    assert not sleeps and "Couldn't save" not in caplog.text
+    live = ENTRY | {"ts": int(archive.time.time())}
+    api.media["https://x/late.mp4"] = None
+    monkeypatch.setattr(archive.time, "sleep", lambda s: sleeps.append(s) or api.media.update({"https://x/late.mp4": b"mp4"}))
+    archive.save_event(api, "live", live, None, "https://x/late.mp4")
+    assert sleeps == [archive.CLIP_RETRY]
+    assert any(e["clip"] for e in archive.search()["events"] if e["ts"] == live["ts"])
