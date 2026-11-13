@@ -1,5 +1,6 @@
 import json
 import re
+import time as clock
 from datetime import datetime, time
 from pathlib import Path
 from typing import Optional
@@ -23,6 +24,12 @@ ALWAYS = ("test", "update", "street", "away", "tamper", "bedtime", "lock", *URGE
 CHAT_HOSTS = {"discord.com": "discord", "discordapp.com": "discord", "hooks.slack.com": "slack", "api.telegram.org": "telegram"}
 # home: no motion alerts. away (holiday): motion alerts even in quiet hours. schedule: quiet hours apply.
 ALERT_MODES = ("schedule", "home", "away")
+# A busy camera fires motion every few seconds; ntfy.sh allows ~250 messages a day, so one alert per camera this often.
+MOTION_COOLDOWN = 5 * 60
+_last_motion: dict = {}
+# After a 429 (rate limited), routine alerts to that server pause, doubling up to an hour. Urgent ones still try.
+BACKOFF_START, BACKOFF_MAX = 60, 60 * 60
+_paused: dict = {}  # host -> (until, seconds)
 
 
 def load_alerts() -> dict:
@@ -134,11 +141,17 @@ def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None, t
     chat = ALERTS.get("chat_url") if not env_url and alert_on(event) else ""
     if not url and not chat:
         return False
+    routine = event not in ALWAYS
+    key = (camera, event) if routine and event in ("motion", "person") else None
+    if key and clock.time() - _last_motion.get(key, 0) < MOTION_COOLDOWN:
+        return False
     title = title or ({"update": "Wyze Tunnel updated", "street": "Street Watch request", "away": "Away access needs you", "summary": "Last night at home", "bedtime": "Bedtime check", "lock": "Door left unlocked"} | URGENT).get(event) or f"{event} event".title()
-    sent = bool(url) and _post(url, event, camera, msg, img, title)
-    if chat:
+    sent = bool(url) and not (routine and _is_paused(url)) and _post(url, event, camera, msg, img, title)
+    if chat and not (routine and _is_paused(chat)):
         logger.debug(f"[WEBHOOKS] Sending {event.upper()} event for {camera} to {chat_service(chat)}")
         sent = _post_json(chat, chat_payload(chat_service(chat), title, msg, img)) or sent
+    if key and sent:
+        _last_motion[key] = clock.time()
     return sent
 
 
@@ -165,8 +178,12 @@ def announce_update() -> None:
 
 def _post_json(url: str, payload: dict) -> bool:
     try:
-        requests.post(url, json=payload, timeout=10).raise_for_status()
+        _check(url, requests.post(url, json=payload, timeout=10))
         return True
+    except requests.HTTPError as ex:
+        if ex.response is None or ex.response.status_code != 429:  # a 429 was already logged once by _check
+            logger.error(f"[WEBHOOKS] {redact_url(str(ex))}")
+        return False
     except Exception as ex:
         logger.error(f"[WEBHOOKS] {redact_url(str(ex))}")
         return False
@@ -175,6 +192,25 @@ def _post_json(url: str, payload: dict) -> bool:
 def redact_url(text: str) -> str:
     """Webhook links are secrets; keep them out of the logs."""
     return re.sub(r"https://\S+", "https://…", text)
+
+
+def _is_paused(url: str) -> bool:
+    return clock.time() < _paused.get(urlparse(url).hostname, (0, 0))[0]
+
+
+def _check(url: str, resp: requests.Response) -> None:
+    """raise_for_status, and pause routine alerts to a server that says we're sending too many."""
+    host = urlparse(url).hostname
+    if resp.status_code == 429:
+        try:
+            wait = min(int(resp.headers.get("Retry-After", "")), BACKOFF_MAX)
+        except ValueError:
+            wait = min(_paused.get(host, (0, BACKOFF_START // 2))[1] * 2, BACKOFF_MAX)
+        _paused[host] = (clock.time() + wait, max(wait, BACKOFF_START))
+        logger.warning(f"[WEBHOOKS] {host} says too many alerts were sent. Pausing routine alerts to it for {wait // 60 or 1} min.")
+        raise requests.HTTPError("429 Too Many Requests", response=resp)
+    _paused.pop(host, None)
+    resp.raise_for_status()
 
 
 def _post(url: str, event: str, camera: str, msg: str, img: Optional[str], title: str) -> bool:
@@ -189,9 +225,12 @@ def _post(url: str, event: str, camera: str, msg: str, img: Optional[str], title
 
     logger.debug(f"[WEBHOOKS] 📲 Triggering {event.upper()} event for {camera}")
     try:
-        resp = requests.post(url, headers=header, data=msg.encode(), timeout=10)
-        resp.raise_for_status()
+        _check(url, requests.post(url, headers=header, data=msg.encode(), timeout=10))
         return True
+    except requests.HTTPError as ex:
+        if ex.response is None or ex.response.status_code != 429:
+            logger.error(f"[WEBHOOKS] {redact_url(str(ex))}")
+        return False
     except Exception as ex:
         logger.error(f"[WEBHOOKS] {redact_url(str(ex))}")
         return False

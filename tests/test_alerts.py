@@ -9,6 +9,8 @@ from wyzebridge import webhooks
 def alerts_file(tmp_path, monkeypatch):
     monkeypatch.setattr(webhooks, "ALERTS_FILE", str(tmp_path / "alerts.json"))
     monkeypatch.setattr(webhooks, "ALERTS", {})
+    monkeypatch.setattr(webhooks, "_last_motion", {})
+    monkeypatch.setattr(webhooks, "_paused", {})
 
 
 def test_save_validates_and_persists():
@@ -122,3 +124,47 @@ def test_first_check_fills_the_timeline_without_alerts(monkeypatch):
     assert (events.last_ts, events.last_check) == (200, 5.0)  # next poll picks up after the backfill
     hook.assert_not_called()
     api.save_thumbnail.assert_not_called()
+
+
+def _resp(code, headers=None):
+    r = mock.Mock(status_code=code, headers=headers or {})
+    r.raise_for_status.side_effect = None if code < 400 else webhooks.requests.HTTPError(str(code), response=r)
+    return r
+
+
+def test_motion_alerts_once_per_camera_every_few_minutes(monkeypatch):
+    monkeypatch.setattr(webhooks, "ALERTS", {"topic": "t", "server": "https://ntfy.sh", "motion": True, "person": True})
+    with mock.patch.object(webhooks.requests, "post", return_value=_resp(200)) as post, \
+         mock.patch.object(webhooks.integrations, "dispatch"):
+        assert webhooks.send_webhook("motion", "cam-a", "Motion")
+        assert not webhooks.send_webhook("motion", "cam-a", "Motion again")
+        assert webhooks.send_webhook("motion", "cam-b", "Other camera")
+        assert webhooks.send_webhook("person", "cam-a", "A person")  # a person still gets through
+        webhooks._last_motion[("cam-a", "motion")] -= webhooks.MOTION_COOLDOWN
+        assert webhooks.send_webhook("motion", "cam-a", "Later")
+    assert post.call_count == 4
+
+
+def test_rate_limited_server_pauses_routine_alerts_but_not_urgent(monkeypatch, caplog):
+    monkeypatch.setattr(webhooks, "ALERTS", {"topic": "t", "server": "https://ntfy.sh", "motion": True})
+    with mock.patch.object(webhooks.integrations, "dispatch"):
+        with mock.patch.object(webhooks.requests, "post", return_value=_resp(429)) as post:
+            assert not webhooks.send_webhook("motion", "cam-a", "Motion")
+            assert not webhooks.send_webhook("motion", "cam-b", "Motion")  # paused: not even tried
+            assert post.call_count == 1
+            assert webhooks._paused["ntfy.sh"][1] == webhooks.BACKOFF_START
+        with mock.patch.object(webhooks.requests, "post", return_value=_resp(200)) as post:
+            assert webhooks.send_webhook("smoke", "cam-a", "Smoke!")  # urgent alerts always try
+            assert "ntfy.sh" not in webhooks._paused  # and a success lifts the pause
+            assert webhooks.send_webhook("motion", "cam-b", "Motion")
+
+
+def test_backoff_doubles_and_honors_retry_after():
+    url = "https://ntfy.sh/t"
+    for want in (60, 120, 240):
+        with pytest.raises(webhooks.requests.HTTPError):
+            webhooks._check(url, _resp(429))
+        assert webhooks._paused["ntfy.sh"][1] == want
+    with pytest.raises(webhooks.requests.HTTPError):
+        webhooks._check(url, _resp(429, {"Retry-After": "999999"}))
+    assert webhooks._paused["ntfy.sh"][0] <= webhooks.clock.time() + webhooks.BACKOFF_MAX
