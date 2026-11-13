@@ -1,3 +1,4 @@
+import gzip
 import os
 import re
 import secrets
@@ -121,6 +122,18 @@ def create_app():
                 resp.headers["Cache-Control"] = "private, max-age=31536000, immutable"
             elif request.path.endswith(".woff2"):
                 resp.headers["Cache-Control"] = "private, max-age=604800"
+        return resp
+
+    @app.after_request
+    def gzip_pages(resp):
+        # Home and Live are ~200 KB of HTML (the day's events ride along); gzip makes them ~30 KB for a phone
+        # on mobile data. Files and streams are left alone: static files are cached for a year anyway.
+        if (resp.status_code == 200 and not resp.direct_passthrough and not resp.is_streamed
+                and resp.mimetype in ("text/html", "application/json") and "Content-Encoding" not in resp.headers
+                and "gzip" in request.headers.get("Accept-Encoding", "") and (resp.content_length or 0) > 1400):
+            resp.set_data(gzip.compress(resp.get_data(), compresslevel=5))
+            resp.headers["Content-Encoding"] = "gzip"
+            resp.vary.add("Accept-Encoding")
         return resp
 
     @app.route("/robots.txt")
@@ -486,13 +499,21 @@ def create_app():
             return send_from_directory(config.IMG_PATH + "phone", small, max_age=max_age)
         return send_from_directory(config.IMG_PATH, img_file, max_age=max_age)
 
+    # A camera that can't connect made every page that showed it wait 15 s for the snapshot to time out.
+    snap_failed: dict[str, float] = {}
+
     @app.route("/snapshot/<string:img_file>")
     @auth_required
     def rtsp_snapshot(img_file: str):
         """Use ffmpeg to take a snapshot from the rtsp stream."""
-        if wb.streams.get_rtsp_snap(Path(img_file).stem):
+        cam = Path(img_file).stem
+        if time.time() - snap_failed.get(cam, 0) < 120:
+            return thumbnail(img_file)
+        if wb.streams.get_rtsp_snap(cam):
+            snap_failed.pop(cam, None)
             # The page asks with a fresh ?<time> each refresh, then shows the same URL: one camera grab, not two.
             return send_picture(img_file, max_age=60)
+        snap_failed[cam] = time.time()
         return thumbnail(img_file)
 
     @app.route("/img/<string:img_file>")

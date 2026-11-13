@@ -1,3 +1,4 @@
+# Sorts after test_security.py, which reloads wyzebridge.auth (see test_web_recordings.py).
 from unittest import mock
 
 import pytest
@@ -71,3 +72,43 @@ def test_wrong_passwords_pause_that_address_only(monkeypatch):
     clock[0] += auth.PAUSE + 1
     assert check("192.168.1.7", "right")
     assert "192.168.1.7" not in auth._misses
+
+
+def test_quiet_status_stream_still_writes_so_closed_tabs_end(monkeypatch):
+    from wyzebridge import web_ui
+
+    monkeypatch.setattr(web_ui, "sleep", lambda _: None)
+    stream = web_ui.sse_generator(lambda: {"porch": {"status": "connected"}})
+    assert next(stream).startswith("data: ")
+    assert next(stream) == ": still here\n\n"  # nothing changed, but a write is what notices a closed tab
+
+
+def test_pages_are_gzipped_for_browsers_that_ask(monkeypatch):
+    import gzip
+    from threading import Thread
+
+    monkeypatch.setattr(Thread, "start", lambda self: None)
+    from frontend import create_app
+
+    client = create_app().test_client()
+    plain = client.get("/login")
+    packed = client.get("/login", headers={"Accept-Encoding": "gzip, deflate, br"})
+    assert "Content-Encoding" not in plain.headers
+    assert packed.headers["Content-Encoding"] == "gzip" and "Accept-Encoding" in packed.headers["Vary"]
+    assert gzip.decompress(packed.data) == plain.data
+    assert len(packed.data) < len(plain.data) / 2
+
+
+def test_a_camera_that_wont_snap_isnt_retried_on_every_page(monkeypatch):
+    import frontend
+    from wyzebridge import web_ui
+
+    monkeypatch.setattr(web_ui.auth, "verify_password_callback", lambda user, password: True)
+    with mock.patch.object(frontend, "WyzeBridge") as WB, mock.patch.object(frontend, "Thread"):
+        WB.return_value.streams.get_rtsp_snap.return_value = False
+        WB.return_value.api.save_thumbnail.return_value = False
+        client = frontend.create_app().test_client()
+        auth = {"Authorization": "Basic dTpw"}
+        assert client.get("/snapshot/shed.jpg", headers=auth).status_code == 307  # "not available"
+        assert client.get("/img/shed.jpg", headers=auth).status_code == 307
+        assert WB.return_value.streams.get_rtsp_snap.call_count == 1  # the second page didn't wait 15 s again
