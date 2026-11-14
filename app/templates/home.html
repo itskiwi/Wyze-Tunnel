@@ -143,6 +143,7 @@
 {% endblock %}
 
 {% block javascript %}
+<script src="static/today.js?v={{ version }}"></script>
 <script>
     // House row: a few facts that matter at a glance, each opening Devices.
     fetch("api/devices").then((r) => r.ok ? r.json() : Promise.reject()).then(({ devices }) => {
@@ -209,19 +210,11 @@
         // The story line: what the day looked like, in one sentence.
         let seen = 0;
         try { seen = Number(localStorage.getItem("homeSeen")) || 0; localStorage.setItem("homeSeen", events[0]?.ts || seen); } catch { }
-        const todays = events.filter((e) => dayKey(e.ts) === today);
-        const story = document.getElementById("story"), detail = document.getElementById("story-detail");
-        if (todays.length) {
-            const per = {};
-            todays.forEach((e) => per[e.name] = (per[e.name] || 0) + 1);
-            const names = Object.keys(per).sort((a, b) => per[b] - per[a]);
+        if (events.length) {
+            const { title, detail } = daySummary(events.map((e) => ({ ts: e.ts, kind: e.label || "motion", text: e.text, place: e.name })));
             const fresh = seen ? events.filter((e) => e.ts > seen).length : 0;
-            story.textContent = `Motion ${todays.length === 1 ? "once" : todays.length + " times"} today`;
-            detail.textContent = (names.length === 1 ? `All on ${names[0]}. ` : `On ${names.length} cameras, mostly ${names[0]}. `)
-                + `Last at ${time(todays[0].ts)}.` + (fresh ? ` ${fresh} new since you last looked.` : "");
-        } else if (events.length) {
-            story.textContent = "Quiet so far today";
-            detail.textContent = `The last motion was ${dayName(events[0].ts).toLowerCase()} at ${time(events[0].ts)}, on ${events[0].name}.`;
+            document.getElementById("story").textContent = title;
+            document.getElementById("story-detail").textContent = detail + (fresh ? ` ${fresh} new since you last looked.` : "");
         }
 
         const timeline = document.getElementById("timeline");

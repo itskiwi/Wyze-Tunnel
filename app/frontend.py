@@ -59,7 +59,8 @@ def create_app():
     @app.context_processor
     def page_version():
         # Every page's footer, update check and cache-busting asset links need it.
-        return {"version": config.VERSION, "drive_full": recording.DRIVE_FULL}
+        # "advanced" is the More menu's "Show advanced" choice: off, pages leave out what a household never needs.
+        return {"version": config.VERSION, "drive_full": recording.DRIVE_FULL, "advanced": request.cookies.get("advanced") == "1"}
 
     def auth_required(view):
         @wraps(view)

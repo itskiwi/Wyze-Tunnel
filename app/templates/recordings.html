@@ -310,7 +310,7 @@
         history.replaceState(null, "", `?cam=${encodeURIComponent(cam)}`);
         clips.innerHTML = '<p class="p-3 text-sm text-zinc-500">Loading…</p>';
         fetch(`recordings/${encodeURIComponent(cam)}`)
-            .then((resp) => resp.ok ? resp.json() : Promise.reject(new Error(`The bridge answered ${resp.status}`)))
+            .then((resp) => resp.ok ? resp.json() : Promise.reject(new Error("Wyze Tunnel may still be starting")))
             .then((segments) => {
                 if (moment) playMoment(cam, segments, moment);
                 const list = splitClips(segments);
@@ -345,7 +345,7 @@
             })
             .catch((err) => {
                 clips.innerHTML = '<p class="p-3 text-sm text-rose-300"></p>';
-                clips.firstChild.textContent = `Couldn't load recordings. ${err.message}. Open Live, then the gear menu, and restart the stream server.`;
+                clips.firstChild.textContent = `Couldn't load recordings. ${err.message}. Wait a minute and reload this page. If it keeps happening, restart Wyze Tunnel.`;
             });
     }
 
