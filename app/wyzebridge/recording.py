@@ -227,11 +227,17 @@ def record_root() -> Path:
     return Path(RECORD_PATH.split("%")[0] + "x").parent
 
 
-def disk_use() -> dict:
-    """Bytes used by recordings, free and total on that drive. Free is 0 if the drive can't be read."""
+_used: tuple = (None, 0.0, 0)  # the folder counted, when, and its bytes
+
+
+def disk_use(max_age: float = 0) -> dict:
+    """Bytes used by recordings, free and total on that drive. Free is 0 if the drive can't be read.
+    Pages pass max_age: counting every clip (~10k files a camera a week) takes seconds, so they reuse a recent count."""
+    global _used
     root = record_root()
-    # shortcut: walks every clip on each page load (~10k files a camera a week); cache it if the page gets slow.
-    used = sum(_size(f) for f in root.rglob("*.mp4"))
+    if _used[0] != root or time.time() - _used[1] >= max_age:
+        _used = (root, time.time(), sum(_size(f) for f in root.rglob("*.mp4")))
+    used = _used[2]
     drive = next((p for p in (root, *root.parents) if p.exists()), Path(os.getcwd()))
     try:
         usage = shutil.disk_usage(drive)
@@ -381,12 +387,13 @@ def _back_up_clips(now: float | None, budget: float) -> int:
 def start_trimming() -> None:
     def loop():
         while True:
-            try:
-                expire()
-                trim()
-            except OSError as ex:
-                logger.warning(f"[RECORD] Couldn't clean up old clips: {ex}")
-            back_up_clips()
+            # Each step on its own, and any error only skips this round: if this thread died, nothing would
+            # delete old clips again until a restart and the drive would fill.
+            for step in (expire, trim, back_up_clips):
+                try:
+                    step()
+                except Exception as ex:
+                    logger.warning(f"[RECORD] {step.__name__} failed, trying again in 5 minutes: {type(ex).__name__}: {ex}")
             time.sleep(300)
 
     Thread(target=loop, name="record-trim", daemon=True).start()

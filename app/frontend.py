@@ -611,7 +611,7 @@ def create_app():
         return render_template(
             "health.html",
             cameras=cams,
-            disk=None if web_ui.current_guest() else recording.disk_use(),
+            disk=None if web_ui.current_guest() else recording.disk_use(60),
             issues=web_ui.bridge_issues(cams),
             tamper_on=tamper.enabled(),
             tamper_state=tamper.STATE,
@@ -1467,7 +1467,7 @@ def create_app():
             event_choices=recording.EVENT_CHOICES,
             default_event=recording.DEFAULT_EVENT_DAYS,
             shrink_encoder=recording.shrink_encoder(),
-            disk=recording.disk_use(),
+            disk=recording.disk_use(60),
             cloud=recording.load_cloud(),
             folder_example=backup.FOLDER_EXAMPLE,
             timelapses=timelapse.videos(),
