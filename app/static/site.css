@@ -635,3 +635,17 @@ body.ev-open { overflow: hidden; }
 .health-more .chev { transition: transform .15s; }
 .health-more[open] > summary .chev { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .health-more .chev { transition: none; } }
+
+/* Live on a phone: cameras come first. The view choices open from the View button, and rewind is a slim strip
+   (title and line) until its title is tapped or the line is dragged. Wider screens have room for both. */
+@media (max-width: 767px) {
+  .live-view:not(.open) { display: none; }
+  .rw-slim .rw-film, .rw-slim .rw-extra { display: none; }
+  .rw-slim { padding-block: .75rem 1.5rem; }  /* room for the line's time label */
+  /* With no big camera picked yet, the first camera still comes before the strip. */
+  .cameras:not(:has(.spotlight)) > .watch-panel + .camera { order: -2; }
+}
+#rwCard .chev { transition: transform .15s; }
+#rwCard:not(.rw-slim) .chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { #rwCard .chev { transition: none; } }
+@media (min-width: 768px) { #rwCard .chev { display: none; } }

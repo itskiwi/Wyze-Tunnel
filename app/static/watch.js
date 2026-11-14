@@ -186,7 +186,7 @@
   modes.forEach((button) => button.addEventListener("click", () => {
     fetch("alerts/mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: button.dataset.mode }) })
       .then((r) => r.ok ? r.json() : r.json().then((j) => Promise.reject(j.error)))
-      .then(() => { modes.forEach((b) => b.setAttribute("aria-checked", b === button)); modeError.classList.add("hidden"); })
+      .then(() => { modes.forEach((b) => b.setAttribute("aria-checked", b === button)); modeError.classList.add("hidden"); $("#modeChip").textContent = button.textContent; })
       .catch((error) => { modeError.textContent = typeof error === "string" ? error : "Couldn't change the alert mode."; modeError.classList.remove("hidden"); });
   }));
 

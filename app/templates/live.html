@@ -38,12 +38,23 @@
 
 {% block title %}Live · {% endblock %}
 {% block content %}
+{% set labels = {"home": "Home", "schedule": "Normal", "away": "Away"} %}
 {% if watching %}
-{# What's going on right now, in one line, with the alert mode and every camera in reach of a thumb #}
+{# Video first: one line on what's going on, then the cameras. The alert mode, the big-camera picker and the
+   view choices sit in #liveView, behind the View button on a phone and always open on a wider screen. #}
 <section id="watch" class="fs-display-none pt-2">
-    {% set labels = {"home": "Home", "schedule": "Normal", "away": "Away"} %}
-    <h1 id="watchStory" class="page-title text-[30px]">Checking your cameras…</h1>
-    <p id="watchDetail" class="mt-1 text-zinc-400"></p>
+    <div class="flex items-start gap-2">
+        <div class="min-w-0 flex-1">
+            <h1 id="watchStory" class="page-title text-[26px]">Checking your cameras…</h1>
+            <p id="watchDetail" class="mt-0.5 text-sm text-zinc-400"></p>
+        </div>
+        {% if not guest %}<button type="button" id="modeChip" class="chip chip-ok mt-0.5 flex-none md:hidden" aria-controls="liveView" title="Alert mode">{{ labels[mode] }}</button>{% endif %}
+        <button type="button" id="viewBtn" class="btn flex-none md:hidden" aria-expanded="false" aria-controls="liveView"><i class="fas fa-sliders"></i>View</button>
+    </div>
+</section>
+{% endif %}
+<div id="liveView" class="fs-display-none {{ 'live-view' if watching }}">
+    {% if watching %}
     {% if guest %}
     <p class="watch-mode-label mt-3 text-sm text-zinc-400">Alerts: <b class="text-zinc-50">{{ labels[mode] }}</b></p>
     {% else %}
@@ -63,8 +74,7 @@
         </button>
         {% endfor %}
     </div>
-</section>
-{% endif %}
+    {% endif %}
 <div class="summary fs-display-none flex flex-wrap items-center gap-2.5 pb-4 pt-2">
     <{{ "h2" if watching else "h1" }} class="page-title mr-1.5 {{ "text-lg" if watching else "text-[30px]" }}">{{ cam_data.enabled if cam_data.enabled != cam_data.available else cam_data.total }} camera{{ '' if (cam_data.enabled if cam_data.enabled != cam_data.available else cam_data.total) == 1 else 's' }}</{{ "h2" if watching else "h1" }}>
     <span class="chip chip-ok is-hidden" data-count="connected"></span>
@@ -96,6 +106,14 @@
     </div>
 </div>
 
+</div>
+{% if watching %}<script>
+    document.querySelectorAll("#viewBtn, #modeChip").forEach((b) => b.addEventListener("click", () => {
+        const open = document.getElementById("liveView").classList.toggle("open");
+        document.getElementById("viewBtn").setAttribute("aria-expanded", open);
+    }));
+</script>{% endif %}
+
 <div id="connection-lost" class="mb-4 flex items-center gap-3 rounded-xl bg-rose-500/10 px-4 py-3 text-rose-200 ring-1 ring-rose-500/30" style="display:none;">
     <i class="fas fa-house-signal"></i><span>Lost connection to the bridge. Reconnecting…</span>
 </div>
@@ -106,10 +124,10 @@
     {% if watching %}
     {# Sits right under the big camera (see .spotlight in site.css) #}
     <section id="rewind" class="watch-panel fs-display-none" aria-label="Rewind and visits">
-        <div class="surface p-4">
+        <div class="surface rw-slim p-4" id="rwCard">
             <div class="flex flex-wrap items-center gap-2">
-                <h2 class="font-display text-lg font-extrabold text-zinc-50">Rewind the house</h2>
-                <div class="seg ml-auto" role="radiogroup" aria-label="How far back">
+                <h2 class="font-display text-lg font-extrabold text-zinc-50"><button type="button" id="rwToggle" class="flex items-center gap-2" aria-expanded="false">Rewind the house<i class="chev fas fa-chevron-right text-xs text-zinc-500 md:hidden"></i></button></h2>
+                <div class="seg rw-extra ml-auto" role="radiogroup" aria-label="How far back">
                     {% for secs, label in [(1800, '30m'), (7200, '2h'), (86400, '24h')] %}
                     <button type="button" role="radio" class="tab px-3 py-1.5 text-xs" data-span="{{ secs }}" aria-checked="{{ 'true' if secs == 7200 else 'false' }}">{{ label }}</button>
                     {% endfor %}
@@ -119,14 +137,23 @@
             <div class="rw-lane" id="rwLane" role="slider" tabindex="0" aria-label="Time to rewind to" aria-valuetext="Live">
                 <div class="rw-ticks"></div><div class="rw-head"><span></span></div>
             </div>
-            <div class="rw-axis" id="rwAxis"></div>
-            <div class="mt-3 flex flex-wrap items-center gap-2">
+            <div class="rw-axis rw-extra" id="rwAxis"></div>
+            <div class="rw-extra mt-3 flex flex-wrap items-center gap-2">
                 <button type="button" class="btn px-3 py-2 text-sm" data-step="-1" aria-label="Previous event"><i class="fas fa-chevron-left"></i> Previous</button>
                 <button type="button" class="btn px-3 py-2 text-sm" data-step="1" aria-label="Next event">Next <i class="fas fa-chevron-right"></i></button>
                 <button type="button" class="chip chip-ok ml-auto cursor-pointer" id="rwLive">Back to live</button>
             </div>
-            <p class="mt-2 text-xs text-zinc-500" id="rwHint">Drag along the line to rewind every camera at once. Tap a picture to play from there.</p>
+            <p class="rw-extra mt-2 text-xs text-zinc-500" id="rwHint">Drag along the line to rewind every camera at once. Tap a picture to play from there.</p>
         </div>
+        <script>
+            // Opens from its title, or as soon as someone drags the line.
+            (() => {
+                const card = document.getElementById("rwCard"), toggle = document.getElementById("rwToggle");
+                const set = (open) => { card.classList.toggle("rw-slim", !open); toggle.setAttribute("aria-expanded", open); };
+                toggle.addEventListener("click", () => set(card.classList.contains("rw-slim")));
+                document.getElementById("rwLane").addEventListener("pointerdown", () => set(true));
+            })();
+        </script>
         <div class="watch-card hidden" id="visit" data-owner="{{ 0 if guest else 1 }}"></div>
         <div class="surface watch-card hidden p-4" id="quiet">
             <h2 class="font-display text-lg font-extrabold text-zinc-50">Since midnight</h2>
