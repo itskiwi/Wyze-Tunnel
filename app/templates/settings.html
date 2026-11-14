@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block title %}Settings · {% endblock %}
+{# One row per setting, saying what it is set to now; each opens one short screen. #}
+{% macro row(href, icon, title, now, todo=false, danger=false) %}
+        <a href="{{ href }}" class="set-row">
+            <span class="ico"><i class="fas {{ icon }}"></i></span>
+            <span class="min-w-0 flex-1"><span class="block font-medium {{ 'text-rose-300' if danger else 'text-zinc-100' }}">{{ title }}</span>
+                <span class="block truncate text-sm {{ 'text-amber-300' if todo else 'text-zinc-400' }}">{{ now }}</span></span>
+            <i class="fas fa-chevron-right flex-none text-xs text-zinc-500"></i>
+        </a>
+{% endmacro %}
+{% block content %}
+<header class="mb-5 pt-2">
+    <h1 class="page-title">Settings</h1>
+</header>
+<div class="mx-auto max-w-xl space-y-2">
+    <h2 class="section-label">Every day</h2>
+    <section class="surface set-group">
+        {{ row("alerts", "fa-bell", "Phone alerts", alerts_now, todo=not alerts_on) }}
+        {% if owner %}{{ row("recordings#setup", "fa-circle-dot", "Recording", recording_now) }}{% endif %}
+        {{ row("cameras", "fa-eye", "Choose cameras", cameras_now) }}
+        {% if owner %}{{ row("camera-settings", "fa-sliders", "Camera settings", "Night vision, lights, motion and sound for each camera") }}{% endif %}
+        {{ row("health", "fa-heart-pulse", "Camera health", "Wi-Fi, storage and what needs fixing") }}
+    </section>
+
+    {% if owner %}
+    <h2 class="section-label pt-4">People</h2>
+    <section class="surface set-group">
+        {% if login_on %}{{ row("account?s=people", "fa-user-group", "Who can sign in", people_now) }}
+        {{ row("account?s=phone", "fa-mobile-screen", "Pair a phone", "Scan a code, no password to type") }}{% endif %}
+        {{ row("account?s=login", "fa-lock", "Your sign-in", login_now, todo=not login_on) }}
+    </section>
+
+    <h2 class="section-label pt-4">Safekeeping</h2>
+    <section class="surface set-group">
+        {{ row("account?s=backup", "fa-download", "Backups", backup_now, todo=not backup_on) }}
+        {{ row("account?s=weather", "fa-cloud-sun", "Weather", weather_now) }}
+        {{ row("account?s=reset", "fa-rotate-left", "Start over", "Clears settings, keeps recordings", danger=true) }}
+    </section>
+    {% else %}
+    <h2 class="section-label pt-4">Safekeeping</h2>
+    <section class="surface set-group">
+        {{ row("account?s=backup", "fa-download", "Backups", "Download or restore your settings") }}
+    </section>
+    {% endif %}
+
+    <h2 class="section-label pt-4">This app</h2>
+    <section class="surface set-group">
+        <button type="button" class="theme-toggle set-row w-full text-left">
+            <span class="ico"><i class="fas fa-circle-half-stroke"></i></span>
+            <span class="min-w-0 flex-1"><span class="block font-medium text-zinc-100">Theme</span>
+                <span class="block text-sm text-zinc-400" data-theme-name></span></span>
+        </button>
+        <label class="set-row">
+            <span class="ico"><i class="fas fa-screwdriver-wrench"></i></span>
+            <span class="min-w-0 flex-1"><span class="block font-medium text-zinc-100">Show advanced</span>
+                <span class="block text-sm text-zinc-400">Home map, automations, other apps and network details</span></span>
+            <input type="checkbox" role="switch" class="sw" id="advancedOn" {{ 'checked' if advanced }}
+                onchange="document.cookie = 'advanced=' + (this.checked ? '1' : '') + '; max-age=315360000; path=/; SameSite=Lax'; location.reload()" />
+        </label>
+    </section>
+
+    {% if advanced %}
+    <h2 class="section-label pt-4">Advanced</h2>
+    <section class="surface set-group">
+        {{ row("map", "fa-map-location-dot", "Home map", "Cameras on a floor plan") }}
+        {% if owner %}{{ row("rules", "fa-bolt", "Automations", "When this happens, do that") }}
+        {{ row("apps", "fa-plug", "Connect apps", "Home Assistant, Apple Home, video players") }}
+        {{ row("phone-cams", "fa-camera", "Use a phone as a camera", "An old phone or laptop becomes a camera") }}
+        {{ row("street-watch", "fa-house-flag", "Street Watch", "Ask neighbors for footage") }}
+        {{ row("network", "fa-network-wired", "Network", "How cameras and phones connect") }}
+        {{ row("account?s=move", "fa-right-left", "Coming from docker-wyze-bridge", "Bring your old settings over") }}{% endif %}
+        {{ row("diagnostics", "fa-file-medical", "Download a report", "With secrets removed, for bug reports") }}
+    </section>
+    {% endif %}
+</div>
+{% endblock %}

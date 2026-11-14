@@ -6,7 +6,15 @@
     <h1 class="page-title">Phone alerts</h1>
 </header>
 
-<form id="alerts" class="mx-auto max-w-xl space-y-6">
+{# One short list of switches for what most homes want; everything else is a row that opens. #}
+{% macro switch(name, title, hint, on, id="", row_id="") %}
+        <label class="set-row"{% if row_id %} id="{{ row_id }}"{% endif %}>
+            <span class="min-w-0 flex-1"><span class="block font-medium text-zinc-100">{{ title }}</span>
+                <span class="block text-sm text-zinc-400"{% if id %} id="{{ id|replace('On', '') }}Status" role="status"{% endif %}>{{ hint }}</span></span>
+            <input type="checkbox" role="switch" class="sw"{% if name %} name="{{ name }}"{% endif %}{% if id %} id="{{ id }}"{% endif %} {{ 'checked' if on }} />
+        </label>
+{% endmacro %}
+<form id="alerts" class="mx-auto max-w-xl space-y-4">
     <section class="surface p-5">
         <h2 class="font-semibold">Who's home?</h2>
         <div id="mode" class="mt-3 grid grid-cols-3 gap-1 rounded-full bg-zinc-800 p-1" role="radiogroup" aria-label="Alert mode">
@@ -18,53 +26,27 @@
         <p id="modeHint" class="mt-2 text-sm text-zinc-400"></p>
     </section>
 
-    <section class="surface p-5">
-        <h2 class="font-semibold">1. Get the free ntfy app</h2>
-        <p class="mt-1 text-sm text-zinc-400">Alerts go to your phone through ntfy, a free notification app. No account needed.</p>
-        <div class="mt-3 flex flex-wrap gap-2">
-            <a class="btn" href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" rel="noopener">iPhone</a>
-            <a class="btn" href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank" rel="noopener">Android</a>
-        </div>
+
+    <h2 class="section-label">What to hear about</h2>
+    <section class="surface set-group">
+        {{ switch("motion", "Any motion", "With a snapshot. Uses Wyze's motion events, so keep Event Recording on for the camera in the Wyze app.", settings.motion) }}
+        <label class="set-row">
+            <span class="min-w-0 flex-1"><span class="block font-medium text-zinc-100">A person is spotted</span>
+                <span class="block text-sm text-zinc-400">Turn on spotting for a camera under <a class="underline underline-offset-2" href="search#setup">Search footage</a> first.</span></span>
+            <input type="checkbox" role="switch" class="sw" name="person" {{ 'checked' if settings.person }} />
+        </label>
+        {{ switch("offline", "A camera goes offline", "For example when it loses power or Wi-Fi.", settings.offline) }}
+        {% if not current_guest() %}
+        {# Saved on its own as soon as it's switched, so it has no name and isn't part of this form. #}
+        {{ switch("", "A camera is covered, knocked or loses night vision", 'Checked every few minutes while a camera streams. If you move a camera on purpose, press "This is the new normal" on Camera health.', tamper_on, id="tamperOn") }}
+        {% endif %}
     </section>
 
-    <section class="surface p-5">
-        <h2 class="font-semibold">2. Subscribe to your topic</h2>
-        <p class="mt-1 text-sm text-zinc-400">In the app, tap <strong>+</strong> and type this topic. Keep it private: anyone who knows it can see your alerts.</p>
-        <label class="mt-3 block text-sm">
-            <span class="text-zinc-400">Topic</span>
-            <input class="field mt-1 font-mono" name="topic" pattern="[A-Za-z0-9_\-]{1,64}"
-                value="{{ settings.topic or suggested_topic }}" />
-        </label>
-        <details class="mt-3 text-sm text-zinc-400">
-            <summary class="cursor-pointer">Use your own ntfy server</summary>
-            <input class="field mt-2" name="server" type="url" value="{{ settings.server or 'https://ntfy.sh' }}" />
-        </details>
-    </section>
-
-    <section class="surface p-5">
-        <h2 class="font-semibold">Also send to a chat <span class="text-sm font-normal text-zinc-400">(optional)</span></h2>
-        <p class="mt-1 text-sm text-zinc-400">Paste a Discord or Slack webhook link, or a Telegram link like
-            <code class="break-all">https://api.telegram.org/bot&lt;token&gt;/sendMessage?chat_id=&lt;id&gt;</code>. Keep it private.</p>
-        <label class="mt-3 block text-sm">
-            <span class="text-zinc-400">Chat link</span>
-            <input class="field mt-1 font-mono" name="chat_url" type="url" autocomplete="off" spellcheck="false"
-                placeholder="https://discord.com/api/webhooks/…" value="{{ settings.chat_url or '' }}" />
-        </label>
-    </section>
-
-    <section class="surface p-5">
-        <h2 class="font-semibold">3. Pick what to hear about</h2>
-        <label class="mt-3 flex items-start gap-3">
-            <input type="checkbox" name="motion" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.motion }} />
-            <span><span class="block">Motion, with a snapshot</span>
-                <span class="text-sm text-zinc-400">Uses Wyze's motion events, so keep Event Recording on for the camera in the Wyze app.</span></span>
-        </label>
-        <label class="mt-3 flex items-start gap-3">
-            <input type="checkbox" name="person" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.person }} />
-            <span><span class="block">A person is spotted</span>
-                <span class="text-sm text-zinc-400">Turn on spotting for a camera under <a class="underline underline-offset-2" href="search#setup">Search footage</a> first. Follows Home, Away and quiet hours like motion.</span></span>
-        </label>
-        <p class="mt-3 text-sm text-zinc-400">Smoke and carbon monoxide alarms heard by a camera always alert you, even in quiet hours. Wyze sends them with Cam Plus, or this computer can listen for them itself, below. A camera can mistake other loud beeps for an alarm.</p>
+    <details class="surface set-fold">
+        <summary><span class="min-w-0 flex-1"><span class="block font-medium text-zinc-100">Sounds</span>
+            <span class="block text-sm text-zinc-400">Smoke alarms always alert. Glass, crying, pets and more.</span></span><i class="chev fas fa-chevron-right text-xs text-zinc-500"></i></summary>
+        <div class="set-body">
+        <p class="text-sm text-zinc-400">Smoke and carbon monoxide alarms heard by a camera always alert you, even in quiet hours. Wyze sends them with Cam Plus, or this computer can listen for them itself, below. A camera can mistake other loud beeps for an alarm.</p>
         {% if not current_guest() and listen_cams %}
         {# Saved on its own as soon as it's ticked, so it has no name and isn't part of this form. #}
         <fieldset id="listen" class="mt-3 rounded-lg border border-zinc-800 p-3" {{ 'disabled' if not can_listen }}>
@@ -77,30 +59,20 @@
             </div>
         </fieldset>
         {% endif %}
-        {% for name, text in [("glass", "Glass breaking"), ("gunshot", "A gunshot"), ("crying", "Crying"), ("barking", "Barking"), ("meowing", "Meowing"), ("talking", "Talking")] %}
-        <label class="mt-3 flex items-start gap-3">
-            <input type="checkbox" name="{{ name }}" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.get(name, name == 'glass') }} />
-            <span><span class="block">{{ text }}{{ ' (Cam Plus)' if loop.first }}</span></span>
+        {% for name, text in [("glass", "Glass breaking (Cam Plus)"), ("gunshot", "A gunshot"), ("crying", "Crying"), ("barking", "Barking"), ("meowing", "Meowing"), ("talking", "Talking")] %}
+        <label class="mt-3 flex items-center gap-3">
+            <input type="checkbox" name="{{ name }}" class="h-4 w-4 accent-accent" {{ 'checked' if settings.get(name, name == 'glass') }} />
+            <span>{{ text }}</span>
         </label>
         {% endfor %}
-        <label class="mt-3 flex items-start gap-3">
-            <input type="checkbox" name="cleared" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.cleared }} />
-            <span><span class="block">When it clears</span>
-                <span class="text-sm text-zinc-400">After someone at the door or in the yard has gone for 2 minutes, for example "The porch has cleared". Handy while Away.</span></span>
-        </label>
-        <label class="mt-3 flex items-start gap-3">
-            <input type="checkbox" name="offline" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.offline }} />
-            <span><span class="block">A camera goes offline</span>
-                <span class="text-sm text-zinc-400">For example when it loses power or Wi-Fi.</span></span>
-        </label>
-        {% if not current_guest() %}
-        {# Saved on its own as soon as it's ticked, so it has no name and isn't part of this form. #}
-        <label class="mt-3 flex items-start gap-3">
-            <input id="tamperOn" type="checkbox" class="mt-1 h-4 w-4 accent-emerald-500" {{ 'checked' if tamper_on }} />
-            <span><span class="block">A camera is covered, knocked or loses night vision</span>
-                <span id="tamperStatus" class="text-sm text-zinc-400" role="status">Checked every few minutes while a camera streams. If you move a camera on purpose, press "This is the new normal" on Camera health.</span></span>
-        </label>
-        {% endif %}
+        </div>
+    </details>
+
+    {% if not current_guest() and (can_cast or can_transcribe) %}
+    <details class="surface set-fold">
+        <summary><span class="min-w-0 flex-1"><span class="block font-medium text-zinc-100">Doorbell</span>
+            <span class="block text-sm text-zinc-400">Show the visitor on a TV, write down what's said.</span></span><i class="chev fas fa-chevron-right text-xs text-zinc-500"></i></summary>
+        <div class="set-body">
         {% if not current_guest() and can_cast %}
         {# Saved on its own as soon as a box is ticked. #}
         <fieldset id="cast" class="mt-3 rounded-lg border border-zinc-800 p-3">
@@ -126,25 +98,67 @@
                 </label></div>
         </div>
         {% endif %}
-        <label class="mt-3 flex items-start gap-3">
-            <input type="checkbox" name="summary" class="mt-1 h-4 w-4 accent-accent" {{ 'checked' if settings.summary }} />
-            <span><span class="block">A morning summary of last night</span>
-                <span class="text-sm text-zinc-400">One alert when the night ends (your quiet hours, or 22:00 to 07:00), saying what the cameras saw and whether the doorbell rang.</span></span>
-        </label>
-        <label id="siren" class="mt-3 flex items-start gap-3">
-            <input type="checkbox" name="siren_away" class="mt-1 h-4 w-4 accent-emerald-500" {{ 'checked' if settings.siren_away }} />
-            <span><span class="block">Sound the siren on motion while Away</span>
-                <span class="text-sm text-zinc-400">Each camera sounds for 30 seconds, at most once every 2 minutes. Only cameras with a siren.</span></span>
-        </label>
-        <div class="mt-4">
-            <span class="block">Quiet hours <span class="text-sm text-zinc-400">(optional, motion only)</span></span>
-            <div class="mt-2 flex items-center gap-2">
-                <input class="field w-32" type="time" name="quiet_start" aria-label="Quiet hours start" value="{{ settings.quiet_start or '' }}" />
-                <span class="text-zinc-400">to</span>
-                <input class="field w-32" type="time" name="quiet_end" aria-label="Quiet hours end" value="{{ settings.quiet_end or '' }}" />
-            </div>
+        </div>
+    </details>
+    {% endif %}
+
+    <details class="surface set-fold"{{ ' open' if settings.cleared or settings.summary or settings.siren_away }}>
+        <summary><span class="min-w-0 flex-1"><span class="block font-medium text-zinc-100">Extras</span>
+            <span class="block text-sm text-zinc-400">All clear, a morning summary, the siren while Away.</span></span><i class="chev fas fa-chevron-right text-xs text-zinc-500"></i></summary>
+        <div class="set-group">
+        {{ switch("cleared", "When it clears", 'After someone at the door or in the yard has gone for 2 minutes, for example "The porch has cleared". Handy while Away.', settings.cleared) }}
+        {{ switch("summary", "A morning summary of last night", "One alert when the night ends (your quiet hours, or 22:00 to 07:00), saying what the cameras saw and whether the doorbell rang.", settings.summary) }}
+        {{ switch("siren_away", "Sound the siren on motion while Away", "Each camera sounds for 30 seconds, at most once every 2 minutes. Only cameras with a siren.", settings.siren_away, row_id="siren") }}
+        </div>
+    </details>
+
+    <section class="surface p-5">
+        <span class="block font-medium text-zinc-100">Quiet hours <span class="text-sm font-normal text-zinc-400">(optional, motion only)</span></span>
+        <div class="mt-2 flex items-center gap-2">
+            <input class="field w-32" type="time" name="quiet_start" aria-label="Quiet hours start" value="{{ settings.quiet_start or '' }}" />
+            <span class="text-zinc-400">to</span>
+            <input class="field w-32" type="time" name="quiet_end" aria-label="Quiet hours end" value="{{ settings.quiet_end or '' }}" />
         </div>
     </section>
+
+    {# Open until alerts have been saved once; after that the phone is set up and this is rarely needed. #}
+    <details class="surface set-fold"{{ ' open' if not settings.topic }}>
+        <summary><span class="min-w-0 flex-1"><span class="block font-medium text-zinc-100">Add a phone or a chat</span>
+            <span class="block text-sm text-zinc-400">The free ntfy app, or Discord, Slack and Telegram.</span></span><i class="chev fas fa-chevron-right text-xs text-zinc-500"></i></summary>
+        <div class="set-body space-y-5">
+        <div>
+        <h2 class="font-semibold">1. Get the free ntfy app</h2>
+        <p class="mt-1 text-sm text-zinc-400">Alerts go to your phone through ntfy, a free notification app. No account needed.</p>
+        <div class="mt-3 flex flex-wrap gap-2">
+            <a class="btn" href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" rel="noopener">iPhone</a>
+            <a class="btn" href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank" rel="noopener">Android</a>
+        </div>
+        </div>
+        <div>
+        <h2 class="font-semibold">2. Subscribe to your topic</h2>
+        <p class="mt-1 text-sm text-zinc-400">In the app, tap <strong>+</strong> and type this topic. Keep it private: anyone who knows it can see your alerts.</p>
+        <label class="mt-3 block text-sm">
+            <span class="text-zinc-400">Topic</span>
+            <input class="field mt-1 font-mono" name="topic" pattern="[A-Za-z0-9_\-]{1,64}"
+                value="{{ settings.topic or suggested_topic }}" />
+        </label>
+        <details class="mt-3 text-sm text-zinc-400">
+            <summary class="cursor-pointer">Use your own ntfy server</summary>
+            <input class="field mt-2" name="server" type="url" value="{{ settings.server or 'https://ntfy.sh' }}" />
+        </details>
+        </div>
+        <div>
+        <h2 class="font-semibold">Also send to a chat <span class="text-sm font-normal text-zinc-400">(optional)</span></h2>
+        <p class="mt-1 text-sm text-zinc-400">Paste a Discord or Slack webhook link, or a Telegram link like
+            <code class="break-all">https://api.telegram.org/bot&lt;token&gt;/sendMessage?chat_id=&lt;id&gt;</code>. Keep it private.</p>
+        <label class="mt-3 block text-sm">
+            <span class="text-zinc-400">Chat link</span>
+            <input class="field mt-1 font-mono" name="chat_url" type="url" autocomplete="off" spellcheck="false"
+                placeholder="https://discord.com/api/webhooks/…" value="{{ settings.chat_url or '' }}" />
+        </label>
+        </div>
+        </div>
+    </details>
 
     <div class="flex flex-wrap items-center gap-2">
         <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i>Save</button>
@@ -197,6 +211,8 @@
         document.getElementById("transcriptsStatus").textContent = r.error || (r.on ? "On. The speech model (142 MB) downloads after the first ring." : "Off.");
         if (r.error) transcriptsOn.checked = !transcriptsOn.checked;
     });
+    // A link such as alerts#siren lands on a row that may be folded away.
+    location.hash && document.querySelector(location.hash)?.closest("details")?.setAttribute("open", "");
     const form = document.getElementById("alerts");
     const status = document.getElementById("status");
 

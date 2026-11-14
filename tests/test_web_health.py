@@ -58,7 +58,7 @@ def test_pages_use_plain_words(client):
     live = client.get("/live").get_data(as_text=True)
     assert "<title>Live · Wyze Tunnel</title>" in live
     assert ">idle<" in live and "stopped" not in live
-    assert "Account and sharing" in live and "Wyze login" not in live
+    assert 'href="settings"' in live and "Wyze login" not in live
 
 
 def test_menu_is_simple_until_advanced_is_on(client):
@@ -78,3 +78,14 @@ def test_wifi_tiers():
 
 def test_live_shows_wifi_tier(client):
     assert 'aria-label="Wi-Fi: Weak"' in client.get("/live").get_data(as_text=True)
+
+
+def test_settings_home_says_what_each_setting_is_now_and_opens_one_part(client):
+    page = client.get("/settings").get_data(as_text=True)
+    assert "Phone alerts" in page and "Not set up yet" in page and 'href="account?s=backup"' in page
+    assert 'href="map"' not in page  # advanced rows stay out until asked for
+    client.set_cookie("advanced", "1")
+    assert 'href="map"' in client.get("/settings").get_data(as_text=True)
+    one = client.get("/account?s=backup").get_data(as_text=True)
+    assert '[data-s]:not([data-s="backup"])' in one and ">Backups</h1>" in one
+    assert "[data-s]:not(" not in client.get("/account?s=<script>").get_data(as_text=True)  # unknown part: the whole page

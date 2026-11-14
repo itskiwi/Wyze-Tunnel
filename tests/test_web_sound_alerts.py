@@ -30,7 +30,7 @@ def client(monkeypatch, tmp_path):
 def test_settings_owner_only_and_glass_on_by_default(client):
     from wyzebridge import guests
 
-    assert b'name="glass" class="mt-1 h-4 w-4 accent-accent" checked' in client.get("/alerts").data
+    assert b'name="glass" class="h-4 w-4 accent-accent" checked' in client.get("/alerts").data
     for hours in (1, 0):  # a watch-only guest, then family
         password = guests.add_guest(f"Guest{hours}", hours, "owner")
         guest = {"Authorization": "Basic " + b64encode(f"Guest{hours}:{password}".encode()).decode()}

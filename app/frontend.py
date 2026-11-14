@@ -1159,6 +1159,33 @@ def create_app():
             version=config.VERSION,
         )
 
+    @app.route("/settings")
+    @auth_required
+    def settings_home():
+        """Every setting as one row that says what it is set to now."""
+        alerts = webhooks.ALERTS or {}
+        kinds = [label for key, label in (("motion", "motion"), ("person", "people"), ("offline", "cameras going offline")) if alerts.get(key)]
+        rec, auto = recording.load_settings(), backup.load_auto()
+        cams = wb.streams.get_all_cam_info()
+        shown = sum(1 for c in cams.values() if c.get("enabled"))
+        recs = shown if rec.get("all") else len(rec.get("cams") or [])
+        people = guests.list_guests()
+        plural = lambda n, word: f"{n} {word}{'' if n == 1 else 's'}"
+        return render_template(
+            "settings.html",
+            owner=not web_ui.current_guest(),
+            alerts_on=bool(alerts.get("topic") and kinds),
+            alerts_now=("Not set up yet" if not alerts.get("topic") else kinds[0].capitalize() + "".join(f", {k}" for k in kinds[1:]) if kinds else "Off"),
+            recording_now=f"{plural(recs, 'camera')}, kept {plural(recording.keep_days(rec)[0], 'day')}" if recs else "Off",
+            cameras_now=f"{shown} shown" + (f", {len(cams) - shown} hidden" if len(cams) > shown else ""),
+            login_on=WbAuth.enabled,
+            login_now=f"Signed in as {WbAuth.username}" if WbAuth.enabled else "Login is turned off",
+            people_now="Only you" if not people else f"You and {plural(len(people), 'other')}",
+            backup_on=bool(auto.get("folder")),
+            backup_now="Every day" if auto.get("folder") else "Not set up yet",
+            weather_now="On" if weather.enabled() else "Off",
+        )
+
     @app.route("/passkeys/sign-in")
     def passkey_sign_in():
         """Sign in with a passkey; the password box is one tap away."""
