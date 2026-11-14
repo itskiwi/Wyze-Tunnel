@@ -24,14 +24,14 @@
     <main>
         {% if public_only %}
         <h1>This link is for paired phones</h1>
-        <p>On your computer, open Login, then Pair a phone, and scan the Anywhere code with this phone.</p>
+        <p>On your computer, open Settings, then Pair a phone, and scan the Anywhere code with this phone.</p>
         {% elif ready %}
         <h1>Pair this phone?</h1>
         <p>It signs this phone in to your cameras. You can remove it later on your computer under Share access.</p>
         <form method="post"><button type="submit">Pair this phone</button></form>
         {% else %}
         <h1>This code has been used or is too old</h1>
-        <p>Codes work once, for 10 minutes. On your computer, open Login, then Pair a phone, and scan the new code.</p>
+        <p>Codes work once, for 10 minutes. On your computer, open Settings, then Pair a phone, and scan the new code.</p>
         {% endif %}
     </main>
 </body>

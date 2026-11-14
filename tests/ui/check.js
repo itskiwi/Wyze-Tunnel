@@ -5,7 +5,7 @@
 const { chromium } = require("playwright");
 
 const BASE = "http://127.0.0.1:5055/";
-const PAGES = ["", "live", "glance", "health", "camera?cam=front-door", "cameras", "devices", "alerts", "account", "recordings",
+const PAGES = ["", "live", "glance", "health", "camera?cam=front-door", "cameras", "devices", "alerts", "settings", "account", "account?s=backup", "recordings",
     "history", "search", "apps", "rules", "network", "map", "camera-settings", "street-watch", "phone-cams", "sd-sync"];
 const VIEWS = { phone: { width: 390, height: 844 }, small: { width: 320, height: 568 }, desktop: { width: 1280, height: 800 } };
 

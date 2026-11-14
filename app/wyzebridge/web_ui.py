@@ -308,8 +308,8 @@ def setup_steps(cams: dict[str, dict]) -> list[dict]:
         {"title": "Watch a camera", "href": "live", "done": any(c.get("connected") for c in cams.values())},
         {"title": "Get alerts on your phone", "href": "alerts", "done": bool(webhooks.ALERTS.get("topic") or webhooks.ALERTS.get("chat_url"))},
         {"title": "Record a camera", "href": "recordings#setup", "done": bool(rec.get("all") or rec.get("cams"))},
-        {"title": "Pair your phone", "href": "account#phone", "done": any(g["expires"] == 0 for g in guests.list_guests())},
-        {"title": "Back up your settings every day", "href": "account#backup", "done": bool(backup.load_auto().get("folder"))},
+        {"title": "Pair your phone", "href": "account?s=phone", "done": any(g["expires"] == 0 for g in guests.list_guests())},
+        {"title": "Back up your settings every day", "href": "account?s=backup", "done": bool(backup.load_auto().get("folder"))},
     ]
 
 # Kept by "Start over": the web login, the downloaded detection models, finished timelapse videos and the event archive.

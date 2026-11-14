@@ -116,8 +116,8 @@
 
 
 {% if not current_guest() %}
-<section id="cloud" class="surface mt-5 p-5">
-    <h2 class="font-semibold">Back up clips to the cloud</h2>
+<details id="cloud" class="surface mt-5 p-5" {{ 'open' if cloud.get('folder') }}>
+    <summary class="cursor-pointer font-semibold">Back up clips to the cloud</summary>
     <p class="mt-1 text-sm text-zinc-400">Copies finished clips into a folder on this computer, such as your OneDrive, Google Drive or Dropbox folder,
         and that app uploads them. They go in a Wyze Tunnel folder inside it, sorted by camera and day. Copies older than
         {{ settings.get('keep_days', default_keep) }} days are deleted there too. The clips here are never moved or deleted.
@@ -137,11 +137,11 @@
             </span>
         </div>
     </form>
-</section>
+</details>
 {% endif %}
 
-<section id="timelapse" class="surface mt-5 p-5">
-    <h2 class="font-semibold">Daily timelapse</h2>
+<details id="timelapse" class="surface mt-5 p-5" {{ 'open' if timelapses }}>
+    <summary class="cursor-pointer font-semibold">Daily timelapse</summary>
     <p class="mt-1 text-sm text-zinc-400">A picture every 10 minutes, made into a 12-second video of the whole day after midnight. Point a camera at the sky for a sky timelapse. Videos are kept for 30 days.</p>
     {% if timelapses %}
     <video id="tlPlayer" class="mt-3 hidden aspect-video w-full rounded-2xl bg-black" controls playsinline></video>
@@ -169,7 +169,7 @@
         </div>
     </form>
     {% endif %}
-</section>
+</details>
 {% endblock %}
 
 {% block javascript %}
@@ -204,7 +204,7 @@
     });
 </script>
 <script>
-    if (location.hash === "#setup") document.getElementById("setup")?.setAttribute("open", "");
+    location.hash && document.querySelector(`details${location.hash}`)?.setAttribute("open", "");
     const setupForm = document.getElementById("setupForm");
     // "Record every camera" covers the list, so its switches are shown on and can't be changed.
     function syncAll() {

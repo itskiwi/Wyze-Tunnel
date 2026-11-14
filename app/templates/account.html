@@ -2,14 +2,19 @@
 
 {% block title %}Account · {% endblock %}
 {% block content %}
-<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
-    <h1 class="page-title">Account and sharing</h1>
+{# Settings opens this page one part at a time (?s=backup); every part is still in the page, so its scripts keep working. #}
+{% set parts = {"login": "Your sign-in", "phone": "Pair a phone", "people": "Who can sign in", "weather": "Weather", "backup": "Backups", "move": "Coming from docker-wyze-bridge", "reset": "Start over"} %}
+{% set part = request.args.get("s") if request.args.get("s") in parts else "" %}
+{% if part %}<style>[data-s]:not([data-s="{{ part }}"]) { display: none !important; } [data-s="{{ part }}"] { margin-top: 0 !important; }</style>{% endif %}
+<header class="mb-6 pt-2">
+    <a href="settings" class="inline-flex items-center gap-1.5 text-sm font-medium text-accent"><i class="fas fa-chevron-left text-xs"></i>Settings</a>
+    <h1 class="page-title mt-1">{{ parts[part] if part else "Account and sharing" }}</h1>
 </header>
 
 {% if member %}
 <p class="surface mx-auto max-w-xl p-5 text-sm text-zinc-400">You're signed in as {{ member.guest }}. Only the owner can change the main login.</p>
 {% else %}
-<form id="account" class="mx-auto max-w-xl space-y-6">
+<form id="account" data-s="login" class="mx-auto max-w-xl space-y-6">
     <section class="surface p-5">
         <h2 class="font-semibold">Change your Wyze Tunnel login</h2>
         <p class="mt-1 text-sm text-zinc-400">This is the login for this web page, not your Wyze account. Camera
@@ -40,7 +45,7 @@
 {% endif %}
 
 {% if enabled and not member %}
-<section id="phone" class="surface mx-auto mt-6 max-w-xl p-5">
+<section id="phone" data-s="phone" class="surface mx-auto mt-6 max-w-xl p-5">
     <h2 class="font-semibold">Pair a phone</h2>
     <p class="mt-1 text-sm text-zinc-400">Scan the code with your phone's camera. It signs the phone in, no password to type, and it
         shows up under Share access so you can remove it later.</p>
@@ -65,7 +70,7 @@
     {% endif %}
 </section>
 
-<section id="passkeys" class="surface mx-auto mt-6 max-w-xl p-5">
+<section id="passkeys" data-s="login" class="surface mx-auto mt-6 max-w-xl p-5">
     <h2 class="font-semibold">Passkeys</h2>
     <p class="mt-1 text-sm text-zinc-400">Sign in with your face, fingerprint or screen lock instead of typing the password.
         The password keeps working, and the desktop app still signs in by itself.</p>
@@ -85,7 +90,7 @@
 {% endif %}
 
 {% if enabled %}
-<section class="surface mx-auto mt-6 max-w-xl p-5">
+<section id="people" data-s="people" class="surface mx-auto mt-6 max-w-xl p-5">
     <h2 class="font-semibold">Share access</h2>
     <p class="mt-1 text-sm text-zinc-400">A guest can see the cameras and live video, but can't change anything, and their
         login stops working on its own. A family login can do everything except change the main login, until you remove it.</p>
@@ -118,7 +123,7 @@
 {% endif %}
 
 {% if not member %}
-<form id="weather" class="surface mx-auto mt-6 max-w-xl p-5">
+<form id="weather" data-s="weather" class="surface mx-auto mt-6 max-w-xl p-5">
     <h2 class="font-semibold">Weather</h2>
     <label class="mt-3 flex items-start gap-3 text-sm">
         <input type="checkbox" name="weather" class="mt-0.5 h-4 w-4 accent-accent" {{ 'checked' if location.weather }} />
@@ -132,7 +137,7 @@
 </form>
 {% endif %}
 
-<section id="backup" class="surface mx-auto mt-6 max-w-xl p-5">
+<section id="backup" data-s="backup" class="surface mx-auto mt-6 max-w-xl p-5">
     <h2 class="font-semibold">Back up your settings</h2>
     <p class="mt-1 text-sm text-zinc-400">Saves alerts, hidden cameras, camera names, quality, connection choices and the privacy schedule
         to a file. Your Wyze login isn't included. Add a passphrase to lock the file so you can keep it anywhere, even
@@ -159,7 +164,7 @@
 </section>
 
 {% if advanced %}
-<section id="move" class="surface mx-auto mt-6 max-w-xl p-5">
+<section id="move" data-s="move" class="surface mx-auto mt-6 max-w-xl p-5">
     <h2 class="font-semibold">Coming from docker-wyze-bridge?</h2>
     <p class="mt-1 text-sm text-zinc-400">Wyze Tunnel started as a copy of it, so your settings and stream links carry over as they are.
         Paste your <code>docker-compose.yml</code> or <code>.env</code> file and you get the lines to use here.
@@ -181,7 +186,7 @@
 {% endif %}
 
 {% if not member %}
-<section id="start-over" class="surface mx-auto mt-10 max-w-xl p-5 ring-1 ring-rose-500/30">
+<section id="start-over" data-s="reset" class="surface mx-auto mt-10 max-w-xl p-5 ring-1 ring-rose-500/30">
     <h2 class="font-semibold text-rose-300">Start over from scratch</h2>
     <p class="mt-1 text-sm text-zinc-400">Signs out of Wyze and clears every setting on this computer. Your saved recordings stay.</p>
     <button type="button" id="startOver" class="btn mt-3 text-rose-300" aria-expanded="false" aria-controls="startOverConfirm"><i class="fas fa-rotate-left"></i>Start over</button>
