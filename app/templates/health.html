@@ -2,27 +2,125 @@
 
 {% block title %}Health · {% endblock %}
 {% block content %}
-<header class="mb-6 flex flex-wrap items-center gap-3 pt-2">
-    <h1 class="page-title">Camera health</h1>
-    <div class="flex flex-wrap gap-2 sm:ml-auto">
-    {% if cameras %}<button id="checkAll" class="btn btn-primary" type="button" title="Watch each camera for a few seconds and say what's wrong"><i class="fas fa-stethoscope"></i>Check every camera</button>{% endif %}
-    <a href="diagnostics" class="btn"><i class="fas fa-file-arrow-down"></i>Download diagnostics</a>
+{# Problems first: a camera that needs you is on top with its fix; a healthy one is a single row that opens for details. #}
+{% set labels = {-90: "offline", -1: "stopping", 0: "turned off", 1: "idle", 2: "connecting", 3: "streaming"} %}
+{% set bad = issues|map(attribute='camera')|unique|list %}
+{% set ns = namespace(needs=[]) %}
+{% for uri, cam in cameras.items() %}{% if uri in bad or cam.busy %}{% set ns.needs = ns.needs + [uri] %}{% endif %}{% endfor %}
+{% set fine = cameras|length - ns.needs|length %}
+<header class="mb-5 flex flex-wrap items-end gap-3 pt-2">
+    <div class="min-w-0">
+        <h1 class="page-title">{{ "No cameras yet" if not cameras else "All cameras are working" if not ns.needs else "1 camera needs you" if ns.needs|length == 1 else ns.needs|length ~ " cameras need you" }}</h1>
+        {% if cameras %}<p class="mt-1 text-zinc-400" role="status">{{ "Nothing to fix. Open a camera for its details." if not ns.needs else "No others to check." if not fine else "The other one is working." if fine == 1 else "The other " ~ fine ~ " are working." }}</p>{% endif %}
     </div>
+    {% if cameras %}<button id="checkAll" class="btn sm:ml-auto" type="button" title="Watch each camera for a few seconds and say what's wrong"><i class="fas fa-stethoscope"></i>Check every camera</button>{% endif %}
 </header>
 
-{% if cameras %}
-<p class="mb-4 text-sm {{ 'text-amber-200' if issues else 'text-emerald-300' }}" role="status">
-    {% set affected = issues|map(attribute='camera')|unique|list|length %}
-    {{ affected ~ " of " ~ cameras|length ~ " cameras need attention." if issues else "All cameras look healthy." }}
-</p>
+{% macro details_list(uri, cam, wifi, sd_free) %}
+        <dl class="grid max-w-md grid-cols-2 gap-y-1 text-sm [&_dt]:text-zinc-400">
+            <dt>Model</dt><dd>{{ cam.model_name }}</dd>
+            <dt>Firmware</dt><dd>{{ cam.firmware_ver or "unknown" }}{% if not current_guest() %} <button class="fw-check text-sky-300 underline" type="button" data-cam="{{ uri }}">Check for update</button>{% endif %}</dd>
+            {% if advanced and cam.sources and cam.sources != ["tutk"] %}<dt>Connects with</dt><dd>{{ {"tutk": "Wyze SDK", "lan": "go2rtc (local)", "webrtc": "Wyze WebRTC"}.get(cam.source, cam.source) }}{% if cam.sources|length > 1 %} <span class="text-zinc-500">of {{ cam.sources|length }} ways</span>{% endif %}</dd>{% endif %}
+            {% if advanced and cam.ip %}<dt>IP address</dt><dd class="font-mono">{{ cam.ip }}</dd>{% endif %}
+            {% if cam.net_mode %}<dt>Connection</dt><dd>{{ {"local": "Local network", "internet": "Over the internet (direct)", "relay": "Through Wyze's relay"}[cam.net_mode] }}</dd>{% endif %}
+            {% if wifi >= 0 %}{% set tier = wifi|wifi_tier %}<dt>Wi-Fi signal</dt><dd><span class="chip {{ {'Good': 'chip-ok', 'Fair': 'chip-warn', 'Weak': 'chip-bad'}[tier] }}">{{ tier }}</span> <span class="text-zinc-500">{{ wifi }}%</span></dd>{% endif %}
+            {% if sd_free >= 0 %}<dt>SD card free</dt><dd>{{ sd_free }}%</dd>{% endif %}
+            <dt>Data use</dt><dd class="usage" data-cam="{{ uri }}">Not streaming</dd>
+            {% if cam.status == 3 and cam.start_time %}<dt>Streaming for</dt><dd>{{ ((now - cam.start_time) / 60)|int }} min</dd>{% endif %}
+        </dl>
+{% endmacro %}
+
+{% macro camera(uri, cam, needs) %}
+    {% set info = cam.camera_info or {} %}
+    {% set basic = info.basicInfo or {} %}
+    {% set sd = info.sdParm or {} %}
+    {% set wifi = basic.wifidb|int(-1) if basic.wifidb is defined else -1 %}
+    {% set sd_free = (sd.free|int / sd.capacity|int * 100)|round|int if sd.status == "1" and sd.capacity|int > 0 else -1 %}
+    {% set tips = [] %}
+    {% set fixes = [] %}
+    {% if cam.status == -90 or cam.chronic %}{% set _ = fixes.append(("Restart the camera", "power", "restart")) %}{% endif %}
+    {% if not cam.enabled %}{% set _ = fixes.append(("Turn it on", "state", "enable")) %}{% endif %}
+    {% if cam.enabled and cam.status != -90 and cam.net_mode in ("relay", "internet") or cam.busy %}{% set _ = fixes.append(("Reconnect", "state", "restart")) %}{% endif %}
+    {% if cam.status == -90 %}{% set _ = tips.append("The camera isn't reachable. Check that it has power and Wi-Fi, then unplug it for 10 seconds.") %}{% endif %}
+    {% if cam.busy %}{% set _ = tips.append("The camera is busy. A Cam OG lets only 2 viewers in at once and Wyze Tunnel uses one, so close the Wyze app on other phones and it reconnects by itself. Everyone watching through Wyze Tunnel shares that one spot. If no one else is watching, check that the camera has power.") %}{% endif %}
+    {% if cam.chronic %}{% set _ = tips.append("This camera has failed to connect " ~ cam.failures ~ " times in a row, so Wyze Tunnel restarted it and now retries only every 5 minutes. If that didn't help, unplug it for 10 seconds or check its Wi-Fi signal in the Wyze app.") %}{% endif %}
+    {% if not cam.enabled %}{% set _ = tips.append("This camera is turned off in Wyze Tunnel. Open Live, tap the sliders on the camera, then Stream: Turn on.") %}{% endif %}
+    {% if 0 <= wifi < 40 %}{% set _ = tips.append("Weak Wi-Fi (" ~ wifi ~ "%). Move the camera or router closer, or add a mesh point.") %}{% endif %}
+    {% if 0 <= sd_free < 10 %}{% set _ = tips.append("The SD card is almost full. Old clips get overwritten, so check Wyze app settings if you need them.") %}{% endif %}
+    {% if cam.net_mode == "relay" %}{% set _ = tips.append("Streaming through Wyze's relay servers, which adds delay and can drop. If the camera is on your home Wi-Fi, check that Wyze Tunnel is on the same network.") %}{% endif %}
+    {% if cam.net_mode == "internet" %}{% set _ = tips.append("Connected over the internet, not your home network. It works, but uses the camera's internet upload while you watch.") %}{% endif %}
+    {% set bent = tamper_state.get(uri) %}
+    {% if bent == "covered" %}{% set _ = tips.append("The view looks covered or blacked out. Check that nothing is over the lens.") %}{% endif %}
+    {% if bent == "moved" %}{% set _ = tips.append("The camera looks knocked or pointed somewhere else. Put it back, or if you moved it on purpose, tell Wyze Tunnel this is the new normal.") %}{% endif %}
+    {% if bent == "night_vision" %}{% set _ = tips.append("Night vision looks broken: the picture is black at night but used to be lit. Check the camera's night vision setting and that nothing blocks the lens.") %}{% endif %}
+    {% if cam.is_battery %}{% set _ = tips.append("Battery camera: it sleeps between events, so it shows as idle most of the time.") %}{% endif %}
+    {% set dot = 'text-rose-400' if cam.status == -90 else 'text-emerald-400' if cam.status == 3 else 'text-zinc-500' %}
+    {% set buttons %}
+        {% if (fixes or bent) and not current_guest() %}
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+            {% if bent %}<button class="newnormal btn" type="button" data-cam="{{ uri }}"><i class="fas fa-camera-rotate"></i>This is the new normal</button>{% endif %}
+            {% for label, cmd, payload in fixes %}<button class="fix btn" type="button" data-cam="{{ uri }}" data-cmd="{{ cmd }}" data-payload="{{ payload }}"><i class="fas fa-wrench"></i>{{ label }}</button>{% endfor %}
+            <span class="fix-status text-sm text-zinc-400" role="status"></span>
+        </div>
+        {% endif %}
+    {% endset %}
+    {% if needs %}
+    <article class="health-fix p-5" data-cam="{{ uri }}" data-enabled="{{ cam.enabled }}">
+        <div class="flex items-center gap-2.5">
+            <i class="fas fa-circle text-[9px] {{ dot }}"></i>
+            <h2 class="min-w-0 truncate font-display text-lg font-extrabold text-zinc-50">{{ cam.nickname }}{{ " is offline" if cam.status == -90 }}</h2>
+            {% if cam.status != -90 %}<span class="ml-auto flex-none text-sm text-zinc-400">{{ labels.get(cam.status, "unknown") }}</span>{% endif %}
+        </div>
+        <ul class="mt-2 space-y-2 text-sm text-zinc-100">
+            {% for tip in tips %}<li>{{ tip }}</li>{% endfor %}
+        </ul>
+        {{ buttons }}
+        <p class="check-result mt-3 hidden text-sm" role="status"></p>
+        <details class="health-more mt-3">
+            <summary class="flex cursor-pointer list-none items-center gap-1.5 text-sm text-zinc-400"><i class="chev fas fa-chevron-right text-[10px]"></i>Details</summary>
+            <div class="mt-3">{{ details_list(uri, cam, wifi, sd_free) }}</div>
+        </details>
+    </article>
+    {% else %}
+    <article class="border-t border-zinc-800 first:border-t-0" data-cam="{{ uri }}" data-enabled="{{ cam.enabled }}">
+        <details class="health-more">
+            <summary class="flex cursor-pointer list-none items-center gap-3 px-5 py-3.5">
+                <i class="fas fa-circle text-[9px] {{ dot }}"></i>
+                <h2 class="min-w-0 flex-1 truncate font-medium text-zinc-100">{{ cam.nickname }}</h2>
+                <span class="flex-none text-sm text-zinc-400">{{ wifi|wifi_tier ~ " Wi-Fi" if wifi >= 0 and cam.enabled else labels.get(cam.status, "unknown") }}</span>
+                <i class="chev fas fa-chevron-right flex-none text-xs text-zinc-500"></i>
+            </summary>
+            <div class="px-5 pb-4">
+                {{ details_list(uri, cam, wifi, sd_free) }}
+                {% if tips %}<ul class="mt-3 space-y-2 text-sm text-zinc-400">{% for tip in tips %}<li>{{ tip }}</li>{% endfor %}</ul>{% endif %}
+                {{ buttons }}
+            </div>
+        </details>
+        <p class="check-result hidden px-5 pb-3 text-sm" role="status"></p>
+    </article>
+    {% endif %}
+{% endmacro %}
+
+{% if ns.needs %}
+<div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+    {% for uri in ns.needs %}{{ camera(uri, cameras[uri], true) }}{% endfor %}
+</div>
 {% endif %}
-<section class="surface mb-4 grid gap-3 p-5 text-sm sm:grid-cols-3" aria-label="Data use">
-    <div><p class="text-zinc-400">Downloading from cameras now</p><p class="usage-total-in mt-1 font-display text-xl font-extrabold text-zinc-50">…</p></div>
-    <div><p class="text-zinc-400">Sending to viewers now</p><p class="usage-total-out mt-1 font-display text-xl font-extrabold text-zinc-50">…</p></div>
+{% if fine %}
+<h2 class="section-label mb-2">Working</h2>
+<section class="surface mb-6 overflow-hidden" aria-label="Cameras that are working">
+    {% for uri, cam in cameras.items() if uri not in ns.needs %}{{ camera(uri, cam, false) }}{% endfor %}
+</section>
+{% endif %}
+
+<h2 class="section-label mb-2">This computer</h2>
+<section class="surface mb-4 grid gap-3 p-5 text-sm sm:grid-cols-3" aria-label="Storage and data use">
     {% if disk %}
     <div><p class="text-zinc-400">Recordings</p><p class="mt-1 font-display text-xl font-extrabold text-zinc-50">{{ (disk.used / 1024**3)|round(1) }} GB</p>
         <p class="text-zinc-500">{{ (disk.free / 1024**3)|round(1) }} GB free on the drive</p></div>
     {% endif %}
+    <div><p class="text-zinc-400">Coming in from cameras</p><p class="usage-total-in mt-1 font-display text-xl font-extrabold text-zinc-50">…</p></div>
+    <div><p class="text-zinc-400">Going out to viewers</p><p class="usage-total-out mt-1 font-display text-xl font-extrabold text-zinc-50">…</p></div>
 </section>
 {% if lockdown %}
 {% set loose = lockdown|rejectattr("ok")|list %}
@@ -66,70 +164,10 @@
     });
 </script>
 {% endif %}
-{% set labels = {-90: "offline", -1: "stopping", 0: "turned off", 1: "idle", 2: "connecting", 3: "streaming"} %}
-<div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-    {% for uri, cam in cameras.items() %}
-    {% set info = cam.camera_info or {} %}
-    {% set basic = info.basicInfo or {} %}
-    {% set sd = info.sdParm or {} %}
-    {% set wifi = basic.wifidb|int(-1) if basic.wifidb is defined else -1 %}
-    {% set sd_free = (sd.free|int / sd.capacity|int * 100)|round|int if sd.status == "1" and sd.capacity|int > 0 else -1 %}
-    {% set tips = [] %}
-    {% set fixes = [] %}
-    {% if cam.status == -90 or cam.chronic %}{% set _ = fixes.append(("Restart the camera", "power", "restart")) %}{% endif %}
-    {% if not cam.enabled %}{% set _ = fixes.append(("Turn it on", "state", "enable")) %}{% endif %}
-    {% if cam.enabled and cam.status != -90 and cam.net_mode in ("relay", "internet") or cam.busy %}{% set _ = fixes.append(("Reconnect", "state", "restart")) %}{% endif %}
-    {% if cam.status == -90 %}{% set _ = tips.append("The camera isn't reachable. Check that it has power and Wi-Fi, then unplug it for 10 seconds.") %}{% endif %}
-    {% if cam.busy %}{% set _ = tips.append("The camera is busy. A Cam OG lets only 2 viewers in at once and Wyze Tunnel uses one, so close the Wyze app on other phones and it reconnects by itself. Everyone watching through Wyze Tunnel shares that one spot. If no one else is watching, check that the camera has power.") %}{% endif %}
-    {% if cam.chronic %}{% set _ = tips.append("This camera has failed to connect " ~ cam.failures ~ " times in a row, so Wyze Tunnel restarted it and now retries only every 5 minutes. If that didn't help, unplug it for 10 seconds or check its Wi-Fi signal in the Wyze app.") %}{% endif %}
-    {% if not cam.enabled %}{% set _ = tips.append("This camera is turned off in Wyze Tunnel. Open Live, tap the sliders on the camera, then Stream: Turn on.") %}{% endif %}
-    {% if 0 <= wifi < 40 %}{% set _ = tips.append("Weak Wi-Fi (" ~ wifi ~ "%). Move the camera or router closer, or add a mesh point.") %}{% endif %}
-    {% if 0 <= sd_free < 10 %}{% set _ = tips.append("The SD card is almost full. Old clips get overwritten, so check Wyze app settings if you need them.") %}{% endif %}
-    {% if cam.net_mode == "relay" %}{% set _ = tips.append("Streaming through Wyze's relay servers, which adds delay and can drop. If the camera is on your home Wi-Fi, check that Wyze Tunnel is on the same network.") %}{% endif %}
-    {% if cam.net_mode == "internet" %}{% set _ = tips.append("Connected over the internet, not your home network. It works, but uses the camera's internet upload while you watch.") %}{% endif %}
-    {% set bent = tamper_state.get(uri) %}
-    {% if bent == "covered" %}{% set _ = tips.append("The view looks covered or blacked out. Check that nothing is over the lens.") %}{% endif %}
-    {% if bent == "moved" %}{% set _ = tips.append("The camera looks knocked or pointed somewhere else. Put it back, or if you moved it on purpose, tell Wyze Tunnel this is the new normal.") %}{% endif %}
-    {% if bent == "night_vision" %}{% set _ = tips.append("Night vision looks broken: the picture is black at night but used to be lit. Check the camera's night vision setting and that nothing blocks the lens.") %}{% endif %}
-    {% if cam.is_battery %}{% set _ = tips.append("Battery camera: it sleeps between events, so it shows as idle most of the time.") %}{% endif %}
-    <article class="surface p-5" data-cam="{{ uri }}" data-enabled="{{ cam.enabled }}">
-        <div class="flex items-center gap-2">
-            <i class="fas fa-circle text-[8px] {{ 'text-rose-400' if cam.status == -90 else 'text-emerald-400' if cam.status == 3 else 'text-zinc-500' }}"></i>
-            <h2 class="min-w-0 truncate font-semibold">{{ cam.nickname }}</h2>
-            <span class="ml-auto flex-none rounded-full bg-white/5 px-2 py-0.5 text-xs text-zinc-400">{{ labels.get(cam.status, "unknown") }}</span>
-        </div>
-        <dl class="mt-3 grid grid-cols-2 gap-y-1 text-sm [&_dt]:text-zinc-400">
-            <dt>Model</dt><dd>{{ cam.model_name }}</dd>
-            <dt>Firmware</dt><dd>{{ cam.firmware_ver or "unknown" }}{% if not current_guest() %} <button class="fw-check text-sky-300 underline" type="button" data-cam="{{ uri }}">Check for update</button>{% endif %}</dd>
-            {% if advanced and cam.sources and cam.sources != ["tutk"] %}<dt>Connects with</dt><dd>{{ {"tutk": "Wyze SDK", "lan": "go2rtc (local)", "webrtc": "Wyze WebRTC"}.get(cam.source, cam.source) }}{% if cam.sources|length > 1 %} <span class="text-zinc-500">of {{ cam.sources|length }} ways</span>{% endif %}</dd>{% endif %}
-            {% if advanced and cam.ip %}<dt>IP address</dt><dd class="font-mono">{{ cam.ip }}</dd>{% endif %}
-            {% if cam.net_mode %}<dt>Connection</dt><dd>{{ {"local": "Local network", "internet": "Over the internet (direct)", "relay": "Through Wyze's relay"}[cam.net_mode] }}</dd>{% endif %}
-            {% if wifi >= 0 %}{% set tier = wifi|wifi_tier %}<dt>Wi-Fi signal</dt><dd><span class="chip {{ {'Good': 'chip-ok', 'Fair': 'chip-warn', 'Weak': 'chip-bad'}[tier] }}">{{ tier }}</span> <span class="text-zinc-500">{{ wifi }}%</span></dd>{% endif %}
-            {% if sd_free >= 0 %}<dt>SD card free</dt><dd>{{ sd_free }}%</dd>{% endif %}
-            <dt>Data use</dt><dd class="usage" data-cam="{{ uri }}">Not streaming</dd>
-            {% if cam.status == 3 and cam.start_time %}<dt>Streaming for</dt><dd>{{ ((now - cam.start_time) / 60)|int }} min</dd>{% endif %}
-        </dl>
-        <p class="check-result mt-3 hidden text-sm" role="status"></p>
-        {% if tips %}
-        <ul class="mt-3 space-y-2 border-t border-white/5 pt-3 text-sm text-amber-200">
-            {% for tip in tips %}<li>{{ tip }}</li>{% endfor %}
-        </ul>
-        {% if (fixes or bent) and not current_guest() %}
-        <div class="mt-3 flex flex-wrap items-center gap-2">
-            {% if bent %}<button class="newnormal btn" type="button" data-cam="{{ uri }}"><i class="fas fa-camera-rotate"></i>This is the new normal</button>{% endif %}
-            {% for label, cmd, payload in fixes %}<button class="fix btn" type="button" data-cam="{{ uri }}" data-cmd="{{ cmd }}" data-payload="{{ payload }}"><i class="fas fa-wrench"></i>{{ label }}</button>{% endfor %}
-            <span class="fix-status text-sm text-zinc-400" role="status"></span>
-        </div>
-        {% endif %}
-        {% else %}
-        <p class="mt-3 border-t border-white/5 pt-3 text-sm text-zinc-400">No problems found.</p>
-        {% endif %}
-    </article>
-    {% else %}
-    <p class="text-zinc-400">No cameras found yet.</p>
-    {% endfor %}
-</div>
-<p class="mt-6 text-sm text-zinc-500">Wi-Fi and SD card details appear once a camera has connected at least once.</p>
+<p class="mt-6 flex flex-wrap items-center gap-3 text-sm text-zinc-500">
+    <a href="diagnostics" class="btn"><i class="fas fa-file-arrow-down"></i>Download a report</a>
+    <span>Wi-Fi and SD card details appear once a camera has connected at least once.</span>
+</p>
 <script>
     // Ask Wyze if a newer firmware is offered. Installing needs a confirm, and the server rechecks and wants the owner password.
     document.querySelectorAll(".fw-check").forEach((btn) => btn.addEventListener("click", async () => {
@@ -183,7 +221,8 @@
         const btn = e.currentTarget;
         btn.disabled = true;
         const cards = [...document.querySelectorAll("article[data-cam]")];
-        cards.forEach((c) => { const r = c.querySelector(".check-result"); r.className = "check-result mt-3 text-sm text-zinc-400"; r.textContent = c.dataset.enabled === "True" ? "Waiting to check…" : "Turned off in Wyze Tunnel, so it wasn't checked."; });
+        const pad = (r) => r.closest(".health-fix") ? "mt-3" : "px-5 pb-3";
+        cards.forEach((c) => { const r = c.querySelector(".check-result"); r.className = `check-result ${pad(r)} text-sm text-zinc-400`; r.textContent = c.dataset.enabled === "True" ? "Waiting to check…" : "Turned off in Wyze Tunnel, so it wasn't checked."; });
         const queue = cards.filter((c) => c.dataset.enabled === "True");
         const total = queue.length;
         let ok = 0;
@@ -194,7 +233,7 @@
                 const r = await fetch(`api/${encodeURIComponent(card.dataset.cam)}/stream-test`).then((x) => x.json()).catch(() => ({ error: "no reply", warnings: ["Wyze Tunnel didn't answer. Try again."] }));
                 const good = !r.error && !(r.warnings || []).length;
                 ok += good ? 1 : 0;
-                out.className = `check-result mt-3 text-sm ${r.error ? "text-rose-300" : good ? "text-emerald-300" : "text-amber-200"}`;
+                out.className = `check-result ${pad(out)} text-sm ${r.error ? "text-rose-300" : good ? "text-emerald-300" : "text-amber-200"}`;
                 out.textContent = r.error ? (r.warnings || [r.error]).join(" ") : `Working: ${r.width}×${r.height}, ${r.fps} frames a second. ${(r.warnings || []).join(" ")}`.trim();
             }
         }

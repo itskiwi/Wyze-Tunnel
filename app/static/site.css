@@ -625,3 +625,13 @@ body.ev-open { overflow: hidden; }
 .ev-ans:disabled { grid-template-columns: 1fr; cursor: default; }
 .ev-ans .ev-said { font: 700 15.5px/1.35 Nunito, ui-rounded, system-ui, sans-serif; }
 #answer[hidden], #odd[hidden], #visits[hidden], .ev-sec[hidden], .ev-usual[hidden] { display: none !important; }
+
+/* Small caps label above a group of rows (Health, Settings) */
+.section-label { font: 500 11px "Geist Mono", ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; color: rgb(var(--zinc-500)); padding-inline: .25rem; }
+/* Health: a camera that needs you is tinted; everything else is a plain row that opens */
+.health-fix { border-radius: 1.5rem; background: rgb(245 179 60 / .13); }
+:root[data-theme="light"] .health-fix { background: #fbefcd; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .health-fix { background: #fbefcd; } }
+.health-more .chev { transition: transform .15s; }
+.health-more[open] > summary .chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .health-more .chev { transition: none; } }
