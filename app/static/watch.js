@@ -21,19 +21,9 @@
   const sentence = (text) => String(text || "").replace(/\.$/, "");
 
   function story() {
-    const today = events.filter((e) => e.ts >= midnight());
-    const last = today.find((e) => NOTABLE.includes(e.type)); // events come newest first
-    const h = $("#watchStory"), p = $("#watchDetail");
-    if (!last) {
-      h.textContent = "All quiet today";
-      p.textContent = today.length ? `Only ${today.length} motion ${today.length === 1 ? "alert" : "alerts"}. No people, packages or cars.` : "Nothing has moved since midnight.";
-    } else if (now() - last.ts < 180) {
-      h.textContent = sentence(last.text);
-      p.textContent = `${last.device}, ${ago(last.ts)}.`;
-    } else {
-      h.textContent = "Quiet now";
-      p.textContent = `Last: ${sentence(last.text)}, ${ago(last.ts)}.`;
-    }
+    const { title, detail } = daySummary(events.map((e) => ({ ts: e.ts, kind: e.type, text: e.text, place: e.device })));
+    $("#watchStory").textContent = title;
+    $("#watchDetail").textContent = detail;
   }
 
   function spotlight() {

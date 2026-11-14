@@ -101,8 +101,8 @@
         <dl class="mt-3 grid grid-cols-2 gap-y-1 text-sm [&_dt]:text-zinc-400">
             <dt>Model</dt><dd>{{ cam.model_name }}</dd>
             <dt>Firmware</dt><dd>{{ cam.firmware_ver or "unknown" }}{% if not current_guest() %} <button class="fw-check text-sky-300 underline" type="button" data-cam="{{ uri }}">Check for update</button>{% endif %}</dd>
-            {% if cam.sources and cam.sources != ["tutk"] %}<dt>Connects with</dt><dd>{{ {"tutk": "Wyze SDK", "lan": "go2rtc (local)", "webrtc": "Wyze WebRTC"}.get(cam.source, cam.source) }}{% if cam.sources|length > 1 %} <span class="text-zinc-500">of {{ cam.sources|length }} ways</span>{% endif %}</dd>{% endif %}
-            {% if cam.ip %}<dt>IP address</dt><dd class="font-mono">{{ cam.ip }}</dd>{% endif %}
+            {% if advanced and cam.sources and cam.sources != ["tutk"] %}<dt>Connects with</dt><dd>{{ {"tutk": "Wyze SDK", "lan": "go2rtc (local)", "webrtc": "Wyze WebRTC"}.get(cam.source, cam.source) }}{% if cam.sources|length > 1 %} <span class="text-zinc-500">of {{ cam.sources|length }} ways</span>{% endif %}</dd>{% endif %}
+            {% if advanced and cam.ip %}<dt>IP address</dt><dd class="font-mono">{{ cam.ip }}</dd>{% endif %}
             {% if cam.net_mode %}<dt>Connection</dt><dd>{{ {"local": "Local network", "internet": "Over the internet (direct)", "relay": "Through Wyze's relay"}[cam.net_mode] }}</dd>{% endif %}
             {% if wifi >= 0 %}{% set tier = wifi|wifi_tier %}<dt>Wi-Fi signal</dt><dd><span class="chip {{ {'Good': 'chip-ok', 'Fair': 'chip-warn', 'Weak': 'chip-bad'}[tier] }}">{{ tier }}</span> <span class="text-zinc-500">{{ wifi }}%</span></dd>{% endif %}
             {% if sd_free >= 0 %}<dt>SD card free</dt><dd>{{ sd_free }}%</dd>{% endif %}

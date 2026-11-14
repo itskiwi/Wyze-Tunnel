@@ -180,7 +180,7 @@
         more.classList.add("hidden");
         const query = new URLSearchParams({ label, cam: select.value, ...(oldest && { before: oldest }) });
         fetch(`api/detections?${query}`)
-            .then((resp) => resp.ok ? resp.json() : Promise.reject(new Error(`The bridge answered ${resp.status}`)))
+            .then((resp) => resp.ok ? resp.json() : Promise.reject(new Error("Wyze Tunnel hit a problem. Try again in a moment")))
             .then((body) => {
                 drawLabels(body.labels);
                 body.detections.forEach((hit) => hits.append(card(hit)));
