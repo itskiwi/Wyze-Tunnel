@@ -263,3 +263,27 @@ def test_cloud_backup_settings_route(tmp_path, monkeypatch):
         assert client.post("/recordings/backup", json={"folder": ""}).status_code == 403
     assert client.post("/recordings/backup", json={"folder": ""}).json["on"] is False
     assert recording.load_cloud() == {}
+
+
+def test_cleanup_survives_an_unexpected_error_and_pages_reuse_the_count(tmp_path, monkeypatch):
+    from wyzebridge import recording
+
+    calls = []
+    monkeypatch.setattr(recording, "expire", lambda: 1 / 0)  # e.g. a damaged moments.db
+    monkeypatch.setattr(recording, "trim", lambda: calls.append("trim"))
+    monkeypatch.setattr(recording, "back_up_clips", lambda: calls.append("backup"))
+
+    def stop(_):
+        raise SystemExit
+
+    monkeypatch.setattr(recording.time, "sleep", stop)
+    monkeypatch.setattr(recording, "Thread", lambda target, **_: type("T", (), {"start": lambda self: target()})())
+    with pytest.raises(SystemExit):
+        recording.start_trimming()
+    assert calls == ["trim", "backup"]  # the steps after the failed one still ran
+
+    monkeypatch.setattr(recording, "RECORD_PATH", str(tmp_path / "record" / "%path" / "%Y"))
+    (tmp_path / "record" / "front").mkdir(parents=True)
+    assert recording.disk_use(60)["used"] == 0
+    (tmp_path / "record" / "front" / "a.mp4").write_bytes(b"x" * 10)
+    assert recording.disk_use(60)["used"] == 0 and recording.disk_use()["used"] == 10  # pages reuse, cleanup recounts
