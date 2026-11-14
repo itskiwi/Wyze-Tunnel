@@ -110,7 +110,7 @@ mod vm {
     use super::cmd;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::process::{Child, Command};
+    use std::process::{Child, Command, Stdio};
     use std::sync::Mutex;
 
     const DISTRO: &str = "WyzeTunnel";
@@ -131,9 +131,20 @@ mod vm {
         Some(data())
     }
     fn wsl() -> bool {
-        cmd("wsl.exe").args(["-l", "-q"]).output()
-            // NUL stripping: older inbox wsl.exe ignores WSL_UTF8 and prints UTF-16.
-            .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).replace('\0', "").lines().any(|l| l.trim() == DISTRO))
+        // A stuck WSL service (seen: WslService left "StopPending") makes wsl.exe hang forever, which kept the
+        // bridge from ever starting. Give it 10 seconds, then count it as no WSL and run the native bridge.
+        let Ok(mut c) = cmd("wsl.exe").args(["-l", "-q"]).stdout(Stdio::piped()).spawn() else { return false };
+        for _ in 0..100 {
+            if matches!(c.try_wait(), Ok(Some(_))) {
+                let mut out = Vec::new();
+                let _ = std::io::Read::read_to_end(&mut c.stdout.take().unwrap(), &mut out);
+                // NUL stripping: older inbox wsl.exe ignores WSL_UTF8 and prints UTF-16.
+                return String::from_utf8_lossy(&out).replace('\0', "").lines().any(|l| l.trim() == DISTRO);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        let _ = c.kill();
+        false
     }
     pub fn installed() -> bool {
         native().join(r"python\python.exe").exists() || wsl()
